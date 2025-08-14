@@ -77,3 +77,18 @@ class AgentJob(db.Model):
     preferences_json = db.Column(db.Text)     # form inputs
     results_json = db.Column(db.Text)         # fast packs results
     created_at = db.Column(db.DateTime, default=dt.datetime.utcnow)
+
+# --- Add at the bottom of models.py ---
+
+class ResumeAsset(db.Model):
+    __tablename__ = "resume_assets"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    filename = db.Column(db.String(255))
+    mime = db.Column(db.String(64))
+    content_text = db.Column(db.Text)  # extracted, searchable text
+    persisted = db.Column(db.Boolean, default=False)  # Pro users opt-in
+    created_at = db.Column(db.DateTime, default=dt.datetime.utcnow)
+
+    def __repr__(self):
+        return f"<ResumeAsset {self.id} user={self.user_id} {self.filename}>"

@@ -1,40 +1,41 @@
-import re, os, uuid, datetime as dt
+import os
 
-TEMPLATES = {
-"generic": """
-<section class="py-8">
-  <h1 class="text-4xl font-extrabold mb-2">{title}</h1>
-  <p class="opacity-80 mb-6">Role: {role}</p>
-  <div class="grid md:grid-cols-3 gap-4">
-    <div class="glass p-4 card">
-      <h3 class="font-bold">Mini‑Project 1</h3>
-      <p>Define a problem, collect data, and ship a concise deliverable (notebook, mockups, or deck).</p>
-    </div>
-    <div class="glass p-4 card">
-      <h3 class="font-bold">Mini‑Project 2</h3>
-      <p>Explore a company product and propose an improvement with a simple metric.</p>
-    </div>
-    <div class="glass p-4 card">
-      <h3 class="font-bold">Mini‑Project 3</h3>
-      <p>Summarize impact in 3 STAR bullets with quantified outcomes.</p>
-    </div>
-  </div>
-</section>
-"""
-}
+MOCK = os.getenv("MOCK", "1") == "1"
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-def slugify(s:str)->str:
-    s = re.sub(r'[^a-zA-Z0-9\- ]','',s).strip().lower().replace(" ","-")
-    return s[:50] or str(uuid.uuid4())[:8]
+def build_deep_portfolio(title: str, role: str) -> str:
+    """
+    Returns rich HTML chunks for the portfolio body.
+    """
+    if MOCK or not os.getenv("OPENAI_API_KEY"):
+        return f"""
+        <section class="space-y-6">
+          <header>
+            <h1 class="text-4xl font-extrabold">{title}</h1>
+            <p class="opacity-80">Target Role: {role} · Deep Briefs</p>
+          </header>
+          <article class="glass p-4 rounded-xl">
+            <h3 class="font-bold">Case Study 1 — Metric‑driven feature</h3>
+            <p>Problem → Approach → Results (add screenshots & metrics)</p>
+          </article>
+          <article class="glass p-4 rounded-xl">
+            <h3 class="font-bold">Case Study 2 — Data pipeline & dashboard</h3>
+            <p>Dataset → ETL → KPI visuals → Insights → Next steps</p>
+          </article>
+          <div class="text-sm opacity-75">Rubric: Clear problem statements, measurable outcomes, reproducibility links.</div>
+        </section>
+        """.strip()
 
-def build_page_html(title, role):
-    body = TEMPLATES["generic"].format(title=title, role=role)
-    shell = f"""<!doctype html><html><head>
-      <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-      <script src="https://cdn.tailwindcss.com"></script>
-      <style>.gradient-bg{{background:linear-gradient(135deg,#6d28d9,#7c3aed,#a78bfa);}} .glass{{background:rgba(255,255,255,0.08);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.15);}} .card{{border-radius:16px;}}</style>
-      <title>{title} — Portfolio</title></head>
-      <body class="min-h-screen text-white gradient-bg">
-      <main class="max-w-4xl mx-auto p-6">{body}</main>
-      </body></html>"""
-    return shell
+    try:
+        from openai import OpenAI
+        client = OpenAI()
+        prompt = f"""Create HTML (no <html> or <body>) for a premium portfolio section for the title "{title}" targeting "{role}".
+Include: header, 2 case-study sections (problem→solution→metrics), and a rubric line."""
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role":"user","content":prompt}],
+            temperature=0.4,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception:
+        return "<p>Deep portfolio could not be generated. Try again later.</p>"

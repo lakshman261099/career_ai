@@ -1,62 +1,59 @@
-# modules/referral/routes.py
-import csv, io
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
-from models import db, OutreachContact
+from models import db, OutreachContact, Subscription
+from .helpers import generate_messages
 
 referral_bp = Blueprint("referral", __name__)
+
+def _is_pro(uid) -> bool:
+    sub = Subscription.query.filter_by(user_id=uid).first()
+    return bool(sub and sub.status == "active")
 
 @referral_bp.route("", methods=["GET"])
 @login_required
 def index():
-    # Render the advanced UI page we created earlier
-    return render_template("referral_index.html")
+    contacts = OutreachContact.query.filter_by(user_id=current_user.id).all()
+    return render_template("referral_list.html", contacts=contacts)
 
-@referral_bp.route("/upload", methods=["POST"])
+@referral_bp.route("/add", methods=["GET", "POST"])
 @login_required
-def upload():
-    file = request.files.get("file")
-    mode = (request.form.get("mode") or request.args.get("mode") or "fast").strip().lower()
-    if not file or not file.filename.endswith(".csv"):
-        flash("Please upload a CSV with headers: name,role,company,email", "error")
-        return redirect(url_for("referral.index"))
-
-    content = file.read().decode("utf-8", errors="ignore")
-    rdr = csv.DictReader(io.StringIO(content))
-    rows = []
-    for row in rdr:
-        name = (row.get("name") or "").strip()
-        email = (row.get("email") or "").strip()
-        role = (row.get("role") or "").strip()
-        company = (row.get("company") or "").strip()
+def add():
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        email = (request.form.get("email") or "").strip()
+        role = (request.form.get("role") or "").strip()
+        company = (request.form.get("company") or "").strip()
+        source = (request.form.get("source") or "").strip() or "manual"
         if not name or not email:
-            # Skip incomplete rows
-            continue
+            flash("Name and email required.", "error")
+            return redirect(url_for("referral.add"))
+        c = OutreachContact(user_id=current_user.id, name=name, email=email, role=role, company=company, source=source)
+        db.session.add(c); db.session.commit()
+        flash("Contact added.", "success")
+        return redirect(url_for("referral.index"))
+    return render_template("referral_form.html")
 
-        # Persist a simple contact record (optional)
-        contact = OutreachContact(user_id=current_user.id, name=name, email=email, role=role, company=company, source="csv")
-        db.session.add(contact)
+@referral_bp.route("/generate/<int:contact_id>", methods=["GET"])
+@login_required
+def generate(contact_id):
+    contact = OutreachContact.query.filter_by(id=contact_id, user_id=current_user.id).first_or_404()
+    deep = request.args.get("mode","fast").lower() == "deep"
+    if deep and not _is_pro(current_user.id):
+        flash("Deep outreach is Pro only.", "error")
+        return redirect(url_for("pricing"))
+    # sample candidate profile; wire to user settings later if desired
+    candidate = {"role": "Data Analyst Intern", "highlights": "SQL, Python, 2 dashboards, campus club lead"}
+    msgs = generate_messages(
+        {"name": contact.name, "role": contact.role, "company": contact.company or "your company", "email": contact.email, "source": contact.source or "manual"},
+        candidate_profile=candidate,
+        deep=deep
+    )
+    return render_template("referral_messages.html", contact=contact, messages=msgs, mode="deep" if deep else "fast")
 
-        # Messages (mock/fast)
-        msg_warm = f"Hi {name.split()[0]}, hope you’re well! I’m exploring {role} opportunities at {company}..."
-        msg_cold = f"Hey {name.split()[0]}, I admire the work at {company}. I’m targeting {role} intern roles..."
-        msg_follow = f"Hi {name.split()[0]}, just following up on my note about {role} at {company}..."
-
-        rec = {
-            "name": name, "email": email, "role": role, "company": company,
-            "msg_warm": msg_warm, "msg_cold": msg_cold, "msg_follow": msg_follow
-        }
-
-        # Deep mode adds a simple cadence list
-        if mode == "deep":
-            rec["cadence"] = [
-                "Day 0: connect with note",
-                "Day 2: share mini‑project link",
-                "Day 5: thoughtful follow‑up",
-                "Day 10: gentle nudge with a new insight"
-            ]
-        rows.append(rec)
-
-    db.session.commit()
-    # Re-render the advanced UI template with results
-    return render_template("referral_index.html", rows=rows)
+@referral_bp.route("/delete/<int:contact_id>", methods=["POST"])
+@login_required
+def delete(contact_id):
+    contact = OutreachContact.query.filter_by(id=contact_id, user_id=current_user.id).first_or_404()
+    db.session.delete(contact); db.session.commit()
+    flash("Contact deleted.", "info")
+    return redirect(url_for("referral.index"))

@@ -2,7 +2,29 @@
 {% block title %}Settings{% endblock %}
 {% block content %}
 <h2 class="text-3xl font-bold mb-4">Settings</h2>
-<div class="glass card-pad space-y-2">
-  <p class="opacity-80 text-sm">Manage saved resume (Pro), privacy, and data deletion here. (Coming next patch.)</p>
+<div class="glass card-pad space-y-4">
+  <p class="opacity-80 text-sm">Manage your data & privacy. Pro users can persist their resume for faster Job Packs.</p>
+  <form id="resume-upload" class="grid gap-3" enctype="multipart/form-data">
+    <label class="text-sm">Upload resume (PDF/DOCX/TXT, max 5MB)</label>
+    <input type="file" name="file" accept=".pdf,.docx,.txt" class="text-black p-2 rounded bg-white">
+    <label class="inline-flex items-center gap-2 text-sm">
+      <input type="checkbox" name="persist" value="1"> Save resume (Pro only)
+    </label>
+    <button class="btn btn-primary px-4 py-2" type="submit">Upload</button>
+  </form>
+  <pre id="resume-result" class="text-xs whitespace-pre-wrap opacity-80"></pre>
 </div>
+
+<script>
+document.getElementById('resume-upload').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.currentTarget);
+  if (!fd.get('file')) { alert('Pick a file'); return; }
+  const url = '/resume/upload';
+  const res = await fetch(url, { method: 'POST', body: fd });
+  const data = await res.json();
+  document.getElementById('resume-result').textContent =
+    data.ok ? ('Preview:\n' + (data.text || '').slice(0,800)) : (data.reason || 'Upload failed');
+});
+</script>
 {% endblock %}

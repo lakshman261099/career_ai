@@ -14,6 +14,7 @@ from modules.portfolio.routes import portfolio_bp
 from modules.referral.routes import referral_bp
 from modules.agent.routes import agent_bp
 from modules.billing.routes import billing_bp
+from modules.resume.routes import resume_bp   # NEW
 
 load_dotenv()
 
@@ -21,14 +22,13 @@ def create_app():
     app = Flask(__name__, template_folder='templates')
     app.secret_key = os.getenv("FLASK_SECRET_KEY", "change-me")
 
+    # Upload safety
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB cap
+
     # Database: SQLite locally, Postgres on Render
     database_url = os.getenv("DATABASE_URL", "sqlite:///career_ai.db")
-
-    # Render/Heroku compatibility: old scheme -> new
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://")
-
-    # Force psycopg v3 driver when using Postgres
     if database_url.startswith("postgresql://"):
         database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
@@ -51,7 +51,7 @@ def create_app():
     def load_user(user_id):
         return User.query.get(int(user_id))
 
-    # Make `is_pro` available to all templates
+    # Make `is_pro` available to templates
     @app.context_processor
     def inject_globals():
         is_pro = False
@@ -66,6 +66,12 @@ def create_app():
     app.register_blueprint(portfolio_bp, url_prefix="/portfolio")
     app.register_blueprint(referral_bp, url_prefix="/referral")
     app.register_blueprint(agent_bp, url_prefix="/agent")
+
+    # NEW: resume uploader blueprint (add import at top)
+    from modules.resume.routes import resume_bp
+    app.register_blueprint(resume_bp, url_prefix="/resume")
+
+    # Billing after others to keep routes clean
     app.register_blueprint(billing_bp, url_prefix="/billing")
 
     # ---------- Routes ----------
@@ -98,6 +104,11 @@ def create_app():
                                recent_reports=recent_reports,
                                portfolios=portfolios,
                                agent_jobs=agent_jobs)
+
+    # Health check (Render)
+    @app.route("/healthz")
+    def healthz():
+        return {"ok": True}, 200
 
     # -------- Auth ----------
     @app.route("/auth/register", methods=["GET", "POST"])
@@ -150,6 +161,7 @@ def create_app():
         return "We store the minimum data required. No LinkedIn scraping. Free tier does not persist resumes unless opted-in. Delete my data: email support."
 
     return app
+
 
 app = create_app()
 
