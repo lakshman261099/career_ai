@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-3xl font-bold mb-6">Pricing</h2>
+<div class="grid md:grid-cols-2 gap-6">
+  <div class="glass p-6 card">
+    <h3 class="text-xl font-bold">Free</h3>
+    <ul class="mt-3 space-y-2 text-sm opacity-90">
+      <li>Fast Job Pack</li>
+      <li>Internship Finder (mock)</li>
+      <li>Referral Builder (CSV)</li>
+      <li>Portfolio Builder</li>
+    </ul>
+  </div>
+  <div class="glass p-6 card">
+    <h3 class="text-xl font-bold">Pro</h3>
+    <ul class="mt-3 space-y-2 text-sm opacity-90">
+      <li>Deep Job Pack + Save + Export PDF</li>
+      <li>Internship live APIs (when configured)</li>
+      <li>AI Career Agent</li>
+      <li>University mode eligible</li>
+    </ul>
+    <div class="mt-4 space-x-3">
+      <form action="/billing/checkout" method="post" class="inline">
+        <input type="hidden" name="price_id" value="{{ os.getenv('STRIPE_PRICE_PRO_MONTHLY','price_xxx') }}">
+        <button class="px-4 py-2 glass card">Go Pro (Monthly)</button>
+      </form>
+      <form action="/billing/checkout" method="post" class="inline">
+        <input type="hidden" name="price_id" value="{{ os.getenv('STRIPE_PRICE_PRO_YEARLY','price_yyy') }}">
+        <button class="px-4 py-2 glass card">Go Pro (Yearly)</button>
+      </form>
+      <a class="underline ml-2" href="/billing/portal">Manage billing</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

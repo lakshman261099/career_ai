@@ -1,61 +1,27 @@
-import os
-from openai import OpenAI
+import os, json, random
 
-MOCK_MODE = os.getenv("MOCK_MODE", "true").lower() == "true"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+USE_MOCK = os.getenv("MOCK", "1") == "1"
 
-client = None
-if not MOCK_MODE and OPENAI_API_KEY:
-    client = OpenAI(api_key=OPENAI_API_KEY)
+FREE_COURSES = {
+    "SQL":"https://www.khanacademy.org/computing/computer-programming/sql",
+    "Python":"https://www.freecodecamp.org/learn/scientific-computing-with-python/",
+    "Statistics":"https://www.khanacademy.org/math/statistics-probability",
+    "Communication":"https://www.coursera.org/learn/wharton-communication-skills",
+}
 
-def ai_call(prompt):
-    if MOCK_MODE or not client:
-        return "[MOCK AI OUTPUT] " + prompt[:80] + "..."
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
-    )
-    return resp.choices[0].message.content.strip()
-
-def sanitize(s, n=500):
-    return (s or "").strip()[:n]
-
-def find_internships_mock(role, location):
-    """Return mock internships with a match score and missing skills."""
-    return [
-        {
-            "title": f"{role} Intern",
-            "company": "Google",
-            "location": location,
-            "match_score": 87,
-            "missing_skills": ["Tableau", "Data Visualization"],
-            "link": "https://careers.google.com/"
-        },
-        {
-            "title": f"Junior {role}",
-            "company": "Microsoft",
-            "location": location,
-            "match_score": 78,
-            "missing_skills": ["Excel Macros", "PowerBI"],
-            "link": "https://careers.microsoft.com/"
-        },
-        {
-            "title": f"{role} Trainee",
-            "company": "Amazon",
-            "location": location,
-            "match_score": 72,
-            "missing_skills": ["SQL Optimization", "Data Warehousing"],
-            "link": "https://amazon.jobs/"
-        }
+def mock_fetch(role, location):
+    base = [
+        {"title":"Software Engineer Intern","company":"Acme","link":"https://example.com/acme-intern","source":"Mock"},
+        {"title":"Data Analyst Intern","company":"Dataco","link":"https://example.com/dataco","source":"Mock"},
+        {"title":"Product Intern","company":"BrightApps","link":"https://example.com/bright","source":"Mock"},
+        {"title":"ML Intern","company":"Visionary","link":"https://example.com/visionary","source":"Mock"},
     ]
+    res=[]
+    for j in base:
+        score = random.randint(55,95)
+        gaps = random.sample(list(FREE_COURSES.keys()), k=random.randint(1,2))
+        res.append({**j,"match_score":score,"missing_skills":gaps})
+    return res
 
-def suggest_learning_links(skills):
-    """Generate free learning links for each skill."""
-    links = []
-    for skill in skills:
-        links.append({
-            "skill": skill,
-            "link": f"https://www.google.com/search?q=free+course+{skill.replace(' ', '+')}"
-        })
-    return links
+def compute_learning_links(skills):
+    return [{"skill":s,"link":FREE_COURSES.get(s,"https://www.google.com/search?q="+s+"+course")} for s in skills]

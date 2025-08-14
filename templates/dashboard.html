@@ -1,283 +1,75 @@
 {% extends "base.html" %}
-{% block title %}CareerAI — Dashboard{% endblock %}
 {% block content %}
-<section class="max-w-6xl mx-auto px-4 space-y-6">
+<h2 class="text-3xl font-bold mb-4">Dashboard</h2>
+<p class="opacity-80 mb-6">Pro status: <span class="font-semibold">{{ 'Yes' if is_pro else 'No' }}</span></p>
 
-  {% if error %}
-  <div class="glass rounded-xl p-4 border border-rose-400/40 text-rose-300">
-    {{ error }}
-  </div>
-  {% endif %}
-  {% if info %}
-  <div class="glass rounded-xl p-4 border border-white/20">
-    {{ info }}
-  </div>
-  {% endif %}
-
-  <!-- Tabs -->
-  <div class="glass rounded-xl p-2 flex gap-2 overflow-x-auto">
-    {% set tab = active_tab or 'jobpack' %}
-    {% macro tabbtn(id, label) -%}
-      <button data-tab="{{ id }}" class="tab-btn px-3 py-2 rounded-lg text-sm {{ 'bg-brand' if tab==id else 'hover:bg-white/10' }}">{{ label }}</button>
-    {%- endmacro %}
-    {{ tabbtn('jobpack','Job Pack') }}
-    {{ tabbtn('internships','Internship Finder') }}
-    {{ tabbtn('portfolio','Portfolio Builder') }}
-    {{ tabbtn('referral','Referral Network') }}
-    {{ tabbtn('agent','Career Agent') }}
-  </div>
-
-  <!-- Panels -->
-  <div id="panel-jobpack" class="panel {{ '' if tab=='jobpack' else 'hidden' }}">
-  <div class="grid md:grid-cols-3 gap-6">
-    <!-- LEFT: Inputs -->
-    <div class="md:col-span-1 space-y-4">
-      <div class="glass rounded-xl p-5">
-        <h2 class="font-bold text-lg">Job Match & Application Pack (Pro)</h2>
-        <form action="/jobpack/generate" method="post" class="space-y-3">
-          <div>
-            <label class="block text-sm text-slate-300">Job Link (optional)</label>
-            <input type="url" name="job_url" class="w-full rounded-lg bg-slate-900 border border-white/10 p-3" placeholder="https://jobs.greenhouse.io/...">
-          </div>
-          <div>
-            <label class="block text-sm text-slate-300">OR paste Job Description</label>
-            <textarea name="job_text" rows="5" class="w-full rounded-lg bg-slate-900 border border-white/10 p-3" placeholder="Paste full JD here..."></textarea>
-          </div>
-          <div>
-            <label class="block text-sm text-slate-300">Your Resume (plain text)</label>
-            <textarea name="resume_text" rows="8" class="w-full rounded-lg bg-slate-900 border border-white/10 p-3" placeholder="Paste your resume text here..."></textarea>
-          </div>
-          <div>
-            <label class="block text-sm text-slate-300">Analysis Mode</label>
-            <select name="mode" class="w-full rounded-lg bg-slate-900 border border-white/10 p-3">
-              <option value="fast">Fast (quick verdict)</option>
-              <option value="deep" selected>Deep (hiring-manager analysis)</option>
-            </select>
-          </div>
-          <button class="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-4 py-2 rounded-lg w-full">Run Analysis</button>
-          <p class="text-xs text-slate-400">Real AI depends on your MOCK setting in the environment.</p>
-        </form>
-      </div>
-    </div>
-
-    <!-- RIGHT: Outputs -->
-    <div class="md:col-span-2 space-y-4">
-      {% if jobpack_pro %}
-      <!-- Verdict -->
-      <div class="glass rounded-xl p-5">
-        <div class="flex items-center justify-between">
-          <h3 class="font-semibold text-lg">Overall Verdict</h3>
-          <span class="text-xs rounded bg-white/10 px-2 py-1">{{ jobpack_pro.meta.analysis_mode|capitalize }}</span>
-        </div>
-        <div class="mt-2">
-          <span class="inline-block text-xs uppercase tracking-wide px-2 py-1 rounded
-                       {% if jobpack_pro.overall_verdict.status == 'Strong' %} bg-emerald-500/20 text-emerald-300
-                       {% elif jobpack_pro.overall_verdict.status == 'Borderline' %} bg-amber-500/20 text-amber-300
-                       {% else %} bg-rose-500/20 text-rose-300 {% endif %}">
-            {{ jobpack_pro.overall_verdict.status }}
-          </span>
-        </div>
-        <p class="text-slate-300 mt-3 whitespace-pre-wrap">{{ jobpack_pro.overall_verdict.summary }}</p>
-        {% if jobpack_pro.overall_verdict.recommendations %}
-        <ul class="list-disc ml-5 mt-3 text-slate-300">
-          {% for rec in jobpack_pro.overall_verdict.recommendations %}<li>{{ rec }}</li>{% endfor %}
-        </ul>
-        {% endif %}
-      </div>
-
-      <!-- Category Scores -->
-      <div class="grid md:grid-cols-2 gap-4">
-        {% set cats = [('skills','Skills'), ('experience','Experience'), ('impact','Impact'), ('domain_fit','Domain Fit'), ('ats_format','ATS Format')] %}
-        {% for key, label in cats %}
-        <div class="glass rounded-xl p-5">
-          <div class="flex items-center justify-between">
-            <h4 class="font-semibold">{{ label }}</h4>
-            <span class="text-lg font-extrabold">{{ jobpack_pro.scores[key].score }}%</span>
-          </div>
-          <div class="mt-2 h-2 bg-white/10 rounded">
-            <div class="h-2 rounded bg-gradient-to-r from-fuchsia-500 to-indigo-500"
-                 style="width: {{ jobpack_pro.scores[key].score }}%"></div>
-          </div>
-          {% if jobpack_pro.scores[key].notes %}
-          <ul class="list-disc ml-5 mt-3 text-slate-300">
-            {% for n in jobpack_pro.scores[key].notes %}<li>{{ n }}</li>{% endfor %}
-          </ul>
-          {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-
-      <!-- Tailored Bullets & Missing Skills -->
-      <div class="glass rounded-xl p-5">
-        <h3 class="font-semibold">Tailored Resume Bullets</h3>
-        <ul class="list-disc ml-5 mt-2 text-slate-300">
-          {% for b in jobpack_pro.tailored_resume_bullets %}<li>{{ b }}</li>{% endfor %}
-        </ul>
-        {% if jobpack_pro.missing_skills %}
-        <h4 class="font-semibold mt-4">Missing / Low-signal Skills</h4>
-        <div class="mt-2 flex flex-wrap gap-2">
-          {% for s in jobpack_pro.missing_skills %}
-            <span class="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">{{ s }}</span>
-          {% endfor %}
-        </div>
-        {% endif %}
-      </div>
-
-      <!-- Cover Letter -->
-      <div class="glass rounded-xl p-5">
-        <h3 class="font-semibold">Tailored Cover Letter</h3>
-        <pre class="bg-slate-900 border border-white/10 rounded p-3 whitespace-pre-wrap">{{ jobpack_pro.cover_letter }}</pre>
-      </div>
-
-      <!-- Interview Prep -->
-      {% if jobpack_pro.interview_questions %}
-      <div class="glass rounded-xl p-5">
-        <h3 class="font-semibold">Interview Prep</h3>
-        <ol class="list-decimal ml-5 mt-2 text-slate-300 space-y-2">
-          {% for q in jobpack_pro.interview_questions %}
-            <li>
-              <div class="font-medium">{{ q.question }}</div>
-              {% if q.sample_answer %}<div class="text-slate-400 mt-1 whitespace-pre-wrap">{{ q.sample_answer }}</div>{% endif %}
-            </li>
-          {% endfor %}
-        </ol>
-      </div>
-      {% endif %}
-
-      <!-- Follow-ups -->
-      {% if jobpack_pro.follow_up_actions %}
-      <div class="glass rounded-xl p-5">
-        <h3 class="font-semibold">Next 7-Day Action Plan</h3>
-        <ul class="list-disc ml-5 mt-2 text-slate-300">
-          {% for a in jobpack_pro.follow_up_actions %}<li>{{ a }}</li>{% endfor %}
-        </ul>
-      </div>
-      {% endif %}
-
-      {% else %}
-      <div class="glass rounded-xl p-6">
-        <h3 class="font-semibold">No results yet</h3>
-        <p class="text-slate-300 mt-1">Paste a JD & your resume, then run <em>Deep</em> analysis for the best insights.</p>
-      </div>
-      {% endif %}
-    </div>
-  </div>
-</div>
-
-
- <div id="panel-internships" class="panel {{ '' if tab=='internships' else 'hidden' }}">
-  <div class="glass rounded-xl p-6">
-    <h2 class="font-bold text-lg">AI Internship Finder with Skill Gap Bridge</h2>
-    <form action="/internships/search" method="post" class="space-y-3 mt-4">
-      <input name="role" placeholder="Target Career Path" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <input name="location" placeholder="Preferred Location" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <input name="skills" placeholder="Your Current Skills" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <button type="submit" class="bg-green-500 px-4 py-2 rounded">Find Internships</button>
+<div class="grid md:grid-cols-2 gap-6">
+  <div class="glass p-4 card">
+    <h3 class="font-bold mb-2">Job Pack Pro</h3>
+    <form action="/jobpack/generate" method="post" class="space-y-2">
+      <input class="w-full p-2 text-black rounded" name="role" placeholder="Target role (e.g., Data Analyst)" required>
+      <textarea class="w-full p-2 text-black rounded" name="jd" rows="4" placeholder="Paste job description or URL (no LinkedIn)"></textarea>
+      <textarea class="w-full p-2 text-black rounded" name="resume" rows="4" placeholder="Paste resume text (free tier not stored)"></textarea>
+      <label class="block">
+        <span>Mode:</span>
+        <select class="text-black p-1 rounded" name="mode">
+          <option value="fast">Fast (free)</option>
+          <option value="deep">Deep (Pro)</option>
+        </select>
+      </label>
+      <button class="px-4 py-2 glass card">Generate</button>
     </form>
 
-    {% if internships_result %}
-      <div class="mt-6 space-y-4">
-        {% for job in internships_result %}
-          <div class="bg-slate-900 p-4 rounded border border-white/10">
-            <p class="font-semibold">{{ job.title }} – {{ job.company }}</p>
-            <p class="text-sm text-slate-400">{{ job.location }} | Match: {{ job.match_score }}%</p>
-            <p class="mt-2"><a href="{{ job.link }}" class="text-blue-400 underline" target="_blank">View Listing</a></p>
-            {% if job.missing_skills %}
-              <p class="mt-2 text-red-300">Missing Skills:</p>
-              <ul class="list-disc ml-5 text-slate-300">
-                {% for s in job.missing_skills %}
-                  <li>{{ s }}</li>
-                {% endfor %}
-              </ul>
-              <p class="mt-2 text-slate-300">Learning Links:</p>
-              <ul class="list-disc ml-5 text-blue-400">
-                {% for l in job.learning_links %}
-                  <li><a href="{{ l.link }}" target="_blank">{{ l.skill }}</a></li>
-                {% endfor %}
-              </ul>
-            {% endif %}
-          </div>
+    {% if recent_reports %}
+      <h4 class="font-bold mt-4">Recent</h4>
+      <ul class="text-sm space-y-1">
+        {% for r in recent_reports %}
+          <li>Pack #{{ r.id }} · {{ r.role }} · {{ r.mode }} · <a class="underline" href="/jobpack/view/{{ r.id }}">View</a></li>
         {% endfor %}
-      </div>
+      </ul>
     {% endif %}
   </div>
-</div>
 
-
- <div id="panel-portfolio" class="panel {{ '' if tab=='portfolio' else 'hidden' }}">
-  <div class="glass rounded-xl p-6">
-    <h2 class="font-bold text-lg">Portfolio Builder – Real Job Simulation</h2>
-    <form action="/portfolio/generate" method="post" class="space-y-3 mt-4">
-      <input name="role" placeholder="Target Role" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <button type="submit" class="bg-purple-500 px-4 py-2 rounded">Generate Project Brief</button>
+  <div class="glass p-4 card">
+    <h3 class="font-bold mb-2">Internship Finder</h3>
+    <form action="/internships/search" method="get" class="space-y-2">
+      <input class="w-full p-2 text-black rounded" name="role" placeholder="e.g., Software Engineer Intern" required>
+      <input class="w-full p-2 text-black rounded" name="location" placeholder="e.g., London, Remote">
+      <button class="px-4 py-2 glass card">Search</button>
     </form>
 
-    {% if portfolio_result %}
-      <div class="mt-6 bg-slate-900 p-4 rounded border border-white/10 whitespace-pre-wrap">
-        {{ portfolio_result }}
-      </div>
-    {% endif %}
-  </div>
-</div>
-
-
-<div id="panel-referral" class="panel {{ '' if tab=='referral' else 'hidden' }}">
-  <div class="glass rounded-xl p-6">
-    <h2 class="font-bold text-lg">AI Personal Job Referral Network Builder</h2>
-    <form action="/referral/generate" method="post" class="space-y-3 mt-4">
-      <input name="university" placeholder="Your University" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <input name="target_role" placeholder="Target Job Role" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <input name="skills" placeholder="Your Key Skills" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <input name="goal" placeholder="Your Career Goal" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <button type="submit" class="bg-blue-500 px-4 py-2 rounded">Generate Network</button>
+    <h3 class="font-bold mt-6 mb-2">AI Career Agent</h3>
+    <form action="/agent/save_prefs" method="post" class="space-y-2">
+      <input class="w-full p-2 text-black rounded" name="role" placeholder="Target role">
+      <input class="w-full p-2 text-black rounded" name="location" placeholder="Location(s)">
+      <input class="w-full p-2 text-black rounded" name="companies" placeholder="Target companies (comma)">
+      <button class="px-4 py-2 glass card">Save Preferences</button>
     </form>
-
-    {% if referral_result %}
-      <div class="mt-6 space-y-4">
-        {% for r in referral_result %}
-          <div class="bg-slate-900 p-4 rounded border border-white/10">
-            <p><strong>{{ r.person.name }}</strong> – {{ r.person.role }} @ {{ r.person.company }} ({{ r.person.grad_year }})</p>
-            <p class="mt-2 text-slate-300 whitespace-pre-wrap">{{ r.message }}</p>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p class="text-slate-300 mt-4">Enter your details to find alumni and generate personalised outreach messages.</p>
-    {% endif %}
-  </div>
-</div>
-
-
- <div id="panel-agent" class="panel {{ '' if tab=='agent' else 'hidden' }}">
-  <div class="glass rounded-xl p-6">
-    <h2 class="font-bold text-lg">AI Career Agent – Job Search Automation</h2>
-    <form action="/agent/run" method="post" class="space-y-3 mt-4">
-      <input name="role" placeholder="Target Role" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <input name="location" placeholder="Preferred Location" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <input name="skills" placeholder="Your Skills" class="w-full p-2 rounded bg-slate-900 border border-white/10">
-      <button type="submit" class="bg-orange-500 px-4 py-2 rounded">Run Career Agent</button>
+    <form action="/agent/run_now" method="post" class="mt-2">
+      <button class="px-4 py-2 glass card">Run Now (Fast packs)</button>
     </form>
+  </div>
 
-    {% if agent_result %}
-      <div class="mt-6 space-y-6">
-        {% for r in agent_result %}
-          <div class="bg-slate-900 p-4 rounded border border-white/10">
-            <p class="font-semibold">{{ r.job.title }} – {{ r.job.company }}</p>
-            <p class="text-sm text-slate-400">{{ r.job.location }}</p>
-            <p class="mt-1"><a href="{{ r.job.link }}" target="_blank" class="text-blue-400 underline">View Job</a></p>
-            <h4 class="mt-3 font-bold">Tailored Resume</h4>
-            <pre class="bg-slate-800 p-2 rounded border border-white/10 whitespace-pre-wrap">{{ r.pack.resume }}</pre>
-            <h4 class="mt-3 font-bold">Cover Letter</h4>
-            <pre class="bg-slate-800 p-2 rounded border border-white/10 whitespace-pre-wrap">{{ r.pack.cover_letter }}</pre>
-            <h4 class="mt-3 font-bold">Follow-Up Email</h4>
-            <pre class="bg-slate-800 p-2 rounded border border-white/10 whitespace-pre-wrap">{{ r.pack.follow_up }}</pre>
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
+  <div class="glass p-4 card">
+    <h3 class="font-bold mb-2">Referral Builder</h3>
+    <form action="/referral/upload" method="post" enctype="multipart/form-data" class="space-y-2">
+      <input type="file" name="file" accept=".csv" class="w-full text-sm">
+      <button class="px-4 py-2 glass card">Generate Messages</button>
+    </form>
+  </div>
+
+  <div class="glass p-4 card">
+    <h3 class="font-bold mb-2">Portfolio Builder</h3>
+    <form action="/portfolio/generate" method="post" class="space-y-2">
+      <input class="w-full p-2 text-black rounded" name="title" placeholder="Portfolio title" required>
+      <input class="w-full p-2 text-black rounded" name="role" placeholder="e.g., Product Designer" required>
+      <button class="px-4 py-2 glass card">Create Page</button>
+    </form>
+    <ul class="text-sm mt-3 space-y-1">
+      {% for p in portfolios %}
+        <li><a class="underline" href="/portfolio/view/{{ p.slug }}" target="_blank">{{ p.title }}</a> ({{ p.slug }})</li>
+      {% endfor %}
+    </ul>
   </div>
 </div>
-
-
-</section>
 {% endblock %}

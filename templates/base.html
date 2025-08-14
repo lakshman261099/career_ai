@@ -1,26 +1,47 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}CareerAI{% endblock %}</title>
-    <!-- Tailwind CDN for dev (swap to compiled later) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config = { theme: { extend: { colors: { brand: '#6366F1' }}}}</script>
-    <style>
-      .glass { background: rgba(255,255,255,0.06); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); }
-    </style>
-  </head>
-  <body class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-slate-100">
-    <header class="border-b border-white/10">
-      <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-        <a href="/" class="text-xl font-bold">CareerAI</a>
-        <nav class="space-x-4">
-          <a href="/dashboard" class="px-3 py-1 rounded bg-brand/20 hover:bg-brand/30">Open App</a>
-        </nav>
+<head>
+  <meta charset="utf-8">
+  <title>CareerAI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .gradient-bg{background: linear-gradient(135deg,#6d28d9,#7c3aed,#a78bfa);}
+    .glass{background: rgba(255,255,255,0.08); backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,0.15);}
+    .card{border-radius:16px;}
+  </style>
+</head>
+<body class="min-h-screen text-white gradient-bg">
+  <nav class="p-4 flex justify-between items-center">
+    <a href="/" class="font-bold">CareerAI</a>
+    <div class="space-x-4">
+      <a href="/pricing" class="underline">Pricing</a>
+      {% if current_user.is_authenticated %}
+        <a href="/dashboard">Dashboard</a>
+        <a href="/auth/logout" class="text-sm opacity-80">Logout</a>
+      {% else %}
+        <a href="/auth/login">Login</a>
+        <a href="/auth/register" class="px-3 py-1 rounded glass">Sign up</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="max-w-3xl mx-auto mt-3 space-y-2">
+        {% for category, message in messages %}
+          <div class="glass p-3 card">{{ message }}</div>
+        {% endfor %}
       </div>
-    </header>
-    <main class="py-8">{% block content %}{% endblock %}</main>
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
-  </body>
+    {% endif %}
+  {% endwith %}
+
+  <main class="max-w-5xl mx-auto p-4">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="text-center text-sm opacity-75 py-8">
+    © {{ 2025 }} CareerAI · <a href="/privacy" class="underline">Privacy</a>
+  </footer>
+</body>
 </html>
