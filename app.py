@@ -21,11 +21,19 @@ def create_app():
     app = Flask(__name__, template_folder='templates')
     app.secret_key = os.getenv("FLASK_SECRET_KEY", "change-me")
 
-    # Database: SQLite locally, Postgres on Render
-    database_url = os.getenv("DATABASE_URL", "sqlite:///career_ai.db")
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://")
-    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+   # Database: SQLite locally, Postgres on Render
+database_url = os.getenv("DATABASE_URL", "sqlite:///career_ai.db")
+
+# Render compatibility: old Heroku-style URLs
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://")
+
+# Use psycopg v3 driver explicitly for Postgres
+if database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     db.init_app(app)
