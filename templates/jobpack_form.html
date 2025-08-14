@@ -2,36 +2,28 @@
 {% import "components.html" as ui %}
 {% block title %}Job Pack Pro{% endblock %}
 {% block content %}
-<h2 class="text-3xl font-bold mb-4 flex items-center gap-3">{{ ui.icon('jobpack') }} Job Pack Pro {% if is_pro %}{% else %}{{ ui.pro_badge() }}{% endif %}</h2>
+<h2 class="text-3xl font-bold mb-4">Job Pack Pro</h2>
 
-{{ ui.lock_wrap(is_pro or true,  /* Fast is allowed; the form itself is visible, the Deep results are gated */
-  '
-  <div class="glass card-pad space-y-4">
-    <form action="/jobpack/generate" method="post" class="grid gap-3">
-      <input class="w-full p-3 text-black rounded-xl" name="role" placeholder="Target role (e.g., Data Analyst)" required>
-      <textarea class="w-full p-3 text-black rounded-xl" name="jd" rows="5" placeholder="Paste JD text or URL (no LinkedIn)"></textarea>
-      <div class="grid md:grid-cols-2 gap-3">
-        <textarea class="w-full p-3 text-black rounded-xl" name="resume" rows="5" placeholder="Paste resume text"></textarea>
-        <div class="space-y-2">
-          <label class="block text-sm opacity-80">Resume upload (PDF/DOCX/TXT)</label>
-          <input class="w-full text-sm file:mr-4 file:px-3 file:py-2 file:rounded-xl file:border-0 file:bg-white/20 file:text-white file:cursor-pointer" type="file" name="resume_file" disabled title="Coming next patch"/>
-          <p class="text-xs opacity-70">Tip: Pro users will be able to save a default resume in Settings.</p>
-        </div>
-      </div>
-      <label class="block">
-        <span class="text-sm opacity-80">Mode</span>
-        <select class="text-black p-2 rounded-xl mt-1" name="mode">
-          <option value="fast">Fast (free)</option>
-          <option value="deep">Deep (Pro)</option>
-        </select>
-      </label>
-      <div class="flex gap-2">
-        <button class="btn btn-primary px-4 py-2">Generate</button>
-        <a class="underline/50 hover:underline" href="/library">Library</a>
-      </div>
-    </form>
-  </div>
-  '
-) }}
+{% set form_html %}
+<div class="glass card-pad space-y-4">
+  <form action="/jobpack/generate" method="post" class="grid gap-3">
+    <input class="w-full p-3 text-black rounded-xl" name="role" placeholder="Target role (e.g., Data Analyst)" required>
+    <textarea class="w-full p-3 text-black rounded-xl" name="jd" rows="5" placeholder="Paste JD text or URL (no LinkedIn)"></textarea>
+    <textarea class="w-full p-3 text-black rounded-xl" name="resume" rows="6" placeholder="Paste resume text"></textarea>
+    <label class="block">
+      <span class="text-sm opacity-80">Mode</span>
+      <select class="text-black p-2 rounded-xl mt-1" name="mode">
+        <option value="fast">Fast (free)</option>
+        <option value="deep">Deep (Pro)</option>
+      </select>
+    </label>
+    <div class="flex gap-2">
+      <button class="btn btn-primary px-4 py-2">Generate</button>
+      <a class="underline/50 hover:underline" href="/library">Library</a>
+    </div>
+  </form>
+</div>
+{% endset %}
 
+{{ ui.lock_wrap(is_pro or true, form_html) }}
 {% endblock %}
