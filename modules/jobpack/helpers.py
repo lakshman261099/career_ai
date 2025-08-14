@@ -1,3 +1,4 @@
+import io
 import os, re, json, math, random, datetime as dt
 from bs4 import BeautifulSoup
 import requests

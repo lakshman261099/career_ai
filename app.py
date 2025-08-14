@@ -31,6 +31,8 @@ def create_app():
     db.init_app(app)
     with app.app_context():
         db.create_all()
+    # Allow {{ os.getenv(...) }} in Jinja
+    app.jinja_env.globals.update(os=os)
 
     # Login
     login_manager = LoginManager()
