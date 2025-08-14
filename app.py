@@ -21,19 +21,18 @@ def create_app():
     app = Flask(__name__, template_folder='templates')
     app.secret_key = os.getenv("FLASK_SECRET_KEY", "change-me")
 
-   # Database: SQLite locally, Postgres on Render
-database_url = os.getenv("DATABASE_URL", "sqlite:///career_ai.db")
+    # Database: SQLite locally, Postgres on Render
+    database_url = os.getenv("DATABASE_URL", "sqlite:///career_ai.db")
 
-# Render compatibility: old Heroku-style URLs
-if database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql://")
+    # Render/Heroku compatibility: old scheme -> new
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://")
 
-# Use psycopg v3 driver explicitly for Postgres
-if database_url.startswith("postgresql://"):
-    database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    # Force psycopg v3 driver when using Postgres
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = database_url
-
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     db.init_app(app)
@@ -52,7 +51,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     def load_user(user_id):
         return User.query.get(int(user_id))
 
-    # ✅ Make `is_pro` available to all templates
+    # Make `is_pro` available to all templates
     @app.context_processor
     def inject_globals():
         is_pro = False
@@ -68,7 +67,6 @@ app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.register_blueprint(referral_bp, url_prefix="/referral")
     app.register_blueprint(agent_bp, url_prefix="/agent")
     app.register_blueprint(billing_bp, url_prefix="/billing")
-
 
     # ---------- Routes ----------
     @app.route("/")
