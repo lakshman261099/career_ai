@@ -1,3 +1,4 @@
+# modules/jobpack/routes.py
 import os, io, json
 from flask import Blueprint, request, render_template, redirect, url_for, flash, send_file, abort
 from flask_login import login_required, current_user
@@ -40,39 +41,40 @@ def generate():
     else:
         jd_text = jd
 
+    # Generate pack (helpers handle MOCK vs real)
     pack = deep_jobpack_llm(role, jd_text, resume) if mode == "deep" else fast_jobpack_llm(role, jd_text, resume)
     verdict = pack.get("overall_verdict", {}).get("status", "")
 
     # Save only for Pro
     report_id = None
     if is_pro():
-        r = JobPackReport(
+        rec = JobPackReport(
             user_id=current_user.id,
             role=role,
             mode=mode,
             verdict=verdict,
             payload_json=json.dumps(pack),
         )
-        db.session.add(r)
+        db.session.add(rec)
         db.session.commit()
-        report_id = r.id
+        report_id = rec.id
 
     return render_template("jobpack_view.html", pack=pack, report_id=report_id)
 
 @jobpack_bp.route("/view/<int:report_id>")
 @login_required
 def view(report_id: int):
-    r = JobPackReport.query.filter_by(id=report_id, user_id=current_user.id).first_or_404()
-    pack = json.loads(r.payload_json or "{}")
-    return render_template("jobpack_view.html", pack=pack, report_id=r.id)
+    rec = JobPackReport.query.filter_by(id=report_id, user_id=current_user.id).first_or_404()
+    pack = json.loads(rec.payload_json or "{}")
+    return render_template("jobpack_view.html", pack=pack, report_id=rec.id)
 
 @jobpack_bp.route("/export_pdf/<int:report_id>")
 @login_required
 def export_pdf(report_id: int):
-    r = JobPackReport.query.filter_by(id=report_id, user_id=current_user.id).first_or_404()
-    if r.mode == "deep" and not is_pro():
+    rec = JobPackReport.query.filter_by(id=report_id, user_id=current_user.id).first_or_404()
+    if rec.mode == "deep" and not is_pro():
         abort(403)
-    pack = json.loads(r.payload_json or "{}")
+    pack = json.loads(rec.payload_json or "{}")
     pdf_bytes = build_pdf_bytes(pack)
     return send_file(
         io.BytesIO(pdf_bytes),
