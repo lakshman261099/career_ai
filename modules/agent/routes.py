@@ -3,38 +3,48 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from models import db, AgentJob
 
-# ✅ Define blueprint FIRST
 agent_bp = Blueprint("agent", __name__)
 
 @agent_bp.route("", methods=["GET"])
 @login_required
 def index():
-    jobs = AgentJob.query.filter_by(user_id=current_user.id).order_by(AgentJob.created_at.desc()).all()
-    return render_template("agent_list.html", jobs=jobs)
+    # Render the advanced UI page we created earlier
+    return render_template("agent_index.html")
 
-@agent_bp.route("/add", methods=["GET", "POST"])
+@agent_bp.route("/save_prefs", methods=["POST"])
 @login_required
-def add():
-    if request.method == "POST":
-        title = (request.form.get("title") or "").strip()
-        description = (request.form.get("description") or "").strip()
-        if not title:
-            flash("Job title is required.", "error")
-            return redirect(url_for("agent.add"))
-        
-        job = AgentJob(user_id=current_user.id, title=title, description=description)
-        db.session.add(job)
-        db.session.commit()
-        flash("Agent job added successfully.", "success")
-        return redirect(url_for("agent.index"))
-    
-    return render_template("agent_form.html")
-
-@agent_bp.route("/delete/<int:job_id>", methods=["POST"])
-@login_required
-def delete(job_id):
-    job = AgentJob.query.filter_by(id=job_id, user_id=current_user.id).first_or_404()
-    db.session.delete(job)
+def save_prefs():
+    # Minimal MVP: store preferences as a single AgentJob row (could be its own table later)
+    prefs = {
+        "role": (request.form.get("role") or "").strip(),
+        "location": (request.form.get("location") or "").strip(),
+        "companies": (request.form.get("companies") or "").strip(),
+    }
+    # Persist as a “preferences_json” record
+    job = AgentJob(user_id=current_user.id,
+                   preferences_json=str(prefs),
+                   results_json="{}")
+    db.session.add(job)
     db.session.commit()
-    flash("Agent job deleted.", "info")
+    flash("Preferences saved.", "success")
+    return redirect(url_for("agent.index"))
+
+@agent_bp.route("/run_now", methods=["POST"])
+@login_required
+def run_now():
+    # MVP: just echo back something plausible; your helpers can generate real packs later
+    results = {
+        "summary": "Generated 3 fast packs for your preferences.",
+        "items": [
+            {"role": "Data Analyst Intern", "company": "Acme", "score": 82},
+            {"role": "Product Intern", "company": "WidgetCo", "score": 77},
+            {"role": "ML Intern", "company": "ModelWorks", "score": 74},
+        ],
+    }
+    job = AgentJob(user_id=current_user.id,
+                   preferences_json="{}",
+                   results_json=str(results))
+    db.session.add(job)
+    db.session.commit()
+    flash("Agent run complete (MVP).", "success")
     return redirect(url_for("agent.index"))
