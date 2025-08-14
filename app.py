@@ -31,6 +31,7 @@ def create_app():
     db.init_app(app)
     with app.app_context():
         db.create_all()
+
     # Allow {{ os.getenv(...) }} in Jinja
     app.jinja_env.globals.update(os=os)
 
@@ -43,6 +44,15 @@ def create_app():
     def load_user(user_id):
         return User.query.get(int(user_id))
 
+    # ✅ Make `is_pro` available to all templates
+    @app.context_processor
+    def inject_globals():
+        is_pro = False
+        if current_user.is_authenticated:
+            subs = Subscription.query.filter_by(user_id=current_user.id).first()
+            is_pro = bool(subs and subs.status == "active")
+        return {"is_pro": is_pro}
+
     # Blueprints
     app.register_blueprint(jobpack_bp, url_prefix="/jobpack")
     app.register_blueprint(internships_bp, url_prefix="/internships")
@@ -50,6 +60,7 @@ def create_app():
     app.register_blueprint(referral_bp, url_prefix="/referral")
     app.register_blueprint(agent_bp, url_prefix="/agent")
     app.register_blueprint(billing_bp, url_prefix="/billing")
+
 
     # ---------- Routes ----------
     @app.route("/")
@@ -60,15 +71,27 @@ def create_app():
     def pricing():
         return render_template("pricing.html")
 
+    @app.route("/settings")
+    @login_required
+    def settings():
+        return render_template("settings.html")
+
     @app.route("/dashboard")
     @login_required
     def dashboard():
         subs = Subscription.query.filter_by(user_id=current_user.id).first()
         is_pro = subs and subs.status == "active"
-        recent_reports = JobPackReport.query.filter_by(user_id=current_user.id).order_by(JobPackReport.created_at.desc()).limit(5).all()
-        portfolios = PortfolioPage.query.filter_by(user_id=current_user.id).order_by(PortfolioPage.created_at.desc()).all()
-        agent_jobs = AgentJob.query.filter_by(user_id=current_user.id).order_by(AgentJob.created_at.desc()).limit(3).all()
-        return render_template("dashboard.html", is_pro=is_pro, recent_reports=recent_reports, portfolios=portfolios, agent_jobs=agent_jobs)
+        recent_reports = JobPackReport.query.filter_by(user_id=current_user.id)\
+            .order_by(JobPackReport.created_at.desc()).limit(5).all()
+        portfolios = PortfolioPage.query.filter_by(user_id=current_user.id)\
+            .order_by(PortfolioPage.created_at.desc()).all()
+        agent_jobs = AgentJob.query.filter_by(user_id=current_user.id)\
+            .order_by(AgentJob.created_at.desc()).limit(3).all()
+        return render_template("dashboard.html",
+                               is_pro=is_pro,
+                               recent_reports=recent_reports,
+                               portfolios=portfolios,
+                               agent_jobs=agent_jobs)
 
     # -------- Auth ----------
     @app.route("/auth/register", methods=["GET", "POST"])
@@ -97,20 +120,23 @@ def create_app():
             user = User.query.filter_by(email=email).first()
             if user and check_password_hash(user.password_hash, pw):
                 login_user(user)
-                flash("Logged in.", "success"); return redirect(url_for("dashboard"))
+                flash("Logged in.", "success")
+                return redirect(url_for("dashboard"))
             flash("Invalid credentials.", "error")
         return render_template("auth_login.html")
 
     @app.route("/auth/logout")
     @login_required
     def auth_logout():
-        logout_user(); flash("Logged out.", "info")
+        logout_user()
+        flash("Logged out.", "info")
         return redirect(url_for("landing"))
 
     @app.route("/library")
     @login_required
     def library():
-        reports = JobPackReport.query.filter_by(user_id=current_user.id).order_by(JobPackReport.created_at.desc()).all()
+        reports = JobPackReport.query.filter_by(user_id=current_user.id)\
+            .order_by(JobPackReport.created_at.desc()).all()
         return render_template("library.html", reports=reports)
 
     @app.route("/privacy")

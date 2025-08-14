@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% import "components.html" as ui %}
+{% block title %}AI Career Agent{% endblock %}
+{% block content %}
+<h2 class="text-3xl font-bold mb-4 flex items-center gap-3">{{ ui.icon('agent') }} AI Career Agent {% if not is_pro %}{{ ui.pro_badge() }}{% endif %}</h2>
+<div class="space-y-4">
+  <div class="glass card-pad">
+    <form action="/agent/save_prefs" method="post" class="grid md:grid-cols-3 gap-3">
+      <input class="p-3 text-black rounded-xl" name="role" placeholder="Target role">
+      <input class="p-3 text-black rounded-xl" name="location" placeholder="Location(s)">
+      <input class="p-3 text-black rounded-xl" name="companies" placeholder="Target companies (comma)">
+      <div class="md:col-span-3">
+        <button class="btn btn-primary px-4 py-2">Save Preferences</button>
+      </div>
+    </form>
+  </div>
+
+  {{ ui.lock_wrap(is_pro,
+    '
+      <div class="glass card-pad">
+        <form action="/agent/run_now" method="post">
+          <button class="btn btn-primary px-4 py-2">Run Now (Deep capable)</button>
+        </form>
+        <p class="text-sm opacity-80 mt-2">Pro runs enable Deep packs and weekly plans.</p>
+      </div>
+    '
+  ) }}
+</div>
+{% endblock %}

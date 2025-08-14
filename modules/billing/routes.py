@@ -10,7 +10,8 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY","")
 @billing_bp.route("/checkout", methods=["POST"])
 @login_required
 def checkout():
-    price_id = request.form.get("price_id") or os.getenv("STRIPE_PRICE_PRO_MONTHLY","")
+
+    price_id = request.form.get("price_id") or os.getenv("STRIPE_PRICE_PRO_MONTHLY","")    
     if not stripe.api_key or not price_id:
         abort(400, "Stripe not configured")
     customer = None

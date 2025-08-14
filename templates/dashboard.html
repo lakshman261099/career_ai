@@ -1,75 +1,31 @@
 {% extends "base.html" %}
+{% import "components.html" as ui %}
+{% block title %}Dashboard{% endblock %}
 {% block content %}
 <h2 class="text-3xl font-bold mb-4">Dashboard</h2>
 <p class="opacity-80 mb-6">Pro status: <span class="font-semibold">{{ 'Yes' if is_pro else 'No' }}</span></p>
 
-<div class="grid md:grid-cols-2 gap-6">
-  <div class="glass p-4 card">
-    <h3 class="font-bold mb-2">Job Pack Pro</h3>
-    <form action="/jobpack/generate" method="post" class="space-y-2">
-      <input class="w-full p-2 text-black rounded" name="role" placeholder="Target role (e.g., Data Analyst)" required>
-      <textarea class="w-full p-2 text-black rounded" name="jd" rows="4" placeholder="Paste job description or URL (no LinkedIn)"></textarea>
-      <textarea class="w-full p-2 text-black rounded" name="resume" rows="4" placeholder="Paste resume text (free tier not stored)"></textarea>
-      <label class="block">
-        <span>Mode:</span>
-        <select class="text-black p-1 rounded" name="mode">
-          <option value="fast">Fast (free)</option>
-          <option value="deep">Deep (Pro)</option>
-        </select>
-      </label>
-      <button class="px-4 py-2 glass card">Generate</button>
-    </form>
-
-    {% if recent_reports %}
-      <h4 class="font-bold mt-4">Recent</h4>
-      <ul class="text-sm space-y-1">
-        {% for r in recent_reports %}
-          <li>Pack #{{ r.id }} · {{ r.role }} · {{ r.mode }} · <a class="underline" href="/jobpack/view/{{ r.id }}">View</a></li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  </div>
-
-  <div class="glass p-4 card">
-    <h3 class="font-bold mb-2">Internship Finder</h3>
-    <form action="/internships/search" method="get" class="space-y-2">
-      <input class="w-full p-2 text-black rounded" name="role" placeholder="e.g., Software Engineer Intern" required>
-      <input class="w-full p-2 text-black rounded" name="location" placeholder="e.g., London, Remote">
-      <button class="px-4 py-2 glass card">Search</button>
-    </form>
-
-    <h3 class="font-bold mt-6 mb-2">AI Career Agent</h3>
-    <form action="/agent/save_prefs" method="post" class="space-y-2">
-      <input class="w-full p-2 text-black rounded" name="role" placeholder="Target role">
-      <input class="w-full p-2 text-black rounded" name="location" placeholder="Location(s)">
-      <input class="w-full p-2 text-black rounded" name="companies" placeholder="Target companies (comma)">
-      <button class="px-4 py-2 glass card">Save Preferences</button>
-    </form>
-    <form action="/agent/run_now" method="post" class="mt-2">
-      <button class="px-4 py-2 glass card">Run Now (Fast packs)</button>
-    </form>
-  </div>
-
-  <div class="glass p-4 card">
-    <h3 class="font-bold mb-2">Referral Builder</h3>
-    <form action="/referral/upload" method="post" enctype="multipart/form-data" class="space-y-2">
-      <input type="file" name="file" accept=".csv" class="w-full text-sm">
-      <button class="px-4 py-2 glass card">Generate Messages</button>
-    </form>
-  </div>
-
-  <div class="glass p-4 card">
-    <h3 class="font-bold mb-2">Portfolio Builder</h3>
-    <form action="/portfolio/generate" method="post" class="space-y-2">
-      <input class="w-full p-2 text-black rounded" name="title" placeholder="Portfolio title" required>
-      <input class="w-full p-2 text-black rounded" name="role" placeholder="e.g., Product Designer" required>
-      <button class="px-4 py-2 glass card">Create Page</button>
-    </form>
-    <ul class="text-sm mt-3 space-y-1">
-      {% for p in portfolios %}
-        <li><a class="underline" href="/portfolio/view/{{ p.slug }}" target="_blank">{{ p.title }}</a> ({{ p.slug }})</li>
-      {% endfor %}
-    </ul>
-  </div>
+<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {{ ui.feature_card("Job Pack Pro", "Generate Fast/Deep hiring‑manager packs.", "jobpack", "/jobpack", true) }}
+  {{ ui.feature_card("Internship Finder", "Search internships with AI match.", "intern", "/internships") }}
+  {{ ui.feature_card("Referral Builder", "CSV → LinkedIn DM variants.", "ref", "/referral") }}
+  {{ ui.feature_card("Portfolio Builder", "Hosted page with briefs.", "folio", "/portfolio") }}
+  {{ ui.feature_card("AI Career Agent", "Run now (Deep for Pro).", "agent", "/agent", true) }}
+  {{ ui.feature_card("Settings", "Privacy & resume storage.", "lock", "/settings") }}
 </div>
+
+{% if recent_reports %}
+  <h3 class="font-bold mt-8 mb-2">Recent Reports</h3>
+  <div class="space-y-2">
+    {% for r in recent_reports %}
+      <div class="glass card-pad flex items-center justify-between">
+        <div>#{{ r.id }} · {{ r.role }} · {{ r.mode }} · {{ r.created_at }}</div>
+        <div class="space-x-3 text-sm">
+          <a class="underline/50 hover:underline" href="/jobpack/view/{{ r.id }}">View</a>
+          <a class="underline/50 hover:underline" href="/jobpack/export_pdf/{{ r.id }}">Export</a>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
 {% endblock %}

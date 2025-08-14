@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% import "components.html" as ui %}
+{% block title %}Portfolio Builder{% endblock %}
+{% block content %}
+<h2 class="text-3xl font-bold mb-4 flex items-center gap-3">{{ ui.icon('folio') }} Portfolio Builder</h2>
+<div class="glass card-pad">
+  <form action="/portfolio/generate" method="post" class="grid md:grid-cols-4 gap-3">
+    <input class="p-3 text-black rounded-xl md:col-span-2" name="title" placeholder="Portfolio title" required>
+    <input class="p-3 text-black rounded-xl" name="role" placeholder="e.g., Product Designer" required>
+    <select class="p-3 text-black rounded-xl" name="mode">
+      <option value="fast">Fast</option>
+      <option value="deep">Deep (Pro)</option>
+    </select>
+    <div class="md:col-span-4">
+      <button class="btn btn-primary px-4 py-2">Create Page</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
