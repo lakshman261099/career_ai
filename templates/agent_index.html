@@ -1,29 +1,35 @@
 {% extends "base.html" %}
-{% import "components.html" as ui %}
-{% block title %}AI Career Agent{% endblock %}
+{% block title %}AI Career Agent – CareerAI{% endblock %}
 {% block content %}
-<h2 class="text-3xl font-bold mb-4 flex items-center gap-3">{{ ui.icon('agent') }} AI Career Agent {% if not is_pro %}{{ ui.pro_badge() }}{% endif %}</h2>
-<div class="space-y-4">
-  <div class="glass card-pad">
-    <form action="/agent/save_prefs" method="post" class="grid md:grid-cols-3 gap-3">
-      <input class="p-3 text-black rounded-xl" name="role" placeholder="Target role">
-      <input class="p-3 text-black rounded-xl" name="location" placeholder="Location(s)">
-      <input class="p-3 text-black rounded-xl" name="companies" placeholder="Target companies (comma)">
-      <div class="md:col-span-3">
-        <button class="btn btn-primary px-4 py-2">Save Preferences</button>
-      </div>
-    </form>
+<h1 class="text-2xl font-semibold mb-4">AI Career Agent</h1>
+
+{% if gated %}
+  <div class="border rounded p-4 bg-yellow-50 dark:bg-yellow-900/20">
+    <p class="mb-2">The Agent is a <strong>Pro feature</strong> on this demo.</p>
+    <a href="/pricing" class="px-3 py-2 bg-purple-600 text-white rounded">Upgrade to Pro</a>
+  </div>
+{% else %}
+  <div class="glass rounded-xl p-4">
+    <p class="text-sm text-slate-600 dark:text-slate-300">Your daily top‑3 job packs will appear here after you run the agent.</p>
+    <div class="mt-3">
+      <button class="px-4 py-2 bg-purple-600 text-white rounded" onclick="runNow()">Run Now</button>
+    </div>
+    <div id="agentResults" class="mt-6 grid gap-3"></div>
   </div>
 
-  {{ ui.lock_wrap(is_pro,
-    '
-      <div class="glass card-pad">
-        <form action="/agent/run_now" method="post">
-          <button class="btn btn-primary px-4 py-2">Run Now (Deep capable)</button>
-        </form>
-        <p class="text-sm opacity-80 mt-2">Pro runs enable Deep packs and weekly plans.</p>
-      </div>
-    '
-  ) }}
-</div>
+  <script>
+    async function runNow(){
+      // Stub call — wire to your /agent/run endpoint if you’ve got it
+      const box = document.getElementById('agentResults');
+      box.innerHTML = '<div class="skeleton h-20 rounded"></div>';
+      setTimeout(()=>{
+        box.innerHTML = `
+          <div class="border p-3 rounded">🔎 Example result #1</div>
+          <div class="border p-3 rounded">🔎 Example result #2</div>
+          <div class="border p-3 rounded">🔎 Example result #3</div>`;
+        window.__confettiNow && window.__confettiNow();
+      }, 1200);
+    }
+  </script>
+{% endif %}
 {% endblock %}

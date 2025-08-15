@@ -1,88 +1,76 @@
-import os, io
-from flask import Blueprint, request, jsonify, abort
+# career_ai/modules/resume/routes.py
+from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
+import io
+
 from models import db, ResumeAsset, Subscription
 from PyPDF2 import PdfReader
-from docx import Document
+import docx
 
 resume_bp = Blueprint("resume", __name__)
 
-ALLOWED = {"pdf", "docx", "txt"}
+ALLOWED = {"pdf","docx","txt"}
 
-def _is_pro(user_id) -> bool:
-    from models import Subscription
-    sub = Subscription.query.filter_by(user_id=user_id).first()
-    return bool(sub and sub.status == "active")
+def _is_pro():
+    if not current_user or not current_user.is_authenticated:
+        return False
+    if current_user.plan and current_user.plan.lower().startswith("pro"):
+        return True
+    sub = Subscription.query.filter_by(user_id=current_user.id, status="active").first()
+    return bool(sub)
 
-def _extract_text(file_storage) -> tuple[str, str]:
-    filename = secure_filename(file_storage.filename or "")
-    ext = (filename.rsplit(".", 1)[-1] or "").lower()
-    if ext not in ALLOWED:
-        abort(400, description="Unsupported file type.")
-    mime = file_storage.mimetype or "application/octet-stream"
+def _extract_text(file_storage):
+    fname = secure_filename(file_storage.filename or "upload")
+    ext = fname.rsplit(".",1)[-1].lower()
     data = file_storage.read()
-
     if ext == "pdf":
-        try:
-            reader = PdfReader(io.BytesIO(data))
-            text = "\n".join([page.extract_text() or "" for page in reader.pages])
-        except Exception:
-            text = ""
+        reader = PdfReader(io.BytesIO(data))
+        pages = [p.extract_text() or "" for p in reader.pages]
+        return "\n".join(pages).strip(), "application/pdf", fname
     elif ext == "docx":
-        try:
-            doc = Document(io.BytesIO(data))
-            text = "\n".join([p.text for p in doc.paragraphs])
-        except Exception:
-            text = ""
-    else:  # txt
-        try:
-            text = data.decode("utf-8", errors="ignore")
-        except Exception:
-            text = ""
-    return text.strip(), mime
+        d = docx.Document(io.BytesIO(data))
+        return "\n".join([p.text for p in d.paragraphs]).strip(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fname
+    elif ext == "txt":
+        return data.decode("utf-8", errors="ignore"), "text/plain", fname
+    else:
+        raise ValueError("Unsupported file type")
 
-@resume_bp.route("/upload", methods=["POST"])
+@resume_bp.post("/upload")
 @login_required
-def upload():
-    """
-    POST /resume/upload
-    form-data:
-      - file: (pdf/docx/txt)
-      - persist: '1' to save (Pro only)
-    """
+def upload_resume():
     if "file" not in request.files:
-        abort(400, description="No file part")
+        return jsonify({"error":"file missing"}), 400
     f = request.files["file"]
-    if not f or not f.filename:
-        abort(400, description="No selected file")
+    if not f.filename:
+        return jsonify({"error":"filename missing"}), 400
+    ext = f.filename.rsplit(".",1)[-1].lower()
+    if ext not in ALLOWED:
+        return jsonify({"error":"Only PDF/DOCX/TXT allowed"}), 400
 
-    text, mime = _extract_text(f)
-    if not text:
-        abort(400, description="Could not extract text")
+    try:
+        text, mime, fname = _extract_text(f)
+    except Exception as e:
+        return jsonify({"error": f"Parse failed: {e}"}), 400
 
-    persist = request.form.get("persist") == "1"
-    saved_id = None
-    if persist and _is_pro(current_user.id):
-        ra = ResumeAsset(
-            user_id=current_user.id,
-            filename=secure_filename(f.filename),
-            mime=mime,
-            content_text=text,
-            persisted=True,
-        )
-        db.session.add(ra); db.session.commit()
-        saved_id = ra.id
+    persisted_id = None
+    if (request.form.get("persist") == "true" or request.args.get("persist") == "true") and _is_pro():
+        asset = ResumeAsset(user_id=current_user.id, filename=fname, mime=mime, content_text=text, persisted=True)
+        db.session.add(asset)
+        db.session.commit()
+        persisted_id = asset.id
 
-    return jsonify({"ok": True, "text": text, "saved_id": saved_id})
+    return jsonify({"ok": True, "filename": fname, "mime": mime, "chars": len(text), "text": text[:40000], "persisted_id": persisted_id})
 
-@resume_bp.route("/last", methods=["GET"])
+@resume_bp.post("/delete")
 @login_required
-def last():
-    ra = ResumeAsset.query.filter_by(user_id=current_user.id, persisted=True)\
-        .order_by(ResumeAsset.created_at.desc()).first()
-    if not ra:
-        return jsonify({"ok": False, "reason": "none"}), 404
-    # return a truncated preview and full text
-    preview = (ra.content_text[:400] + "…") if len(ra.content_text) > 400 else ra.content_text
-    return jsonify({"ok": True, "id": ra.id, "preview": preview, "text": ra.content_text})
+def delete_resume():
+    rid = request.form.get("id") or request.args.get("id")
+    if not rid:
+        return jsonify({"error":"id required"}), 400
+    asset = ResumeAsset.query.filter_by(id=int(rid), user_id=current_user.id).first()
+    if not asset:
+        return jsonify({"error":"not found"}), 404
+    db.session.delete(asset)
+    db.session.commit()
+    return jsonify({"ok": True})

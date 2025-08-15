@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Referral Builder – CareerAI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Referral Builder (Contacts‑only)</h1>
+
+<div class="glass rounded-xl p-4">
+  <div class="grid md:grid-cols-3 gap-3">
+    <input id="company" class="border p-2 rounded" placeholder="Company (e.g., nDreams)">
+    <input id="role" class="border p-2 rounded" placeholder="Role (e.g., Game Designer)">
+    <input id="geo" class="border p-2 rounded" placeholder="Location (optional)">
+  </div>
+  <div class="mt-3 flex gap-2">
+    <button id="run" class="px-4 py-2 bg-purple-600 text-white rounded">Find Contacts</button>
+    <button id="save" class="px-4 py-2 border rounded">Save Selected</button>
+  </div>
+</div>
+
+<div class="mt-6" data-lock="pro" id="proBlock">
+  <div id="results" class="grid md:grid-cols-2 gap-4"></div>
+  <div id="skeletons" class="hidden">
+    <div class="skeleton h-28 rounded"></div>
+    <div class="skeleton h-28 rounded"></div>
+    <div class="skeleton h-28 rounded"></div>
+    <div class="skeleton h-28 rounded"></div>
+  </div>
+</div>
+
+<script>
+  const elR = document.getElementById('results');
+  const elS = document.getElementById('skeletons');
+  const picks = new Map();
+
+  function showSkeleton(v){ elS.classList.toggle('hidden', !v); }
+  function cardHTML(item){
+    const c=item.contact, m=item.messages, id=btoa(c.public_url).replace(/=+/,'');
+    return `
+      <div class="border rounded p-3 bg-white/70 dark:bg-slate-900/40">
+        <div class="flex justify-between">
+          <div>
+            <div class="font-semibold">${c.name}</div>
+            <div class="text-sm text-slate-500">${c.title} @ ${c.company}</div>
+            <div class="text-xs">${c.approx_location||''}</div>
+          </div>
+          <input type="checkbox" data-pick="${id}" />
+        </div>
+        <a class="text-purple-600 underline text-sm" target="_blank" href="${c.public_url}">Public Profile</a>
+        <details class="mt-2"><summary class="cursor-pointer">Warm</summary><div class="text-sm mt-1">${m.warm}</div></details>
+        <details><summary class="cursor-pointer">Cold</summary><div class="text-sm mt-1">${m.cold}</div></details>
+        <details><summary class="cursor-pointer">Follow‑up</summary><div class="text-sm mt-1">${m.follow}</div></details>
+      </div>`;
+  }
+
+  document.getElementById('run').onclick = async ()=>{
+    const company = document.getElementById('company').value.trim();
+    const role = document.getElementById('role').value.trim();
+    const geo = document.getElementById('geo').value.trim();
+    if(!company || !role){ alert("Company and role required"); return; }
+    showSkeleton(true); elR.innerHTML='';
+    const r = await fetch('/referral/find',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({company, role, geo})});
+    const j = await r.json(); showSkeleton(false);
+    if(!r.ok){ alert(j.error||'Error'); return; }
+    elR.innerHTML = j.results.map(cardHTML).join('');
+    document.querySelectorAll('[data-pick]').forEach(ch=>{
+      ch.onchange = ()=>{
+        const id = ch.getAttribute('data-pick');
+        const item = j.results.find(x=> btoa(x.contact.public_url).replace(/=+/,'') === id);
+        if(ch.checked) picks.set(id, item.contact); else picks.delete(id);
+      };
+    });
+  };
+
+  document.getElementById('save').onclick = async ()=>{
+    if(picks.size===0){ alert('Select at least one'); return; }
+    const selected = Array.from(picks.values());
+    const r = await fetch('/referral/save',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({selected})});
+    const j = await r.json();
+    if(!r.ok){ alert(j.error||'Error'); return; }
+    alert('Saved '+j.saved+' contacts'); window.__confettiNow && window.__confettiNow();
+  };
+</script>
+{% endblock %}
