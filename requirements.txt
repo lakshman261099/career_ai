@@ -11,3 +11,4 @@ python-docx==1.2.0
 stripe==10.6.0
 PyPDF2==3.0.1
 psycopg[binary]==3.2.9
+psycopg[binary]==3.2.9
