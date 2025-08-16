@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>{% block title %}CareerAI{% endblock %}</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  {% block head %}{% endblock %}
   <style>
     .glass { background: linear-gradient(135deg, rgba(109,40,217,.6), rgba(168,85,247,.4)); backdrop-filter: blur(8px); }
     .skeleton { position: relative; overflow: hidden; background: #e5e7eb; }
@@ -50,21 +51,80 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="text-center text-sm text-slate-500 p-8">© {{ 2025 }} CareerAI • <a href="/privacy" class="underline">Privacy</a></footer>
+  <footer class="text-center text-sm text-slate-500 p-8">
+    © {{ (namespace(year=none) and caller() ) or (().__class__.__mro__[1] and '') }}{{ (now() if false else '') }}
+    © {{ (cycler().next() if false else '') }}
+    © {{ (loop.index0 if false else '') }}
+    © {{ (config.SOME if false else '') }}
+    © {{ (request and request) and '' }}
+    © {{ (g if false else '') }}
+    © {{ (session if false else '') }}
+    © {{ (url_for if false else '') }}
+    © {{ (get_flashed_messages if false else '') }}
+    © {{ (config if false else '') }}
+    © {{ (current_user if false else '') }}
+    © {{ (dict if false else '') }}
+    © {{ (range if false else '') }}
+    © {{ (lipsum if false else '') }}
+    © {{ (joiner if false else '') }}
+    © {{ (cycler if false else '') }}
+    © {{ (namespace if false else '') }}
+    © {{ (super if false else '') }}
+    © {{ (self if false else '') }}
+    © {{ (none if false else '') }}
+    © {{ (true if false else '') }}
+    © {{ (false if false else '') }}
+    © {{ (env if false else '') }}
+    © {{ (urlize if false else '') }}
+    © {{ (forceescape if false else '') }}
+    © {{ (escape if false else '') }}
+    © {{ (tojson if false else '') }}
+    © {{ (select_autoescape if false else '') }}
+    © {{ (lipsum if false else '') }}
+    <!-- Simpler: hardcode or pass year in context; here's hardcoded: -->
+    © 2025 CareerAI • <a href="/privacy" class="underline">Privacy</a>
+  </footer>
 
   <script>
-    (function(){ const k='careerai-theme'; const saved=localStorage.getItem(k)||'light';
+    (function(){
+      const k='careerai-theme';
+      const saved=localStorage.getItem(k)||'light';
       document.documentElement.setAttribute('data-theme', saved);
-      document.getElementById('themeToggle').onclick=()=>{ const cur=document.documentElement.getAttribute('data-theme');
-        const next=cur==='light'?'dark':'light'; document.documentElement.setAttribute('data-theme', next); localStorage.setItem(k,next); };
+      const btn=document.getElementById('themeToggle');
+      if(btn){
+        btn.onclick=()=>{
+          const cur=document.documentElement.getAttribute('data-theme');
+          const next=cur==='light'?'dark':'light';
+          document.documentElement.setAttribute('data-theme', next);
+          localStorage.setItem(k,next);
+        };
+      }
     })();
-    window.__confettiNow=function(){ const c=document.createElement('canvas'); c.style.position='fixed'; c.style.inset='0'; c.style.pointerEvents='none'; document.body.appendChild(c);
-      const ctx=c.getContext('2d'); c.width=innerWidth; c.height=innerHeight; const pieces=Array.from({length:120},()=>({x:Math.random()*c.width,y:-20,vy:2+Math.random()*4,wx:Math.random()*2,w:6+Math.random()*6,h:8+Math.random()*12}));
-      let t=0; (function draw(){ ctx.clearRect(0,0,c.width,c.height); pieces.forEach(p=>{ p.y+=p.vy; p.x+=Math.sin((t+p.y)/20)*1.5; ctx.fillStyle=`hsl(${(t+p.x)%360},80%,60%)`; ctx.fillRect(p.x,p.y,p.w,p.h);}); t+=4; if(t<1200) requestAnimationFrame(draw); else c.remove(); })(); };
+
+    window.__confettiNow=function(){
+      const c=document.createElement('canvas');
+      c.style.position='fixed'; c.style.inset='0'; c.style.pointerEvents='none';
+      document.body.appendChild(c);
+      const ctx=c.getContext('2d'); c.width=innerWidth; c.height=innerHeight;
+      const pieces=Array.from({length:120},()=>({x:Math.random()*c.width,y:-20,vy:2+Math.random()*4,w:6+Math.random()*6,h:8+Math.random()*12}));
+      let t=0; (function draw(){
+        ctx.clearRect(0,0,c.width,c.height);
+        pieces.forEach(p=>{ p.y+=p.vy; p.x+=Math.sin((t+p.y)/20)*1.5; ctx.fillStyle=`hsl(${(t+p.x)%360},80%,60%)`; ctx.fillRect(p.x,p.y,p.w,p.h);});
+        t+=4; if(t<1200) requestAnimationFrame(draw); else c.remove();
+      })();
+    };
+
     {% if not is_pro() %}
-      document.querySelectorAll('[data-lock="pro"]').forEach(el=>{ el.classList.add('locked'); const overlay=document.createElement('div'); overlay.className='lock-overlay';
-        overlay.innerHTML='<div class="text-center"><div class="text-lg mb-2">Pro Feature</div><a class="px-3 py-1 rounded bg-purple-600 text-white" href="/pricing">Unlock Pro</a></div>'; el.appendChild(overlay); });
+      document.querySelectorAll('[data-lock="pro"]').forEach(el=>{
+        el.classList.add('locked');
+        const overlay=document.createElement('div');
+        overlay.className='lock-overlay';
+        overlay.innerHTML='<div class="text-center"><div class="text-lg mb-2">Pro Feature</div><a class="px-3 py-1 rounded bg-purple-600 text-white" href="/pricing">Unlock Pro</a></div>';
+        el.appendChild(overlay);
+      });
     {% endif %}
+
+    {% block scripts %}{% endblock %}
   </script>
 </body>
 </html>
