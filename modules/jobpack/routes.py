@@ -24,8 +24,7 @@ def generate():
     
     role = (request.form.get("role") or "").strip() or "Candidate"
     jd = (request.form.get("jd") or "").strip()
-    resume = (request.form.get("resume") or "").strip()git add -A && git commit -m "Apply full feature updates: per-feature free caps, portfolio logic, mobile UI fixes, auth flow, subscription handling" && git push origin main
-
+    resume = (request.form.get("resume") or "").strip()
     mode = (request.form.get("mode") or "fast").strip().lower()
 
     if mode == "deep" and not is_pro():
