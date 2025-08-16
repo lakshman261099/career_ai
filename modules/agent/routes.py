@@ -1,9 +1,10 @@
 # modules/agent/routes.py
 import json
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
 from models import db, AgentJob, Subscription
 from modules.jobpack.helpers import fast_jobpack_llm, deep_jobpack_llm
+from limits import is_pro_user, can_consume_free, consume_free, client_ip, free_budget_blocked
 
 agent_bp = Blueprint("agent", __name__)
 
@@ -22,9 +23,22 @@ def index():
 def run_now():
     role = (request.form.get("role") or "Data Analyst Intern").strip()
     mode = (request.form.get("mode") or "fast").strip().lower()
+
+    # Agent availability for Free
     if mode == "deep" and not _is_pro(current_user.id):
         flash("Deep Agent runs are Pro only.", "error")
         return redirect(url_for("pricing"))
+    if not is_pro_user(current_user):
+        if not current_app.config.get("FREE_AGENT_ENABLED", False):
+            flash("Agent is Pro only on Free tier.", "error")
+            return redirect(url_for("pricing"))
+        # apply free caps
+        if free_budget_blocked(): current_app.config["MOCK"] = True
+        ip = client_ip()
+        if not can_consume_free(current_user, ip):
+            flash("Free daily limit reached (2/day). Upgrade to Pro for unlimited runs.", "error")
+            return redirect(url_for("pricing"))
+        consume_free(current_user, ip)
 
     mock_jobs = [
         {"title": f"{role}", "jd": "We need SQL, Python, dashboards.", "resume": ""},

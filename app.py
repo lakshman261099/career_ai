@@ -12,10 +12,11 @@ from modules.auth.routes import auth_bp
 from modules.billing.routes import billing_bp
 from modules.jobpack.routes import jobpack_bp
 from modules.internships.routes import internships_bp
-from modules.portfolio.routes import portfolio_bp  # keep if you already have it
+from modules.portfolio.routes import portfolio_bp
 from modules.referral.routes import referral_bp
 from modules.resume.routes import resume_bp
 from modules.agent.routes import agent_bp
+from modules.settings.routes import settings_bp
 
 load_dotenv()
 
@@ -86,7 +87,12 @@ def create_app():
             sub = (Subscription.query.filter_by(user_id=current_user.id, status="active")
                    .order_by(Subscription.current_period_end.desc()).first())
             return bool(sub)
-        return dict(is_pro=is_pro, MOCK=app.config["MOCK"], SURGE_MODE=app.config["SURGE_MODE"])
+        return dict(
+            is_pro=is_pro,
+            MOCK=app.config["MOCK"],
+            SURGE_MODE=app.config["SURGE_MODE"],
+            year=dt.datetime.utcnow().year
+        )
 
     # Health
     @app.get("/healthz")
@@ -102,6 +108,10 @@ def create_app():
     def pricing():
         return render_template("pricing.html")
 
+    @app.get("/privacy")
+    def privacy():
+        return render_template("privacy.html")
+
     @app.get("/dashboard")
     @login_required
     def dashboard():
@@ -116,6 +126,7 @@ def create_app():
     app.register_blueprint(referral_bp, url_prefix="/referral")
     app.register_blueprint(resume_bp, url_prefix="/resume")
     app.register_blueprint(agent_bp, url_prefix="/agent")
+    app.register_blueprint(settings_bp, url_prefix="/settings")
 
     return app
 
