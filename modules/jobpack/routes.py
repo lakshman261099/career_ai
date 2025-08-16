@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from models import db, JobPackReport, Subscription
 from .helpers import fetch_url_text, fast_jobpack_llm, deep_jobpack_llm, build_pdf_bytes
 from limits import is_pro_user, can_consume_free, consume_free, client_ip, free_budget_blocked
+from limits import enforce_free_feature
 
 jobpack_bp = Blueprint("jobpack", __name__)
 
@@ -18,7 +19,9 @@ def index():
 
 @jobpack_bp.route("/generate", methods=["POST"])
 @login_required
+@enforce_free_feature("jobpack")
 def generate():
+    
     role = (request.form.get("role") or "").strip() or "Candidate"
     jd = (request.form.get("jd") or "").strip()
     resume = (request.form.get("resume") or "").strip()

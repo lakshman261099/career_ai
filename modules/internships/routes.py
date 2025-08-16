@@ -5,6 +5,7 @@ import time, json, hashlib
 from models import db, InternshipRecord, Subscription
 from .helpers import mock_fetch, compute_learning_links, deep_enrich_jobs
 from limits import is_pro_user, can_consume_free, consume_free, client_ip, free_budget_blocked
+from limits import enforce_free_feature
 
 internships_bp = Blueprint("internships", __name__)
 
@@ -19,6 +20,7 @@ def index():
 
 @internships_bp.route("/search", methods=["GET"])
 @login_required
+@enforce_free_feature("internships")
 def search():
     role = (request.args.get("role") or "Intern").strip()
     location = (request.args.get("location") or "").strip()
