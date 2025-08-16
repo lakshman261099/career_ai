@@ -1,10 +1,10 @@
+# modules/internships/routes.py
 from flask import Blueprint, request, render_template, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
 import time, json, hashlib
 
 from models import db, InternshipRecord, Subscription
 from .helpers import mock_fetch, compute_learning_links, deep_enrich_jobs
-from limits import is_pro_user, can_consume_free, consume_free, client_ip, free_budget_blocked
 from limits import enforce_free_feature
 
 internships_bp = Blueprint("internships", __name__)
@@ -20,40 +20,39 @@ def index():
 
 @internships_bp.route("/search", methods=["GET"])
 @login_required
-@enforce_free_feature("internships")  # ← NEW
+@enforce_free_feature("internships")  # Free users: 1 run/day for internships; Pro bypasses this.
 def search():
     role = (request.args.get("role") or "Intern").strip()
     location = (request.args.get("location") or "").strip()
     mode = (request.args.get("mode") or "fast").strip().lower()
 
+    # Pro-gate Deep
     if mode == "deep" and not _is_pro(current_user.id):
         flash("Deep mode is a Pro feature. Upgrade to unlock premium analysis.", "error")
         return redirect(url_for("pricing"))
 
-    if mode != "deep" and not is_pro_user(current_user):
-        if free_budget_blocked(): current_app.config["MOCK"] = True
-        ip = client_ip()
-        if not can_consume_free(current_user, ip):
-            flash("You've hit the free daily limit (2/day). Upgrade to Pro for unlimited runs.", "error")
-            return redirect(url_for("pricing"))
-        consume_free(current_user, ip)
-
+    # FAST: cache by (role|location) for TTL
     if mode != "deep":
         key = "INTFAST:" + hashlib.sha256(json.dumps([role.lower(), location.lower()]).encode()).hexdigest()
         ttl = int(current_app.config.get("CACHE_TTL_INTERNSHIP_FAST_SEC", 3600))
-        if not hasattr(current_app, "_int_cache"): current_app._int_cache = {}
+        if not hasattr(current_app, "_int_cache"):
+            current_app._int_cache = {}
         cached = current_app._int_cache.get(key)
         if cached and (time.time() - cached["ts"] < ttl):
             jobs = cached["val"]
         else:
             jobs = mock_fetch(role, location)
-            for j in jobs: j["learning_links"] = compute_learning_links(j.get("missing_skills", []))
+            for j in jobs:
+                j["learning_links"] = compute_learning_links(j.get("missing_skills", []))
             current_app._int_cache[key] = {"ts": time.time(), "val": jobs}
     else:
+        # DEEP: enrich after base fetch
         jobs = mock_fetch(role, location)
-        for j in jobs: j["learning_links"] = compute_learning_links(j.get("missing_skills", []))
+        for j in jobs:
+            j["learning_links"] = compute_learning_links(j.get("missing_skills", []))
         jobs = deep_enrich_jobs(jobs, role)
 
+    # Persist simple footprint (best-effort)
     try:
         for j in jobs:
             rec = InternshipRecord(
