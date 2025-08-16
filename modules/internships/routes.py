@@ -20,7 +20,7 @@ def index():
 
 @internships_bp.route("/search", methods=["GET"])
 @login_required
-@enforce_free_feature("internships")
+@enforce_free_feature("internships")  # ← NEW
 def search():
     role = (request.args.get("role") or "Intern").strip()
     location = (request.args.get("location") or "").strip()
