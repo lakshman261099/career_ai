@@ -1,18 +1,18 @@
 # modules/portfolio/routes.py
-import os, re, unicodedata, json
+import os, re, unicodedata, json, datetime as dt
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
-from werkzeug.utils import secure_filename
 from models import db, PortfolioPage, ProjectDetail, ResumeAsset, Subscription
 from limits import enforce_free_feature, is_pro_user
 from openai import OpenAI
 
 portfolio_bp = Blueprint("portfolio", __name__)
 
+# ---------- helpers ----------
 def _slugify(value):
     value = unicodedata.normalize("NFKD", value).encode("ascii","ignore").decode("ascii")
     value = re.sub(r"[^\w\s-]","", value).strip().lower()
-    return re.sub(r"[-\s]+","-", value)[:60] or "portfolio"
+    return re.sub(r"[-\s]+","-", value)[:60] or f"user-{getattr(current_user, 'id', 'x')}"
 
 def _openai_client():
     key = os.getenv("OPENAI_API_KEY","")
@@ -53,29 +53,33 @@ def _ai_projects_from_resume(resume_text: str, count: int = 3):
     prompt = f"""From the resume below, propose {count} portfolio project ideas.
 Each: title, summary, why it matters, 3-5 how steps, 2-3 tips.
 Resume:
-{resume_text[:4000]}"""
-    resp = client.chat.completions.create(
-        model=current_app.config.get("OPENAI_MODEL","gpt-4o-mini"),
-        messages=[{"role":"user","content":prompt}],
-        temperature=0.4,
-    )
-    text = resp.choices[0].message.content.strip()
-    # naive parse fallback
+{(resume_text or '')[:4000]}"""
+    try:
+        resp = client.chat.completions.create(
+            model=current_app.config.get("OPENAI_MODEL","gpt-4o-mini"),
+            messages=[{"role":"user","content":prompt}],
+            temperature=0.4,
+        )
+        text = (resp.choices[0].message.content or "").strip()
+    except Exception:
+        return _mock_projects(count)
+
+    # If parsing fails, return mocks
     ideas = _mock_projects(count)
     try:
-        # try to parse bullet sections if present
-        parts = [p.strip("- ").strip() for p in text.split("\n\n") if p.strip()]
-        out = []
-        for p in parts[:count]:
+        # naive section split
+        blocks = [b for b in text.split("\n\n") if b.strip()]
+        out=[]
+        for b in blocks[:count]:
+            title = b.splitlines()[0].strip("-• ").strip()[:80]
             out.append({
-                "title": p.split("\n")[0][:80],
-                "summary": "Summary based on resume.",
-                "why": "Highlights strengths from resume.",
+                "title": title or "Portfolio Project",
+                "summary": "Summary based on your resume.",
+                "why": "Highlights strengths aligned to the target role.",
                 "how": ["Outline", "Build", "Polish"],
-                "tips": ["Keep scope tight", "Show demo"]
+                "tips": ["Keep scope tight", "Show a short demo"]
             })
-        if len(out)>=1: return out[:count]
-        return ideas
+        return out or ideas
     except Exception:
         return ideas
 
@@ -101,17 +105,20 @@ def _ai_project_detail(title: str, resume_text: str):
         """
     client = _openai_client()
     if not client:
-        return _ai_project_detail(title, resume_text="")  # fallback to mock
+        return _ai_project_detail(title, resume_text="")
     prompt = f"""Create a project deep-dive page for "{title}" based on this resume:
-{resume_text[:4000]}
+{(resume_text or '')[:4000]}
 Sections: Why this matters, How to build (step list), Tips, Deliverables, What you'll learn.
 Return clean HTML only."""
-    resp = client.chat.completions.create(
-        model=current_app.config.get("OPENAI_MODEL","gpt-4o-mini"),
-        messages=[{"role":"user","content":prompt}],
-        temperature=0.4,
-    )
-    return resp.choices[0].message.content
+    try:
+        resp = client.chat.completions.create(
+            model=current_app.config.get("OPENAI_MODEL","gpt-4o-mini"),
+            messages=[{"role":"user","content":prompt}],
+            temperature=0.4,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception:
+        return _ai_project_detail(title, resume_text="")
 
 def _links_json_from_form(form):
     links = []
@@ -121,22 +128,31 @@ def _links_json_from_form(form):
             links.append({"label":label, "url":url})
     return json.dumps(links)
 
+def _safe_get_user_page():
+    """Be resilient to driver/dialect quirks; never 500 here."""
+    try:
+        uid = int(current_user.id)
+        # Order to avoid LIMIT bind oddities on some stacks
+        q = PortfolioPage.query.filter(PortfolioPage.user_id == uid).order_by(PortfolioPage.created_at.desc())
+        page = q.first()
+        return page
+    except Exception as e:
+        current_app.logger.exception("Portfolio fetch failed; continuing without page")
+        return None
+
+# ---------- routes ----------
 @portfolio_bp.get("/")
 @login_required
 def index():
-    page = PortfolioPage.query.filter_by(user_id=current_user.id).first()
-    # Free users: no publishing; show “idea generator”
-    if not is_pro_user(current_user):
-        return render_template("portfolio_edit.html", page=page, is_free=True, suggestions=None)
-    # Pro: can edit full sections and publish
-    return render_template("portfolio_edit.html", page=page, is_free=False, suggestions=None)
+    page = _safe_get_user_page()
+    is_free = not is_pro_user(current_user)
+    return render_template("portfolio_edit.html", page=page, is_free=is_free, suggestions=None)
 
 # FREE: one idea only (consumes 'portfolio' free run)
 @portfolio_bp.post("/idea")
 @login_required
 @enforce_free_feature("portfolio")
 def free_idea():
-    # get resume from latest ResumeAsset if any, else from textarea
     resume_text = (request.form.get("resume_text") or "").strip()
     if not resume_text:
         ra = ResumeAsset.query.filter_by(user_id=current_user.id).order_by(ResumeAsset.created_at.desc()).first()
@@ -155,13 +171,12 @@ def scan():
         flash("Portfolio publishing is Pro only.", "error")
         return redirect(url_for("pricing"))
     resume_text = (request.form.get("resume_text") or "").strip()
-    # Pull from saved resume if available and not provided
     if not resume_text:
         ra = ResumeAsset.query.filter_by(user_id=current_user.id).order_by(ResumeAsset.created_at.desc()).first()
         if ra:
             resume_text = ra.content_text or ""
     ideas = _ai_projects_from_resume(resume_text, count=3)
-    page = PortfolioPage.query.filter_by(user_id=current_user.id).first()
+    page = _safe_get_user_page()
     return render_template("portfolio_edit.html", page=page, is_free=False, suggestions=ideas)
 
 # PRO: save & publish (with or without selected project)
@@ -181,25 +196,43 @@ def save():
     selected_title = (request.form.get("include_project_title") or "").strip()
     resume_text = (request.form.get("resume_text") or "").strip()
 
-    page = PortfolioPage.query.filter_by(user_id=current_user.id).first()
+    page = _safe_get_user_page()
     if not page:
-        slug = _slugify(title) or f"user-{current_user.id}"
-        page = PortfolioPage(user_id=current_user.id, title=title, slug=slug,
-                             about_html=about, skills_csv=skills,
-                             experience_html=exp, education_html=edu,
-                             links_json=links_json)
+        slug = _slugify(title)
+        page = PortfolioPage(
+            user_id=current_user.id, title=title, slug=slug,
+            about_html=about, skills_csv=skills,
+            experience_html=exp, education_html=edu,
+            links_json=links_json
+        )
     else:
-        page.title = title; page.about_html = about; page.skills_csv = skills
-        page.experience_html = exp; page.education_html = edu; page.links_json = links_json
-        if not page.slug: page.slug = _slugify(title) or f"user-{current_user.id}"
-    db.session.add(page); db.session.commit()
+        page.title = title
+        page.about_html = about
+        page.skills_csv = skills
+        page.experience_html = exp
+        page.education_html = edu
+        page.links_json = links_json
+        if not page.slug:
+            page.slug = _slugify(title)
+    try:
+        db.session.add(page)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash("Could not save portfolio. Please try again.", "error")
+        return redirect(url_for("portfolio.index"))
 
     # If a project was chosen, generate a ProjectDetail and link it
     if selected_title:
         html = _ai_project_detail(selected_title, resume_text)
         pslug = _slugify(f"{page.slug}-{selected_title}")
         proj = ProjectDetail(user_id=current_user.id, portfolio_id=page.id, title=selected_title, slug=pslug, html=html)
-        db.session.add(proj); db.session.commit()
+        try:
+            db.session.add(proj)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash("Saved portfolio, but failed to attach project page.", "error")
 
     flash("Portfolio published!", "success")
     return redirect(url_for("portfolio.index"))
@@ -208,11 +241,11 @@ def save():
 def view(slug):
     page = PortfolioPage.query.filter_by(slug=slug).first_or_404()
     projs = ProjectDetail.query.filter_by(portfolio_id=page.id).order_by(ProjectDetail.created_at.desc()).all()
-    links = []
+    # Safely parse links JSON here and pass to template
     try:
-       links = json.loads(page.links_json or "[]")
+        links = json.loads(page.links_json or "[]")
     except Exception:
-       links = []
+        links = []
     return render_template("portfolio_public.html", page=page, projects=projs, links=links, hybrid=True)
 
 @portfolio_bp.get("/project/<slug>")

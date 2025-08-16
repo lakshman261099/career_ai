@@ -62,18 +62,17 @@
     {% endif %}
 
     {% if links %}
-        <section class="bg-white rounded-2xl shadow p-6">
-            <h2 class="text-xl font-semibold mb-2">Links</h2>
-            <div class="flex flex-wrap gap-3">
-                {% for l in links %}
-                    <a href="{{ l.url }}" target="_blank" class="underline text-violet-700">{{ l.label }}</a>
-                {% endfor %}
-            </div>
-        </section>
+      <section class="bg-white rounded-2xl shadow p-6">
+        <h2 class="text-xl font-semibold mb-2">Links</h2>
+        <div class="flex flex-wrap gap-3">
+          {% for l in links %}
+            <a href="{{ l.url }}" target="_blank" class="underline text-violet-700">{{ l.label }}</a>
+          {% endfor %}
+        </div>
+      </section>
     {% endif %}
-
   </main>
 
-  <footer class="text-center text-sm text-slate-500 p-8">© {{ (now().year if false else 2025) }} CareerAI</footer>
+  <footer class="text-center text-sm text-slate-500 p-8">© 2025 CareerAI</footer>
 </body>
 </html>
