@@ -1,31 +1,11 @@
 {% extends "base.html" %}
-{% import "components.html" as ui %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Dashboard – CareerAI{% endblock %}
 {% block content %}
-<h2 class="text-3xl font-bold mb-4">Dashboard</h2>
-<p class="opacity-80 mb-6">Pro status: <span class="font-semibold">{{ 'Yes' if is_pro else 'No' }}</span></p>
-
-<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-  {{ ui.feature_card("Job Pack Pro", "Generate Fast/Deep hiring‑manager packs.", "jobpack", "/jobpack", true) }}
-  {{ ui.feature_card("Internship Finder", "Search internships with AI match.", "intern", "/internships") }}
-  {{ ui.feature_card("Referral Builder", "CSV → LinkedIn DM variants.", "ref", "/referral") }}
-  {{ ui.feature_card("Portfolio Builder", "Hosted page with briefs.", "folio", "/portfolio") }}
-  {{ ui.feature_card("AI Career Agent", "Run now (Deep for Pro).", "agent", "/agent", true) }}
-  {{ ui.feature_card("Settings", "Privacy & resume storage.", "lock", "/settings") }}
+<h1 class="text-2xl font-semibold mb-4">Welcome!</h1>
+<p class="text-sm text-slate-500 mb-3">Jump back into a tool:</p>
+<div class="grid md:grid-cols-3 gap-3">
+  <a href="/jobpack" class="border rounded p-4 block hover:bg-slate-50 dark:hover:bg-slate-900/30">📦 Job Pack</a>
+  <a href="/internships" class="border rounded p-4 block hover:bg-slate-50 dark:hover:bg-slate-900/30">🧭 Internships</a>
+  <a href="/referral" class="border rounded p-4 block hover:bg-slate-50 dark:hover:bg-slate-900/30">🤝 Referrals</a>
 </div>
-
-{% if recent_reports %}
-  <h3 class="font-bold mt-8 mb-2">Recent Reports</h3>
-  <div class="space-y-2">
-    {% for r in recent_reports %}
-      <div class="glass card-pad flex items-center justify-between">
-        <div>#{{ r.id }} · {{ r.role }} · {{ r.mode }} · {{ r.created_at }}</div>
-        <div class="space-x-3 text-sm">
-          <a class="underline/50 hover:underline" href="/jobpack/view/{{ r.id }}">View</a>
-          <a class="underline/50 hover:underline" href="/jobpack/export_pdf/{{ r.id }}">Export</a>
-        </div>
-      </div>
-    {% endfor %}
-  </div>
-{% endif %}
 {% endblock %}

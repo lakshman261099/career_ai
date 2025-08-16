@@ -1,16 +1,10 @@
-from flask import Blueprint, request, render_template, redirect, url_for, flash, jsonify
+from flask import Blueprint, request, render_template, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
-from flask import current_app
 import time, json, hashlib
 
 from models import db, InternshipRecord, Subscription
 from .helpers import mock_fetch, compute_learning_links, deep_enrich_jobs
-
-# Free-tier guardrails (manual use so Deep doesn't get counted)
-from limits import (
-    is_pro_user, can_consume_free, consume_free,
-    client_ip, free_budget_blocked
-)
+from limits import is_pro_user, can_consume_free, consume_free, client_ip, free_budget_blocked
 
 internships_bp = Blueprint("internships", __name__)
 
@@ -30,52 +24,34 @@ def search():
     location = (request.args.get("location") or "").strip()
     mode = (request.args.get("mode") or "fast").strip().lower()
 
-    # Pro gate for Deep
     if mode == "deep" and not _is_pro(current_user.id):
         flash("Deep mode is a Pro feature. Upgrade to unlock premium analysis.", "error")
         return redirect(url_for("pricing"))
 
-    # ---------- FREE GUARDRAILS (FAST ONLY) ----------
     if mode != "deep" and not is_pro_user(current_user):
-        # Optional global kill-switch: degrade Free to MOCK
-        if free_budget_blocked():
-            current_app.config["MOCK"] = True
-        # Per-user/day cap
+        if free_budget_blocked(): current_app.config["MOCK"] = True
         ip = client_ip()
         if not can_consume_free(current_user, ip):
-            # For a GET page flow, show a gentle message
             flash("You've hit the free daily limit (2/day). Upgrade to Pro for unlimited runs.", "error")
             return redirect(url_for("pricing"))
-        # Count now (pre-charge)
         consume_free(current_user, ip)
-    # -------------------------------------------------
 
-    # ---------- CACHE (FAST ONLY) ----------
     if mode != "deep":
-        key = "INTFAST:" + hashlib.sha256(
-            json.dumps([role.lower(), location.lower()]).encode()
-        ).hexdigest()
+        key = "INTFAST:" + hashlib.sha256(json.dumps([role.lower(), location.lower()]).encode()).hexdigest()
         ttl = int(current_app.config.get("CACHE_TTL_INTERNSHIP_FAST_SEC", 3600))
-        if not hasattr(current_app, "_int_cache"):
-            current_app._int_cache = {}
+        if not hasattr(current_app, "_int_cache"): current_app._int_cache = {}
         cached = current_app._int_cache.get(key)
         if cached and (time.time() - cached["ts"] < ttl):
             jobs = cached["val"]
         else:
-            jobs = mock_fetch(role, location)  # your helper: respects MOCK vs live inside
-            # base enrich
-            for j in jobs:
-                j["learning_links"] = compute_learning_links(j.get("missing_skills", []))
-            # store
+            jobs = mock_fetch(role, location)
+            for j in jobs: j["learning_links"] = compute_learning_links(j.get("missing_skills", []))
             current_app._int_cache[key] = {"ts": time.time(), "val": jobs}
     else:
-        # Deep path (no cache; you can add one if wanted)
         jobs = mock_fetch(role, location)
-        for j in jobs:
-            j["learning_links"] = compute_learning_links(j.get("missing_skills", []))
+        for j in jobs: j["learning_links"] = compute_learning_links(j.get("missing_skills", []))
         jobs = deep_enrich_jobs(jobs, role)
 
-    # Persist simple footprint for analytics/history
     try:
         for j in jobs:
             rec = InternshipRecord(
@@ -87,6 +63,6 @@ def search():
             db.session.add(rec)
         db.session.commit()
     except Exception:
-        db.session.rollback()  # keep UX resilient; don't break page
+        db.session.rollback()
 
     return render_template("internships_index.html", jobs=jobs, role=role, location=location, mode=mode)

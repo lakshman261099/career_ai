@@ -1,22 +1,17 @@
-# career_ai/modules/resume/routes.py
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 import io
-
 from models import db, ResumeAsset, Subscription
 from PyPDF2 import PdfReader
 import docx
 
 resume_bp = Blueprint("resume", __name__)
-
 ALLOWED = {"pdf","docx","txt"}
 
 def _is_pro():
-    if not current_user or not current_user.is_authenticated:
-        return False
-    if current_user.plan and current_user.plan.lower().startswith("pro"):
-        return True
+    if not current_user or not current_user.is_authenticated: return False
+    if current_user.plan and current_user.plan.lower().startswith("pro"): return True
     sub = Subscription.query.filter_by(user_id=current_user.id, status="active").first()
     return bool(sub)
 
@@ -47,7 +42,6 @@ def upload_resume():
     ext = f.filename.rsplit(".",1)[-1].lower()
     if ext not in ALLOWED:
         return jsonify({"error":"Only PDF/DOCX/TXT allowed"}), 400
-
     try:
         text, mime, fname = _extract_text(f)
     except Exception as e:
@@ -56,8 +50,7 @@ def upload_resume():
     persisted_id = None
     if (request.form.get("persist") == "true" or request.args.get("persist") == "true") and _is_pro():
         asset = ResumeAsset(user_id=current_user.id, filename=fname, mime=mime, content_text=text, persisted=True)
-        db.session.add(asset)
-        db.session.commit()
+        db.session.add(asset); db.session.commit()
         persisted_id = asset.id
 
     return jsonify({"ok": True, "filename": fname, "mime": mime, "chars": len(text), "text": text[:40000], "persisted_id": persisted_id})
@@ -66,11 +59,8 @@ def upload_resume():
 @login_required
 def delete_resume():
     rid = request.form.get("id") or request.args.get("id")
-    if not rid:
-        return jsonify({"error":"id required"}), 400
+    if not rid: return jsonify({"error":"id required"}), 400
     asset = ResumeAsset.query.filter_by(id=int(rid), user_id=current_user.id).first()
-    if not asset:
-        return jsonify({"error":"not found"}), 404
-    db.session.delete(asset)
-    db.session.commit()
+    if not asset: return jsonify({"error":"not found"}), 404
+    db.session.delete(asset); db.session.commit()
     return jsonify({"ok": True})

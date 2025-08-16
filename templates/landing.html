@@ -1,22 +1,12 @@
 {% extends "base.html" %}
-{% import "components.html" as ui %}
-{% block title %}CareerAI — Land the job{% endblock %}
+{% block title %}CareerAI – Get Hired Faster{% endblock %}
 {% block content %}
-<section class="grid md:grid-cols-2 gap-6 items-center">
-  <div>
-    <h1 class="text-4xl md:text-5xl font-extrabold leading-tight">Your premium AI career copilot.</h1>
-    <p class="opacity-90 mt-3 text-lg">Hiring‑manager grade analysis, internships with match %, referral outreach, hosted portfolio, and a daily agent—wrapped in a sleek glass UI.</p>
-    <div class="mt-5 flex gap-3">
-      <a href="/auth/register" class="btn btn-primary px-4 py-2">Get started</a>
-      <a href="/pricing" class="underline/50 hover:underline">See pricing</a>
-    </div>
+<div class="glass rounded-2xl p-8">
+  <h1 class="text-3xl font-bold mb-2">Your AI hiring manager on campus</h1>
+  <p class="text-slate-600 dark:text-slate-300">Job Pack, Internships, Referrals (contacts‑only), Portfolio, and an Agent that brings you top‑3 daily packs.</p>
+  <div class="mt-4 flex gap-3">
+    <a href="/auth/register" class="px-5 py-2 rounded bg-purple-600 text-white">Get started</a>
+    <a href="/pricing" class="px-5 py-2 rounded border">See pricing</a>
   </div>
-  <div class="space-y-3">
-    {{ ui.feature_card("Job Pack Pro", "Deep hiring‑manager pipeline with scores, verdict, bullets, cover letter, Q&A, PDF export.", "jobpack", "/jobpack", true) }}
-    {{ ui.feature_card("Internship Finder", "API/mocked internships with AI match %, gaps, and learning links.", "intern", "/internships", false) }}
-    {{ ui.feature_card("Referral Builder", "CSV → warm/cold/follow‑up messages with cadence.", "ref", "/referral", false) }}
-    {{ ui.feature_card("Portfolio Builder", "Generate a hosted portfolio with project briefs.", "folio", "/portfolio", false) }}
-    {{ ui.feature_card("AI Career Agent", "Saves prefs and generates top packs. Deep mode for Pro.", "agent", "/agent", true) }}
-  </div>
-</section>
+</div>
 {% endblock %}

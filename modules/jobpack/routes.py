@@ -1,18 +1,10 @@
-# modules/jobpack/routes.py
-import os, io, json, time, hashlib
-from flask import Blueprint, request, render_template, redirect, url_for, flash, send_file, abort, jsonify, current_app
+import io, json, time, hashlib
+from flask import Blueprint, request, render_template, redirect, url_for, flash, send_file, abort, current_app
 from flask_login import login_required, current_user
-
 from models import db, JobPackReport, Subscription
 from .helpers import fetch_url_text, fast_jobpack_llm, deep_jobpack_llm, build_pdf_bytes
+from limits import is_pro_user, can_consume_free, consume_free, client_ip, free_budget_blocked
 
-# Free-tier guardrails (manual use so Deep doesn't get counted)
-from limits import (
-    is_pro_user, can_consume_free, consume_free,
-    client_ip, free_budget_blocked
-)
-
-# Define the blueprint BEFORE using it
 jobpack_bp = Blueprint("jobpack", __name__)
 
 def is_pro() -> bool:
@@ -22,7 +14,6 @@ def is_pro() -> bool:
 @jobpack_bp.route("", methods=["GET"])
 @login_required
 def index():
-    # Dedicated Job Pack page (form UI)
     return render_template("jobpack_form.html")
 
 @jobpack_bp.route("/generate", methods=["POST"])
@@ -33,40 +24,29 @@ def generate():
     resume = (request.form.get("resume") or "").strip()
     mode = (request.form.get("mode") or "fast").strip().lower()
 
-    # Pro‑gate Deep
     if mode == "deep" and not is_pro():
         flash("Deep mode is Pro only. Upgrade to continue.", "error")
         return redirect(url_for("pricing"))
 
-    # If JD looks like a URL (but not LinkedIn), fetch body text
     if jd.startswith("http"):
         if "linkedin.com" in jd.lower():
             flash("LinkedIn URLs are not supported. Paste JD text.", "error")
             return redirect(url_for("dashboard"))
-        fetched = fetch_url_text(jd)
-        jd_text = fetched if fetched else jd
+        fetched = fetch_url_text(jd); jd_text = fetched if fetched else jd
     else:
         jd_text = jd
-
     if not jd_text:
         flash("Please paste a job description.", "error")
         return redirect(url_for("jobpack.index"))
 
-    # ---------- FREE GUARDRAILS (FAST ONLY) ----------
     if mode != "deep" and not is_pro_user(current_user):
-        # Optional global kill-switch: degrade Free to MOCK
-        if free_budget_blocked():
-            current_app.config["MOCK"] = True
-        # Per-user/day cap
+        if free_budget_blocked(): current_app.config["MOCK"] = True
         ip = client_ip()
         if not can_consume_free(current_user, ip):
-            flash("You've hit the free daily limit (2/day). Upgrade to Pro for unlimited runs.", "error")
+            flash("Free daily limit reached (2/day). Upgrade to Pro for unlimited runs.", "error")
             return redirect(url_for("pricing"))
-        # Count now (pre-charge)
         consume_free(current_user, ip)
-    # -------------------------------------------------
 
-    # ---------- CACHE (FAST ONLY: by JD hash) ----------
     if mode != "deep":
         key = "JDFAST:" + hashlib.sha256(jd_text.encode()).hexdigest()
         ttl = int(current_app.config.get("CACHE_TTL_JD_FAST_SEC", 172800))
@@ -75,28 +55,17 @@ def generate():
         if cached and (time.time() - cached["ts"] < ttl):
             pack = cached["val"]
         else:
-            # Generate pack (helpers handle MOCK vs real)
             pack = fast_jobpack_llm(role, jd_text, resume)
             current_app._jd_cache[key] = {"ts": time.time(), "val": pack}
     else:
         pack = deep_jobpack_llm(role, jd_text, resume)
 
     verdict = pack.get("overall_verdict", {}).get("status", "")
-
-    # Save only for Pro
     report_id = None
     if is_pro():
         try:
-            rec = JobPackReport(
-                user_id=current_user.id,
-                role=role,
-                mode=mode,
-                verdict=verdict,
-                payload_json=json.dumps(pack),
-            )
-            db.session.add(rec)
-            db.session.commit()
-            report_id = rec.id
+            rec = JobPackReport(user_id=current_user.id, role=role, mode=mode, verdict=verdict, payload_json=json.dumps(pack))
+            db.session.add(rec); db.session.commit(); report_id = rec.id
         except Exception:
             db.session.rollback()
 
@@ -117,9 +86,4 @@ def export_pdf(report_id: int):
         abort(403)
     pack = json.loads(rec.payload_json or "{}")
     pdf_bytes = build_pdf_bytes(pack)
-    return send_file(
-        io.BytesIO(pdf_bytes),
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=f"jobpack_{report_id}.pdf",
-    )
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", as_attachment=True, download_name=f"jobpack_{report_id}.pdf")

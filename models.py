@@ -1,4 +1,3 @@
-# career_ai/models.py
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 import datetime as dt
@@ -69,8 +68,8 @@ class OutreachContact(db.Model):
     name = db.Column(db.String(200))
     role = db.Column(db.String(200))
     company = db.Column(db.String(200))
-    email = db.Column(db.String(255), nullable=True)  # contacts-only: keep blank
-    source = db.Column(db.String(100))  # brave|serpapi|google_cse|manual
+    email = db.Column(db.String(255), nullable=True)  # blank for contacts-only
+    source = db.Column(db.String(100))
     notes = db.Column(db.Text)
     public_url = db.Column(db.String(600))
     approx_location = db.Column(db.String(200))
@@ -88,12 +87,11 @@ class ResumeAsset(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     filename = db.Column(db.String(255))
     mime = db.Column(db.String(100))
-    content_text = db.Column(db.Text)  # extracted plain text
+    content_text = db.Column(db.Text)
     persisted = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=dt.datetime.utcnow)
 
 class FreeUsage(db.Model):
-    """Tracks per-user free runs per day and soft per-IP."""
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     ip = db.Column(db.String(64))
