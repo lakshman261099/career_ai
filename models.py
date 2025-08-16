@@ -1,3 +1,4 @@
+# models.py
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 import datetime as dt
@@ -58,8 +59,21 @@ class PortfolioPage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     title = db.Column(db.String(255))
-    slug = db.Column(db.String(255), unique=True)
-    html = db.Column(db.Text)
+    slug = db.Column(db.String(255), unique=True, index=True)
+    about_html = db.Column(db.Text)
+    skills_csv = db.Column(db.Text)            # comma-separated
+    experience_html = db.Column(db.Text)
+    education_html = db.Column(db.Text)
+    links_json = db.Column(db.Text)            # JSON list of {label,url}
+    created_at = db.Column(db.DateTime, default=dt.datetime.utcnow)
+
+class ProjectDetail(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    portfolio_id = db.Column(db.Integer, db.ForeignKey("portfolio_page.id"))
+    title = db.Column(db.String(255))
+    slug = db.Column(db.String(255), unique=True, index=True)
+    html = db.Column(db.Text)                  # full project write-up
     created_at = db.Column(db.DateTime, default=dt.datetime.utcnow)
 
 class OutreachContact(db.Model):
@@ -91,11 +105,13 @@ class ResumeAsset(db.Model):
     persisted = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=dt.datetime.utcnow)
 
-class FreeUsage(db.Model):
+# New per-feature usage table (1/day caps per feature key)
+class FreeFeatureUsage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    feature = db.Column(db.String(50), index=True)  # 'jobpack'|'internships'|'portfolio'
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     ip = db.Column(db.String(64))
-    day = db.Column(db.Date, default=lambda: dt.date.today())
+    day = db.Column(db.Date, default=lambda: dt.date.today(), index=True)
     count = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=dt.datetime.utcnow)
 

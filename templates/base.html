@@ -19,9 +19,7 @@
     [data-theme=dark] body { background:#0b1020; color:#e5e7eb; }
     [data-theme=dark] .glass { background: linear-gradient(135deg, rgba(109,40,217,.3), rgba(15,23,42,.6)); }
     input, select, textarea { background:#fff; color:#0f172a; }
-    [data-theme=dark] input, [data-theme=dark] select, [data-theme=dark] textarea {
-      background:#0f172a; color:#e5e7eb; border-color:#334155;
-    }
+    [data-theme=dark] input, [data-theme=dark] select, [data-theme=dark] textarea { background:#0f172a; color:#e5e7eb; border-color:#334155; }
     pre { white-space: pre-wrap; word-wrap: break-word; }
   </style>
 </head>
@@ -29,11 +27,12 @@
   <header class="p-4 flex justify-between items-center">
     <a href="/" class="font-bold text-xl flex items-center gap-2">
       <span>Career<span class="text-purple-500">AI</span></span>
-      {% if is_pro() %}
-        <span class="text-xs px-2 py-0.5 rounded-full bg-purple-600 text-white">PRO</span>
-      {% endif %}
+      {% if is_pro() %}<span class="text-xs px-2 py-0.5 rounded-full bg-purple-600 text-white">PRO</span>{% endif %}
     </a>
-    <nav class="flex gap-3 items-center text-sm">
+
+    <button id="navToggle" class="md:hidden px-3 py-1 rounded border">☰</button>
+
+    <nav id="navItems" class="hidden md:flex gap-3 items-center text-sm">
       <a href="/pricing" class="underline whitespace-nowrap">Pricing</a>
       <a href="/jobpack" class="underline whitespace-nowrap">Job Pack</a>
       <a href="/internships" class="underline whitespace-nowrap">Internships</a>
@@ -59,6 +58,28 @@
     </nav>
   </header>
 
+  <!-- Mobile dropdown -->
+  <div id="navMobile" class="hidden md:hidden px-4 pb-3 space-y-2">
+    <div class="flex flex-col gap-2 text-sm">
+      <a href="/pricing" class="underline">Pricing</a>
+      <a href="/jobpack" class="underline">Job Pack</a>
+      <a href="/internships" class="underline">Internships</a>
+      <a href="/referral" class="underline">Referrals</a>
+      <a href="/portfolio" class="underline">Portfolio</a>
+      <a href="/agent" class="underline">Agent</a>
+      {% if current_user.is_authenticated %}
+        <a href="/dashboard" class="underline">Dashboard</a>
+        <a href="/settings" class="underline">Settings</a>
+        <a href="/billing/portal" class="underline">Manage subscription</a>
+        <a href="/auth/logout" class="underline">Logout</a>
+      {% else %}
+        <a href="/auth/login" class="underline">Login</a>
+        <a href="/auth/register" class="underline">Get started</a>
+      {% endif %}
+      <button id="themeToggleM" class="px-3 py-1 rounded border w-max">🌓 Theme</button>
+    </div>
+  </div>
+
   <main class="max-w-5xl mx-auto p-4 leading-relaxed">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -72,9 +93,7 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="text-center text-sm text-slate-500 p-8">
-    © {{ year }} CareerAI • <a href="/privacy" class="underline">Privacy</a>
-  </footer>
+  <footer class="text-center text-sm text-slate-500 p-8">© {{ year }} CareerAI • <a href="/privacy" class="underline">Privacy</a></footer>
 
   <script>
     (function(){
@@ -82,9 +101,17 @@
       const saved=localStorage.getItem(k)||'light';
       document.documentElement.setAttribute('data-theme', saved);
       const btn=document.getElementById('themeToggle');
-      if(btn){ btn.onclick=()=>{ const cur=document.documentElement.getAttribute('data-theme'); const next=cur==='light'?'dark':'light'; document.documentElement.setAttribute('data-theme', next); localStorage.setItem(k,next); }; }
+      const btnM=document.getElementById('themeToggleM');
+      const toggle=()=>{ const cur=document.documentElement.getAttribute('data-theme'); const next=cur==='light'?'dark':'light'; document.documentElement.setAttribute('data-theme', next); localStorage.setItem(k,next); };
+      if(btn){ btn.onclick=toggle; } if(btnM){ btnM.onclick=toggle; }
+
       const pb=document.getElementById('profBtn'), pm=document.getElementById('profMenu');
       if(pb && pm){ pb.onclick=()=>pm.classList.toggle('hidden'); window.addEventListener('click', e=>{ if(!pb.contains(e.target) && !pm.contains(e.target)) pm.classList.add('hidden'); }); }
+
+      const navToggle=document.getElementById('navToggle');
+      const navMobile=document.getElementById('navMobile');
+      const navItems=document.getElementById('navItems');
+      if(navToggle){ navToggle.onclick=()=>{ navMobile.classList.toggle('hidden'); }; }
     })();
     window.__confettiNow=function(){ const c=document.createElement('canvas'); c.style.position='fixed'; c.style.inset='0'; c.style.pointerEvents='none'; document.body.appendChild(c);
       const ctx=c.getContext('2d'); c.width=innerWidth; c.height=innerHeight; const pieces=Array.from({length:120},()=>({x:Math.random()*c.width,y:-20,vy:2+Math.random()*4,w:6+Math.random()*6,h:8+Math.random()*12}));

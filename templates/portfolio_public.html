@@ -1,19 +1,79 @@
-{% extends "base.html" %}
-{% block title %}Portfolio – CareerAI{% endblock %}
-{% block content %}
-<h1 class="text-2xl font-semibold mb-4">Portfolio Builder</h1>
-<form method="post" action="/portfolio/save" class="glass rounded p-4 space-y-3">
-  <div>
-    <label class="block text-sm mb-1">Title</label>
-    <input name="title" class="w-full border p-2 rounded" value="{{ (page.title if page else 'My Portfolio') }}" />
-  </div>
-  <div>
-    <label class="block text-sm mb-1">Content (HTML allowed)</label>
-    <textarea name="html" rows="10" class="w-full border p-2 rounded">{{ page.html if page else '<h2>Projects</h2>\n<ul><li>Project A</li><li>Project B</li></ul>' }}</textarea>
-  </div>
-  <button class="px-4 py-2 bg-purple-600 text-white rounded">Save</button>
-  {% if page %}
-    <a class="px-4 py-2 border rounded" target="_blank" href="/portfolio/view/{{ page.slug }}">View public page</a>
-  {% endif %}
-</form>
-{% endblock %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ page.title }} – Portfolio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>html,body{overflow-x:hidden}</style>
+</head>
+<body class="bg-gradient-to-b from-violet-50 to-white">
+  <header class="max-w-5xl mx-auto p-6">
+    <h1 class="text-3xl font-bold">{{ page.title }}</h1>
+    <p class="text-slate-600">A curated portfolio powered by CareerAI.</p>
+  </header>
+
+  <main class="max-w-5xl mx-auto p-6 space-y-6">
+    {% if page.about_html %}
+      <section class="bg-white rounded-2xl shadow p-6">
+        <h2 class="text-xl font-semibold mb-2">About</h2>
+        <article class="prose max-w-none">{{ page.about_html|safe }}</article>
+      </section>
+    {% endif %}
+
+    {% if page.skills_csv %}
+      <section class="bg-white rounded-2xl shadow p-6">
+        <h2 class="text-xl font-semibold mb-2">Skills</h2>
+        <div class="flex flex-wrap gap-2">
+          {% for s in page.skills_csv.split(',') %}
+            <span class="px-3 py-1 rounded-full bg-violet-100 text-violet-700 text-sm">{{ s.strip() }}</span>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% if projects %}
+      <section class="bg-white rounded-2xl shadow p-6">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xl font-semibold">Projects</h2>
+        </div>
+        <div class="grid md:grid-cols-3 gap-4">
+          {% for p in projects %}
+            <a href="/portfolio/project/{{ p.slug }}" class="block border rounded-lg p-4 hover:shadow">
+              <div class="font-semibold">{{ p.title }}</div>
+              <div class="text-xs text-slate-500 mt-1">Click to view details</div>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% if page.experience_html %}
+      <section class="bg-white rounded-2xl shadow p-6">
+        <h2 class="text-xl font-semibold mb-2">Experience</h2>
+        <article class="prose max-w-none">{{ page.experience_html|safe }}</article>
+      </section>
+    {% endif %}
+
+    {% if page.education_html %}
+      <section class="bg-white rounded-2xl shadow p-6">
+        <h2 class="text-xl font-semibold mb-2">Education</h2>
+        <article class="prose max-w-none">{{ page.education_html|safe }}</article>
+      </section>
+    {% endif %}
+
+    {% if links %}
+        <section class="bg-white rounded-2xl shadow p-6">
+            <h2 class="text-xl font-semibold mb-2">Links</h2>
+            <div class="flex flex-wrap gap-3">
+                {% for l in links %}
+                    <a href="{{ l.url }}" target="_blank" class="underline text-violet-700">{{ l.label }}</a>
+                {% endfor %}
+            </div>
+        </section>
+    {% endif %}
+
+  </main>
+
+  <footer class="text-center text-sm text-slate-500 p-8">© {{ (now().year if false else 2025) }} CareerAI</footer>
+</body>
+</html>

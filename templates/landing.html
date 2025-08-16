@@ -5,7 +5,11 @@
   <h1 class="text-3xl font-bold">Your AI hiring manager on campus</h1>
   <p class="text-slate-700 dark:text-slate-300">Job Pack, Internships, Referrals (contacts-only), Portfolio, and an Agent that brings you top-3 daily packs.</p>
   <div class="flex gap-3 flex-wrap">
-    <a href="/auth/register" class="px-5 py-2 rounded bg-purple-600 text-white">Get started</a>
+    {% if current_user.is_authenticated %}
+      <a href="/dashboard" class="px-5 py-2 rounded bg-purple-600 text-white">Get started</a>
+    {% else %}
+      <a href="/auth/register" class="px-5 py-2 rounded bg-purple-600 text-white">Get started</a>
+    {% endif %}
     <a href="/pricing" class="px-5 py-2 rounded border">See pricing</a>
   </div>
 </div>
