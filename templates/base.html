@@ -7,6 +7,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   {% block head %}{% endblock %}
   <style>
+    * { box-sizing: border-box; }
+    html, body { overflow-x: hidden; }
     .glass { background: linear-gradient(135deg, rgba(109,40,217,.6), rgba(168,85,247,.4)); backdrop-filter: blur(8px); }
     .skeleton { position: relative; overflow: hidden; background: #e5e7eb; }
     .skeleton::after{ content:""; position:absolute; inset:0; transform: translateX(-100%);
@@ -16,32 +18,51 @@
     .lock-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background: rgba(2,6,23,.55); color:#fff; font-weight:600; }
     [data-theme=dark] body { background:#0b1020; color:#e5e7eb; }
     [data-theme=dark] .glass { background: linear-gradient(135deg, rgba(109,40,217,.3), rgba(15,23,42,.6)); }
+    input, select, textarea { background:#fff; color:#0f172a; }
+    [data-theme=dark] input, [data-theme=dark] select, [data-theme=dark] textarea {
+      background:#0f172a; color:#e5e7eb; border-color:#334155;
+    }
+    pre { white-space: pre-wrap; word-wrap: break-word; }
   </style>
 </head>
 <body class="min-h-screen">
   <header class="p-4 flex justify-between items-center">
-    <a href="/" class="font-bold text-xl">Career<span class="text-purple-500">AI</span></a>
-    <nav class="flex gap-4 items-center text-sm">
-      <a href="/pricing" class="underline">Pricing</a>
-      <a href="/jobpack" class="underline">Job Pack</a>
-      <a href="/internships" class="underline">Internships</a>
-      <a href="/referral" class="underline">Referrals</a>
-      <a href="/agent" class="underline">Agent</a>
+    <a href="/" class="font-bold text-xl flex items-center gap-2">
+      <span>Career<span class="text-purple-500">AI</span></span>
+      {% if is_pro() %}
+        <span class="text-xs px-2 py-0.5 rounded-full bg-purple-600 text-white">PRO</span>
+      {% endif %}
+    </a>
+    <nav class="flex gap-3 items-center text-sm">
+      <a href="/pricing" class="underline whitespace-nowrap">Pricing</a>
+      <a href="/jobpack" class="underline whitespace-nowrap">Job Pack</a>
+      <a href="/internships" class="underline whitespace-nowrap">Internships</a>
+      <a href="/referral" class="underline whitespace-nowrap">Referrals</a>
+      <a href="/portfolio" class="underline whitespace-nowrap">Portfolio</a>
+      <a href="/agent" class="underline whitespace-nowrap">Agent</a>
+
       {% if current_user.is_authenticated %}
-        <a href="/dashboard" class="underline">Dashboard</a>
-        <a href="/auth/logout" class="px-3 py-1 rounded border">Logout</a>
+        <div class="relative">
+          <button id="profBtn" class="px-3 py-1 rounded border whitespace-nowrap">Account ▾</button>
+          <div id="profMenu" class="hidden absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 border dark:border-slate-700 rounded shadow-lg z-20">
+            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/dashboard">Dashboard</a>
+            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/settings">Settings</a>
+            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/billing/portal">Manage subscription</a>
+            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/auth/logout">Logout</a>
+          </div>
+        </div>
       {% else %}
-        <a href="/auth/login" class="px-3 py-1 rounded border">Login</a>
-        <a href="/auth/register" class="px-3 py-1 rounded bg-purple-600 text-white">Get started</a>
+        <a href="/auth/login" class="px-3 py-1 rounded border whitespace-nowrap">Login</a>
+        <a href="/auth/register" class="px-3 py-1 rounded bg-purple-600 text-white whitespace-nowrap">Get started</a>
       {% endif %}
       <button id="themeToggle" class="px-3 py-1 rounded border">🌓</button>
     </nav>
   </header>
 
-  <main class="max-w-5xl mx-auto p-4">
+  <main class="max-w-5xl mx-auto p-4 leading-relaxed">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="mb-4">
+        <div class="mb-4 space-y-2">
           {% for cat,msg in messages %}
             <div class="p-2 rounded {{ 'bg-red-100 text-red-800' if cat=='error' else 'bg-green-100 text-green-800' }}">{{ msg }}</div>
           {% endfor %}
@@ -52,37 +73,7 @@
   </main>
 
   <footer class="text-center text-sm text-slate-500 p-8">
-    © {{ (namespace(year=none) and caller() ) or (().__class__.__mro__[1] and '') }}{{ (now() if false else '') }}
-    © {{ (cycler().next() if false else '') }}
-    © {{ (loop.index0 if false else '') }}
-    © {{ (config.SOME if false else '') }}
-    © {{ (request and request) and '' }}
-    © {{ (g if false else '') }}
-    © {{ (session if false else '') }}
-    © {{ (url_for if false else '') }}
-    © {{ (get_flashed_messages if false else '') }}
-    © {{ (config if false else '') }}
-    © {{ (current_user if false else '') }}
-    © {{ (dict if false else '') }}
-    © {{ (range if false else '') }}
-    © {{ (lipsum if false else '') }}
-    © {{ (joiner if false else '') }}
-    © {{ (cycler if false else '') }}
-    © {{ (namespace if false else '') }}
-    © {{ (super if false else '') }}
-    © {{ (self if false else '') }}
-    © {{ (none if false else '') }}
-    © {{ (true if false else '') }}
-    © {{ (false if false else '') }}
-    © {{ (env if false else '') }}
-    © {{ (urlize if false else '') }}
-    © {{ (forceescape if false else '') }}
-    © {{ (escape if false else '') }}
-    © {{ (tojson if false else '') }}
-    © {{ (select_autoescape if false else '') }}
-    © {{ (lipsum if false else '') }}
-    <!-- Simpler: hardcode or pass year in context; here's hardcoded: -->
-    © 2025 CareerAI • <a href="/privacy" class="underline">Privacy</a>
+    © {{ year }} CareerAI • <a href="/privacy" class="underline">Privacy</a>
   </footer>
 
   <script>
@@ -91,40 +82,18 @@
       const saved=localStorage.getItem(k)||'light';
       document.documentElement.setAttribute('data-theme', saved);
       const btn=document.getElementById('themeToggle');
-      if(btn){
-        btn.onclick=()=>{
-          const cur=document.documentElement.getAttribute('data-theme');
-          const next=cur==='light'?'dark':'light';
-          document.documentElement.setAttribute('data-theme', next);
-          localStorage.setItem(k,next);
-        };
-      }
+      if(btn){ btn.onclick=()=>{ const cur=document.documentElement.getAttribute('data-theme'); const next=cur==='light'?'dark':'light'; document.documentElement.setAttribute('data-theme', next); localStorage.setItem(k,next); }; }
+      const pb=document.getElementById('profBtn'), pm=document.getElementById('profMenu');
+      if(pb && pm){ pb.onclick=()=>pm.classList.toggle('hidden'); window.addEventListener('click', e=>{ if(!pb.contains(e.target) && !pm.contains(e.target)) pm.classList.add('hidden'); }); }
     })();
-
-    window.__confettiNow=function(){
-      const c=document.createElement('canvas');
-      c.style.position='fixed'; c.style.inset='0'; c.style.pointerEvents='none';
-      document.body.appendChild(c);
-      const ctx=c.getContext('2d'); c.width=innerWidth; c.height=innerHeight;
-      const pieces=Array.from({length:120},()=>({x:Math.random()*c.width,y:-20,vy:2+Math.random()*4,w:6+Math.random()*6,h:8+Math.random()*12}));
-      let t=0; (function draw(){
-        ctx.clearRect(0,0,c.width,c.height);
-        pieces.forEach(p=>{ p.y+=p.vy; p.x+=Math.sin((t+p.y)/20)*1.5; ctx.fillStyle=`hsl(${(t+p.x)%360},80%,60%)`; ctx.fillRect(p.x,p.y,p.w,p.h);});
-        t+=4; if(t<1200) requestAnimationFrame(draw); else c.remove();
-      })();
-    };
-
+    window.__confettiNow=function(){ const c=document.createElement('canvas'); c.style.position='fixed'; c.style.inset='0'; c.style.pointerEvents='none'; document.body.appendChild(c);
+      const ctx=c.getContext('2d'); c.width=innerWidth; c.height=innerHeight; const pieces=Array.from({length:120},()=>({x:Math.random()*c.width,y:-20,vy:2+Math.random()*4,w:6+Math.random()*6,h:8+Math.random()*12}));
+      let t=0; (function draw(){ ctx.clearRect(0,0,c.width,c.height); pieces.forEach(p=>{ p.y+=p.vy; p.x+=Math.sin((t+p.y)/20)*1.5; ctx.fillStyle=`hsl(${(t+p.x)%360},80%,60%)`; ctx.fillRect(p.x,p.y,p.w,p.h);}); t+=4; if(t<1200) requestAnimationFrame(draw); else c.remove(); })(); };
     {% if not is_pro() %}
-      document.querySelectorAll('[data-lock="pro"]').forEach(el=>{
-        el.classList.add('locked');
-        const overlay=document.createElement('div');
-        overlay.className='lock-overlay';
-        overlay.innerHTML='<div class="text-center"><div class="text-lg mb-2">Pro Feature</div><a class="px-3 py-1 rounded bg-purple-600 text-white" href="/pricing">Unlock Pro</a></div>';
-        el.appendChild(overlay);
-      });
+      document.querySelectorAll('[data-lock="pro"]').forEach(el=>{ el.classList.add('locked'); const overlay=document.createElement('div'); overlay.className='lock-overlay';
+        overlay.innerHTML='<div class="text-center"><div class="text-lg mb-2">Pro Feature</div><a class="px-3 py-1 rounded bg-purple-600 text-white" href="/pricing">Unlock Pro</a></div>'; el.appendChild(overlay); });
     {% endif %}
-
-    {% block scripts %}{% endblock %}
   </script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
