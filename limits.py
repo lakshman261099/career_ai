@@ -16,11 +16,18 @@ FEATURE_LIMITS = {
 def is_pro_user(user) -> bool:
     if not user or not getattr(user, "is_authenticated", False):
         return False
-    plan = (getattr(user, "plan", "") or "").lower()
-    if plan.startswith("pro"):
-        return True
-    sub = Subscription.query.filter_by(user_id=user.id, status="active").first()
-    return bool(sub)
+    try:
+        plan = (getattr(user, "plan", "") or "").lower()
+        if plan.startswith("pro"):
+            return True
+        sub = Subscription.query.filter_by(user_id=user.id, status="active").first()
+        return bool(sub)
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return False
 
 def client_ip() -> str:
     xf = request.headers.get("X-Forwarded-For", "")

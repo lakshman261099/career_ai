@@ -16,24 +16,21 @@ def is_pro() -> bool:
 @jobpack_bp.route("", methods=["GET"])
 @login_required
 def index():
-    # Dedicated Job Pack page (form UI)
     return render_template("jobpack_form.html")
 
 @jobpack_bp.route("/generate", methods=["POST"])
 @login_required
-@enforce_free_feature("jobpack")  # Free users: 1 run/day for jobpack; Pro bypasses this.
+@enforce_free_feature("jobpack")  # Free users: 1 run/day; Pro bypass
 def generate():
     role = (request.form.get("role") or "").strip() or "Candidate"
     jd = (request.form.get("jd") or "").strip()
     resume = (request.form.get("resume") or "").strip()
     mode = (request.form.get("mode") or "fast").strip().lower()
 
-    # Pro-gate Deep
     if mode == "deep" and not is_pro():
         flash("Deep mode is Pro only. Upgrade to continue.", "error")
         return redirect(url_for("pricing"))
 
-    # If JD looks like a URL (but not LinkedIn), fetch body text
     if jd.startswith("http"):
         if "linkedin.com" in jd.lower():
             flash("LinkedIn URLs are not supported. Paste JD text.", "error")
@@ -47,7 +44,6 @@ def generate():
         flash("Please paste a job description.", "error")
         return redirect(url_for("jobpack.index"))
 
-    # Generate (FAST cached by JD hash; DEEP live)
     if mode != "deep":
         key = "JDFAST:" + hashlib.sha256(jd_text.encode()).hexdigest()
         ttl = int(current_app.config.get("CACHE_TTL_JD_FAST_SEC", 172800))
@@ -63,17 +59,11 @@ def generate():
         pack = deep_jobpack_llm(role, jd_text, resume)
 
     verdict = pack.get("overall_verdict", {}).get("status", "")
-
-    # Save only for Pro
     report_id = None
     if is_pro():
         try:
             rec = JobPackReport(
-                user_id=current_user.id,
-                role=role,
-                mode=mode,
-                verdict=verdict,
-                payload_json=json.dumps(pack),
+                user_id=current_user.id, role=role, mode=mode, verdict=verdict, payload_json=json.dumps(pack)
             )
             db.session.add(rec)
             db.session.commit()

@@ -1,10 +1,11 @@
 # modules/portfolio/routes.py
-import os, re, unicodedata, json, datetime as dt
+import os, re, unicodedata, json
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
+from openai import OpenAI
+
 from models import db, PortfolioPage, ProjectDetail, ResumeAsset, Subscription
 from limits import enforce_free_feature, is_pro_user
-from openai import OpenAI
 
 portfolio_bp = Blueprint("portfolio", __name__)
 
@@ -64,10 +65,9 @@ Resume:
     except Exception:
         return _mock_projects(count)
 
-    # If parsing fails, return mocks
+    # Fallback parse to mocks on failure
     ideas = _mock_projects(count)
     try:
-        # naive section split
         blocks = [b for b in text.split("\n\n") if b.strip()]
         out=[]
         for b in blocks[:count]:
@@ -132,12 +132,15 @@ def _safe_get_user_page():
     """Be resilient to driver/dialect quirks; never 500 here."""
     try:
         uid = int(current_user.id)
-        # Order to avoid LIMIT bind oddities on some stacks
         q = PortfolioPage.query.filter(PortfolioPage.user_id == uid).order_by(PortfolioPage.created_at.desc())
         page = q.first()
         return page
-    except Exception as e:
+    except Exception:
         current_app.logger.exception("Portfolio fetch failed; continuing without page")
+        try:
+            db.session.rollback()  # clear aborted transaction so later queries work
+        except Exception:
+            pass
         return None
 
 # ---------- routes ----------
@@ -222,7 +225,6 @@ def save():
         flash("Could not save portfolio. Please try again.", "error")
         return redirect(url_for("portfolio.index"))
 
-    # If a project was chosen, generate a ProjectDetail and link it
     if selected_title:
         html = _ai_project_detail(selected_title, resume_text)
         pslug = _slugify(f"{page.slug}-{selected_title}")
