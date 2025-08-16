@@ -11,7 +11,7 @@
     html, body { overflow-x: hidden; }
     .glass { background: linear-gradient(135deg, rgba(109,40,217,.6), rgba(168,85,247,.4)); backdrop-filter: blur(8px); }
     .skeleton { position: relative; overflow: hidden; background: #e5e7eb; }
-    .skeleton::after{ content:""; position:absolute; inset:0; transform: translateX(-100%);
+    .skeleton::after { content:""; position:absolute; inset:0; transform: translateX(-100%);
       background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent); animation: shimmer 1.2s infinite;}
     @keyframes shimmer { 100% { transform: translateX(100%);} }
     .locked { position: relative; filter: blur(2px) grayscale(.2); pointer-events:none; }
@@ -27,7 +27,9 @@
   <header class="p-4 flex justify-between items-center">
     <a href="/" class="font-bold text-xl flex items-center gap-2">
       <span>Career<span class="text-purple-500">AI</span></span>
-      {% if is_pro() %}<span class="text-xs px-2 py-0.5 rounded-full bg-purple-600 text-white">PRO</span>{% endif %}
+      {% if is_pro() %}
+        <span class="text-xs px-2 py-0.5 rounded-full bg-purple-600 text-white">PRO</span>
+      {% endif %}
     </a>
 
     <button id="navToggle" class="md:hidden px-3 py-1 rounded border">☰</button>
@@ -93,34 +95,54 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="text-center text-sm text-slate-500 p-8">© {{ year }} CareerAI • <a href="/privacy" class="underline">Privacy</a></footer>
+  <footer class="text-center text-sm text-slate-500 p-8">
+    © {{ year|default(2025) }} CareerAI • <a href="/privacy" class="underline">Privacy</a>
+  </footer>
 
   <script>
     (function(){
       const k='careerai-theme';
       const saved=localStorage.getItem(k)||'light';
       document.documentElement.setAttribute('data-theme', saved);
+
+      const toggle=()=>{ 
+        const cur=document.documentElement.getAttribute('data-theme'); 
+        const next=cur==='light'?'dark':'light'; 
+        document.documentElement.setAttribute('data-theme', next); 
+        localStorage.setItem(k,next); 
+      };
+
       const btn=document.getElementById('themeToggle');
       const btnM=document.getElementById('themeToggleM');
-      const toggle=()=>{ const cur=document.documentElement.getAttribute('data-theme'); const next=cur==='light'?'dark':'light'; document.documentElement.setAttribute('data-theme', next); localStorage.setItem(k,next); };
-      if(btn){ btn.onclick=toggle; } if(btnM){ btnM.onclick=toggle; }
+      if(btn) btn.onclick=toggle;
+      if(btnM) btnM.onclick=toggle;
 
       const pb=document.getElementById('profBtn'), pm=document.getElementById('profMenu');
-      if(pb && pm){ pb.onclick=()=>pm.classList.toggle('hidden'); window.addEventListener('click', e=>{ if(!pb.contains(e.target) && !pm.contains(e.target)) pm.classList.add('hidden'); }); }
+      if(pb && pm){
+        pb.onclick=()=>pm.classList.toggle('hidden');
+        window.addEventListener('click', e=>{
+          if(!pb.contains(e.target) && !pm.contains(e.target)) pm.classList.add('hidden');
+        });
+      }
 
       const navToggle=document.getElementById('navToggle');
       const navMobile=document.getElementById('navMobile');
-      const navItems=document.getElementById('navItems');
-      if(navToggle){ navToggle.onclick=()=>{ navMobile.classList.toggle('hidden'); }; }
+      if(navToggle) navToggle.onclick=()=>navMobile.classList.toggle('hidden');
     })();
-    window.__confettiNow=function(){ const c=document.createElement('canvas'); c.style.position='fixed'; c.style.inset='0'; c.style.pointerEvents='none'; document.body.appendChild(c);
-      const ctx=c.getContext('2d'); c.width=innerWidth; c.height=innerHeight; const pieces=Array.from({length:120},()=>({x:Math.random()*c.width,y:-20,vy:2+Math.random()*4,w:6+Math.random()*6,h:8+Math.random()*12}));
-      let t=0; (function draw(){ ctx.clearRect(0,0,c.width,c.height); pieces.forEach(p=>{ p.y+=p.vy; p.x+=Math.sin((t+p.y)/20)*1.5; ctx.fillStyle=`hsl(${(t+p.x)%360},80%,60%)`; ctx.fillRect(p.x,p.y,p.w,p.h);}); t+=4; if(t<1200) requestAnimationFrame(draw); else c.remove(); })(); };
+
     {% if not is_pro() %}
-      document.querySelectorAll('[data-lock="pro"]').forEach(el=>{ el.classList.add('locked'); const overlay=document.createElement('div'); overlay.className='lock-overlay';
-        overlay.innerHTML='<div class="text-center"><div class="text-lg mb-2">Pro Feature</div><a class="px-3 py-1 rounded bg-purple-600 text-white" href="/pricing">Unlock Pro</a></div>'; el.appendChild(overlay); });
+    document.addEventListener("DOMContentLoaded", function() {
+      document.querySelectorAll('[data-lock="pro"]').forEach(el=>{
+        el.classList.add('locked');
+        const overlay=document.createElement('div');
+        overlay.className='lock-overlay';
+        overlay.innerHTML='<div class="text-center"><div class="text-lg mb-2">Pro Feature</div><a class="px-3 py-1 rounded bg-purple-600 text-white" href="/pricing">Unlock Pro</a></div>';
+        el.appendChild(overlay);
+      });
+    });
     {% endif %}
   </script>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>
