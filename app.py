@@ -5,6 +5,7 @@ from flask_login import LoginManager, current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, User
 
+# Blueprints
 from modules.auth.routes import auth_bp
 from modules.billing.routes import billing_bp
 from modules.jobpack.routes import jobpack_bp
@@ -25,8 +26,9 @@ def create_app():
     app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB uploads
 
+    # proxy fix for Render
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     is_prod = os.getenv("FLASK_ENV", "production").lower() == "production"
@@ -41,6 +43,7 @@ def create_app():
 
     db.init_app(app)
 
+    # --- Login manager ---
     login_manager = LoginManager()
     login_manager.login_view = "auth.login"
     login_manager.login_message_category = "warning"
@@ -53,6 +56,7 @@ def create_app():
         except Exception:
             return None
 
+    # --- Inject globals into Jinja ---
     @app.context_processor
     def inject_globals():
         from flask import url_for
@@ -74,11 +78,6 @@ def create_app():
                         return max(0, int(getattr(current_user, fld) or 0))
                     except Exception:
                         pass
-            if hasattr(current_user, "credits") and not any(hasattr(current_user, n) for n in ("paid_credits", "gold_balance", "pro_credits")):
-                try:
-                    return max(0, int(getattr(current_user, "credits") or 0))
-                except Exception:
-                    return 0
             return 0
 
         def pro_coins():
@@ -112,6 +111,7 @@ def create_app():
 
         return dict(is_pro=is_pro, free_coins=free_coins, pro_coins=pro_coins, feature_links=feature_links)
 
+    # --- Register blueprints ---
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(billing_bp, url_prefix="/billing")
     app.register_blueprint(jobpack_bp, url_prefix="/jobpack")
@@ -123,6 +123,7 @@ def create_app():
     if HAVE_AGENT:
         app.register_blueprint(agent_bp, url_prefix="/agent")
 
+    # --- Routes ---
     @app.route("/")
     def home():
         return render_template("landing.html")
@@ -146,8 +147,8 @@ def create_app():
 
     return app
 
-# >>> expose a module-level WSGI app for Gunicorn
-app = create_app()
 
+# Local dev only
 if __name__ == "__main__":
+    app = create_app()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8000")), debug=True)
