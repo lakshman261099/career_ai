@@ -1,76 +1,75 @@
+from __future__ import annotations
+import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
+from sqlalchemy import create_engine, pool
 from alembic import context
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
+# Logging
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-from app import create_app
-from models import db
+def _normalize(url: str) -> str:
+    if not url:
+        return url
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql://") and "+psycopg" not in url:
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
 
-app = create_app()
-config.set_main_option("sqlalchemy.url", app.config["SQLALCHEMY_DATABASE_URI"])
+# 1) Prefer DATABASE_URL from environment (Render style)
+db_url = os.getenv("DATABASE_URL", "").strip()
 
-target_metadata = db.metadata
+target_metadata = None
 
+# 2) If not set, fall back to Flask's config
+if not db_url:
+    from app import create_app
+    from models import db
+    flask_app = create_app()
+    db_url = flask_app.config["SQLALCHEMY_DATABASE_URI"]
+    target_metadata = db.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
+# 3) If target_metadata still None (we didn't import models yet), import now
+if target_metadata is None:
+    from models import db
+    target_metadata = db.metadata
+
+db_url = _normalize(db_url)
+
+# Ensure Alembic knows the URL (for offline mode)
+config.set_main_option("sqlalchemy.url", db_url)
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
-    url = config.get_main_option("sqlalchemy.url")
+    """Run migrations without a DB connection."""
     context.configure(
-        url=url,
+        url=db_url,
         target_metadata=target_metadata,
         literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
+        compare_type=True,
+        compare_server_default=True,
+        render_as_batch=True,  # safer for SQLite
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-
-    with connectable.connect() as connection:
+    """Run migrations with a live DB connection."""
+    engine = create_engine(db_url, poolclass=pool.NullPool, future=True)
+    with engine.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            compare_server_default=True,
+            render_as_batch=True,
         )
-
         with context.begin_transaction():
             context.run_migrations()
 

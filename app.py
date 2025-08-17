@@ -69,8 +69,8 @@ def create_app():
 
     # Init DB
     db.init_app(app)
-    with app.app_context():
-        db.create_all()
+    #with app.app_context():
+     #   db.create_all()
 
     # Tenant resolver
     @app.before_request
