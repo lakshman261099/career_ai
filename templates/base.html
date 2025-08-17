@@ -1,121 +1,104 @@
+{% set FREE = free_coins() %}
+{% set PRO = pro_coins() %}
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" class="h-full">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>{% block title %}{{ tenant_name() }} · Career OS{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}CareerAI{% endblock %}</title>
+
   <script src="https://cdn.tailwindcss.com"></script>
-  {% block head %}{% endblock %}
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/glass.css') }}"/>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter','ui-sans-serif','system-ui'] },
+          colors: { brand:{500:'#f97316',600:'#ea580c'}, ink:{900:'#0b0f1a',800:'#0f172a'} },
+          boxShadow:{glow:'0 8px 30px rgba(249,115,22,.25)'}
+        }
+      }
+    }
+  </script>
   <style>
-    * { box-sizing: border-box; }
-    html, body { overflow-x: hidden; }
-    .glass { background: linear-gradient(135deg, rgba(109,40,217,.6), rgba(168,85,247,.4)); backdrop-filter: blur(8px); }
-    .skeleton { position: relative; overflow: hidden; background: #e5e7eb; }
-    .skeleton::after{ content:""; position:absolute; inset:0; transform: translateX(-100%);
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent); animation: shimmer 1.2s infinite;}
-    @keyframes shimmer { 100% { transform: translateX(100%);} }
-    .locked { position: relative; filter: blur(2px) grayscale(.2); pointer-events:none; }
-    .lock-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background: rgba(2,6,23,.55); color:#fff; font-weight:600; }
-    [data-theme=dark] body { background:#0b1020; color:#e5e7eb; }
-    [data-theme=dark] .glass { background: linear-gradient(135deg, rgba(109,40,217,.3), rgba(15,23,42,.6)); }
-    input, select, textarea { background:#fff; color:#0f172a; }
-    [data-theme=dark] input, [data-theme=dark] select, [data-theme=dark] textarea { background:#0f172a; color:#e5e7eb; border-color:#334155; }
-    pre { white-space: pre-wrap; word-wrap: break-word; }
+    /* Inline tiny noise pattern (no external file needed) */
+    body::before{
+      content:"";
+      position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.18; mix-blend:soft-light;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='table' tableValues='0 0.15'/></feComponentTransfer></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+      background-size: 220px 220px;
+    }
   </style>
 </head>
-<body class="min-h-screen">
-  <header class="p-4 flex justify-between items-center">
-    <a href="/" class="font-bold text-xl flex items-center gap-2">
-      <span>{{ tenant_name() }}</span>
-      {% if is_pro() %}<span class="text-xs px-2 py-0.5 rounded-full bg-purple-600 text-white">PRO</span>{% endif %}
-    </a>
+<body class="h-full bg-ink-900 text-white">
+  <div class="fixed inset-0 -z-10 bg-gradient-to-br from-ink-900 via-ink-800 to-black"></div>
 
-    <button id="navToggle" class="md:hidden px-3 py-1 rounded border">☰</button>
-
-    <nav id="navItems" class="hidden md:flex gap-3 items-center text-sm">
-      <a href="/jobpack" class="underline whitespace-nowrap">Job Pack</a>
-      <a href="/internships" class="underline whitespace-nowrap">Internships</a>
-      <a href="/portfolio" class="underline whitespace-nowrap">Portfolio</a>
-      <a href="/referral" class="underline whitespace-nowrap">Referral Trainer</a>
-      <a href="/skillmapper" class="underline whitespace-nowrap">Skill Mapper</a>
-      <a href="/settings/pricing" class="underline whitespace-nowrap">Pricing</a>
-
-      {% if current_user.is_authenticated %}
-        <div class="relative">
-          <button id="profBtn" class="px-3 py-1 rounded border whitespace-nowrap">Account ▾</button>
-          <div id="profMenu" class="hidden absolute right-0 mt-2 w-52 bg-white dark:bg-slate-900 border dark:border-slate-700 rounded shadow-lg z-20">
-            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/dashboard">Dashboard</a>
-            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/resume">Resume hub</a>
-            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/settings/profile">Profile & Credits</a>
-            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/billing/subscribe">Get/Manage Pro</a>
-            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/auth/logout">Logout</a>
+  <header class="sticky top-0 z-40">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
+      <div class="glass-bar rounded-2xl px-4 py-3 flex items-center justify-between">
+        <a href="{{ url_for('home') }}" class="flex items-center gap-2">
+          <div class="h-9 w-9 rounded-xl bg-brand-500/20 backdrop-blur border border-white/10 grid place-items-center shadow-glow">
+            <span class="text-xl font-extrabold">C</span>
           </div>
+          <span class="font-semibold tracking-wide">CareerAI</span>
+          {% if is_pro() %}<span class="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-white/10 border border-white/20 uppercase tracking-widest">Pro</span>{% endif %}
+        </a>
+
+        <nav class="hidden md:flex items-center gap-6 text-sm">
+          <a class="nav-link" href="{{ feature_links.resume }}">Resume</a>
+          <a class="nav-link" href="{{ feature_links.portfolio }}">Portfolio</a>
+          <a class="nav-link" href="{{ feature_links.internships }}">Internships</a>
+          <a class="nav-link" href="{{ feature_links.referrals }}">Referrals</a>
+          <a class="nav-link" href="{{ feature_links.jobpack }}">Job Packs</a>
+          <a class="nav-link" href="{{ feature_links.pricing }}">Pricing</a>
+        </nav>
+
+        <div class="flex items-center gap-3">
+          <!-- Compact coins pill -->
+          <div class="coins-pill">
+            <span class="coins-chip">🪙 {{ FREE }}</span>
+            <span class="coins-sep">|</span>
+            <span class="coins-chip">⭐ {{ PRO }}</span>
+          </div>
+
+          {% if current_user.is_authenticated %}
+            <a href="{{ feature_links.settings }}" class="btn-ghost hidden sm:inline">Settings</a>
+            <a href="{{ url_for('auth.logout') }}" class="btn-primary">Logout</a>
+          {% else %}
+            <a href="{{ url_for('auth.login') }}" class="btn-primary">Login</a>
+          {% endif %}
         </div>
-      {% else %}
-        <a href="/auth/login" class="px-3 py-1 rounded border whitespace-nowrap">Login</a>
-        <a href="/auth/register" class="px-3 py-1 rounded bg-purple-600 text-white whitespace-nowrap">Get started</a>
-      {% endif %}
-      <button id="themeToggle" class="px-3 py-1 rounded border">🌓</button>
-    </nav>
+      </div>
+    </div>
   </header>
 
-  <!-- Mobile dropdown -->
-  <div id="navMobile" class="hidden md:hidden px-4 pb-3 space-y-2">
-    <div class="flex flex-col gap-2 text-sm">
-      <a href="/jobpack" class="underline">Job Pack</a>
-      <a href="/internships" class="underline">Internships</a>
-      <a href="/portfolio" class="underline">Portfolio</a>
-      <a href="/referral" class="underline">Referral Trainer</a>
-      <a href="/skillmapper" class="underline">Skill Mapper</a>
-      <a href="/settings/pricing" class="underline">Pricing</a>
-      {% if current_user.is_authenticated %}
-        <a href="/dashboard" class="underline">Dashboard</a>
-        <a href="/resume" class="underline">Resume hub</a>
-        <a href="/settings/profile" class="underline">Profile & Credits</a>
-        <a href="/billing/subscribe" class="underline">Get/Manage Pro</a>
-        <a href="/auth/logout" class="underline">Logout</a>
-      {% else %}
-        <a href="/auth/login" class="underline">Login</a>
-        <a href="/auth/register" class="underline">Get started</a>
-      {% endif %}
-      <button id="themeToggleM" class="px-3 py-1 rounded border w-max">🌓 Theme</button>
-    </div>
-  </div>
-
-  <main class="max-w-5xl mx-auto p-4 leading-relaxed">
+  <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-4 space-y-2">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="mb-4 space-y-2">
-          {% for cat,msg in messages %}
-            <div class="p-2 rounded {{ 'bg-red-100 text-red-800' if cat=='error' else 'bg-green-100 text-green-800' }}">{{ msg }}</div>
-          {% endfor %}
-        </div>
+        {% for cat, msg in messages %}
+          <div class="glass-card border-l-4 {% if cat in ['danger','error'] %}border-red-400{% elif cat == 'warning' %}border-yellow-400{% elif cat=='success' %}border-emerald-400{% else %}border-brand-500{% endif %} px-4 py-3">
+            <p class="text-sm">{{ msg }}</p>
+          </div>
+        {% endfor %}
       {% endif %}
     {% endwith %}
+  </div>
+
+  <main class="relative z-0">
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="text-center text-sm text-slate-500 p-8">© {{ year() }} {{ tenant_name() }} • <a href="/privacy" class="underline">Privacy</a></footer>
-
-  <script>
-    (function(){
-      const k='careerai-theme';
-      const saved=localStorage.getItem(k)||'light';
-      document.documentElement.setAttribute('data-theme', saved);
-      const btn=document.getElementById('themeToggle');
-      const btnM=document.getElementById('themeToggleM');
-      const toggle=()=>{ const cur=document.documentElement.getAttribute('data-theme'); const next=cur==='light'?'dark':'light'; document.documentElement.setAttribute('data-theme', next); localStorage.setItem(k,next); };
-      if(btn){ btn.onclick=toggle; } if(btnM){ btnM.onclick=toggle; }
-      const pb=document.getElementById('profBtn'), pm=document.getElementById('profMenu');
-      if(pb && pm){ pb.onclick=()=>pm.classList.toggle('hidden'); window.addEventListener('click', e=>{ if(!pb.contains(e.target) && !pm.contains(e.target)) pm.classList.add('hidden'); }); }
-      const navToggle=document.getElementById('navToggle');
-      const navMobile=document.getElementById('navMobile');
-      if(navToggle){ navToggle.onclick=()=>{ navMobile.classList.toggle('hidden'); }; }
-    })();
-    window.__confettiNow=function(){ const c=document.createElement('canvas'); c.style.position='fixed'; c.style.inset='0'; c.style.pointerEvents='none'; document.body.appendChild(c);
-      const ctx=c.getContext('2d'); c.width=innerWidth; c.height=innerHeight; const pieces=Array.from({length:120},()=>({x:Math.random()*c.width,y:-20,vy:2+Math.random()*4,w:6+Math.random()*6,h:8+Math.random()*12}));
-      let t=0; (function draw(){ ctx.clearRect(0,0,c.width,c.height); pieces.forEach(p=>{ p.y+=p.vy; p.x+=Math.sin((t+p.y)/20)*1.5; ctx.fillStyle=`hsl(${(t+p.x)%360},80%,60%)`; ctx.fillRect(p.x,p.y,p.w,p.h);}); t+=4; if(t<1200) requestAnimationFrame(draw); else c.remove(); })(); };
-  </script>
-  {% block scripts %}{% endblock %}
+  <footer class="mt-16 mb-10">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="glass-bar rounded-2xl p-4 text-xs text-white/60 flex items-center justify-between">
+        <span>© 2025 CareerAI</span>
+        <span>Flask · SQLAlchemy · Glass UI</span>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

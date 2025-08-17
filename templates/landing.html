@@ -1,40 +1,97 @@
 {% extends "base.html" %}
-{% block title %}{{ tenant_name() }} — Launch your career{% endblock %}
+{% block title %}CareerAI — Launch Your Career{% endblock %}
 {% block content %}
-<section class="rounded-2xl glass text-white p-8 mt-4">
-  <h1 class="text-3xl md:text-4xl font-bold mb-2">Career OS for Students</h1>
-  <p class="opacity-90">Upload your resume once. Get job match insights, internship outcomes, a public portfolio, referral messages, and role suggestions.</p>
-  <div class="mt-4 flex gap-2">
-    <a href="/auth/register" class="px-4 py-2 rounded bg-white text-purple-700 font-semibold">Get started</a>
-    <a href="/settings/pricing" class="px-4 py-2 rounded border border-white/70">See pricing</a>
+<section class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-10 lg:pt-16">
+  <!-- HERO -->
+  <div class="space-y-6 max-w-3xl">
+    <h1 class="text-4xl md:text-5xl font-extrabold leading-tight">
+      Tools to win internships and jobs.
+    </h1>
+    <p class="text-white/70">
+      Five focused features. Use Free coins to try, unlock Pro when you’re ready.
+    </p>
+    <div class="flex gap-3">
+      <a href="{{ feature_links.resume }}" class="btn-primary">Start with Resume</a>
+      <a href="{{ feature_links.internships }}" class="btn-ghost">Explore Internships</a>
+    </div>
   </div>
-</section>
 
-<section class="grid md:grid-cols-2 gap-6 mt-8">
-  <div class="p-5 rounded-lg border">
-    <h3 class="font-semibold text-lg">1) Resume Hub</h3>
-    <p>Upload once. We parse and maintain your skills, experience, projects — reusable across all tools.</p>
-  </div>
-  <div class="p-5 rounded-lg border">
-    <h3 class="font-semibold text-lg">2) Job Pack</h3>
-    <p><span class="font-medium">Fast:</span> quick ATS score + gaps. <span class="font-medium">Deep:</span> full ATS, bullets, cover note, Q&A, PDF.</p>
-  </div>
-  <div class="p-5 rounded-lg border">
-    <h3 class="font-semibold text-lg">3) Internship Analyzer</h3>
-    <p><span class="font-medium">Fast:</span> what you’ll learn snapshot. <span class="font-medium">Deep:</span> expectations, growth path, missing skills vs resume.</p>
-  </div>
-  <div class="p-5 rounded-lg border">
-    <h3 class="font-semibold text-lg">4) Portfolio Builder</h3>
-    <p><span class="font-medium">Free:</span> simple public page. <span class="font-medium">Pro:</span> 3 project ideas (choose), rich portfolio + optional project page.</p>
-  </div>
-  <div class="p-5 rounded-lg border">
-    <h3 class="font-semibold text-lg">5) Referral Trainer</h3>
-    <p>Titles to target + “why you” bullets + 3 message templates. No scraping, safe by design.</p>
-  </div>
-</section>
+  <!-- FEATURES -->
+  <div class="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Resume Critique -->
+    <a href="{{ feature_links.resume }}" class="feature-card group">
+      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_resume.svg') }}" alt="Resume" />
+      <h3 class="feature-title mt-3">Resume Critique</h3>
+      <div class="tier">
+        <span class="tier-badge free">Free</span>
+        <ul class="tier-list"><li>Quick ATS check</li><li>2 keyword tips</li></ul>
+      </div>
+      <div class="tier">
+        <span class="tier-badge pro">Pro</span>
+        <ul class="tier-list"><li>Deep rewrite with metrics</li><li>Role-specific variants</li></ul>
+      </div>
+      <span class="feature-cta">Open →</span>
+    </a>
 
-<section class="mt-8 p-5 rounded-lg border">
-  <h3 class="font-semibold text-lg">Coming soon: AI Agent</h3>
-  <p>Job alerts and tracking with safe sources. Launching with partner feeds — no scraping.</p>
+    <!-- Portfolio Builder -->
+    <a href="{{ feature_links.portfolio }}" class="feature-card group">
+      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_portfolio.svg') }}" alt="Portfolio" />
+      <h3 class="feature-title mt-3">Portfolio Builder</h3>
+      <div class="tier">
+        <span class="tier-badge free">Free</span>
+        <ul class="tier-list"><li>One project outline</li><li>Share as draft</li></ul>
+      </div>
+      <div class="tier">
+        <span class="tier-badge pro">Pro</span>
+        <ul class="tier-list"><li>3 project writeups</li><li>Publish with custom slug</li></ul>
+      </div>
+      <span class="feature-cta">Open →</span>
+    </a>
+
+    <!-- Internship Finder -->
+    <a href="{{ feature_links.internships }}" class="feature-card group">
+      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_internships.svg') }}" alt="Internships" />
+      <h3 class="feature-title mt-3">Internship Finder</h3>
+      <div class="tier">
+        <span class="tier-badge free">Free</span>
+        <ul class="tier-list"><li>Top matches by skills</li><li>Learning links</li></ul>
+      </div>
+      <div class="tier">
+        <span class="tier-badge pro">Pro</span>
+        <ul class="tier-list"><li>Priority sorting</li><li>Save & export</li></ul>
+      </div>
+      <span class="feature-cta">Open →</span>
+    </a>
+
+    <!-- Referral Trainer -->
+    <a href="{{ feature_links.referrals }}" class="feature-card group">
+      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_referrals.svg') }}" alt="Referrals" />
+      <h3 class="feature-title mt-3">Referral Trainer</h3>
+      <div class="tier">
+        <span class="tier-badge free">Free</span>
+        <ul class="tier-list"><li>Warm + cold draft</li><li>Follow-up reminder</li></ul>
+      </div>
+      <div class="tier">
+        <span class="tier-badge pro">Pro</span>
+        <ul class="tier-list"><li>Tone tuning</li><li>Contact notes & saves</li></ul>
+      </div>
+      <span class="feature-cta">Open →</span>
+    </a>
+
+    <!-- Job Pack Reports -->
+    <a href="{{ feature_links.jobpack }}" class="feature-card group md:col-span-2 lg:col-span-1">
+      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_jobpack.svg') }}" alt="Job Packs" />
+      <h3 class="feature-title mt-3">Job Pack Reports</h3>
+      <div class="tier">
+        <span class="tier-badge free">Free</span>
+        <ul class="tier-list"><li>One quick summary</li></ul>
+      </div>
+      <div class="tier">
+        <span class="tier-badge pro">Pro</span>
+        <ul class="tier-list"><li>Detailed scoring</li><li>PDF/CSV export</li></ul>
+      </div>
+      <span class="feature-cta">Open →</span>
+    </a>
+  </div>
 </section>
 {% endblock %}
