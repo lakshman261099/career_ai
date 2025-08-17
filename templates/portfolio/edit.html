@@ -1,20 +1,38 @@
 {% extends "base.html" %}
+{% block title %}Portfolio — CareerAI{% endblock %}
 {% block content %}
-<h2 class="text-2xl font-bold mb-3">Portfolio Builder</h2>
-<form method="post" class="space-y-3 max-w-2xl">
-  <input name="title" value="{{ page.title if page else '' }}" placeholder="Portfolio title" class="w-full p-2 rounded border" required>
-  <textarea name="about" placeholder="About (HTML ok)" class="w-full p-2 rounded border h-40">{{ page.about_html if page else '' }}</textarea>
-  <input name="skills" value="{{ page.skills_csv if page else '' }}" placeholder="Skills (comma separated)" class="w-full p-2 rounded border">
-  <select name="mode" class="w-full p-2 rounded border">
-    <option value="fast">Fast (uses silver)</option>
-    <option value="deep">Deep (uses gold)</option>
-  </select>
-  <button class="px-4 py-2 rounded bg-purple-600 text-white">Save & Publish</button>
-</form>
-{% if page %}
-  <div class="mt-4">
-    <p class="text-sm">Public link:</p>
-    <a class="underline text-purple-600" href="/portfolio/{{ page.slug }}" target="_blank">/portfolio/{{ page.slug }}</a>
+<section class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-10">
+  <div class="grid md:grid-cols-3 gap-6">
+    <div class="md:col-span-2">
+      <div class="glass-panel rounded-3xl p-6">
+        <h2 class="text-2xl font-bold">Your Portfolio</h2>
+        {% if page %}
+          <p class="text-white/70 mt-1">Last edited: {{ page.updated_at or page.created_at }}</p>
+          <div class="mt-6 flex items-center gap-3">
+            <!-- point to your real edit endpoint if different -->
+            <a class="btn-primary" href="{{ url_for('portfolio.index') }}">Edit</a>
+            {% if show_public %}
+              <a class="btn-ghost" href="{{ public_url }}" target="_blank" rel="noopener">View Public</a>
+            {% else %}
+              <span class="text-xs text-white/60">Publish to generate a public link.</span>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="text-white/70 mt-2">No portfolio yet. Create one to get a shareable link.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <aside>
+      <div class="glass-card rounded-2xl p-5">
+        <h3 class="font-semibold mb-2">Tips</h3>
+        <ul class="list-disc list-inside text-white/70 text-sm space-y-1">
+          <li>Show 3–5 projects with outcomes.</li>
+          <li>Add metrics and before/after visuals.</li>
+          <li>Keep it one-click readable.</li>
+        </ul>
+      </div>
+    </aside>
   </div>
-{% endif %}
+</section>
 {% endblock %}

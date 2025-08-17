@@ -3,10 +3,8 @@ from datetime import timedelta
 from flask import Flask, render_template, url_for, redirect, request, flash
 from flask_login import LoginManager, current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
-
 from models import db, User
 
-# Blueprints you already have
 from modules.auth.routes import auth_bp
 from modules.billing.routes import billing_bp
 from modules.jobpack.routes import jobpack_bp
@@ -15,7 +13,6 @@ from modules.portfolio.routes import portfolio_bp
 from modules.referral.routes import referral_bp
 from modules.resume.routes import resume_bp
 from modules.settings.routes import settings_bp
-# If you don't have agent_bp, comment the next two lines
 try:
     from modules.agent.routes import agent_bp
     HAVE_AGENT = True
@@ -25,16 +22,13 @@ except Exception:
 
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
-
     app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
-    # Render proxy
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
-    # Cookies/session (login persistence)
     is_prod = os.getenv("FLASK_ENV", "production").lower() == "production"
     app.config.update(
         SESSION_COOKIE_SAMESITE="Lax",
@@ -43,7 +37,6 @@ def create_app():
         REMEMBER_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SECURE=is_prod,
         REMEMBER_COOKIE_SECURE=is_prod,
-        REMEMBER_COOKIE_DURATION=timedelta(days=30),
     )
 
     db.init_app(app)
@@ -62,6 +55,9 @@ def create_app():
 
     @app.context_processor
     def inject_globals():
+        from flask import url_for
+        from flask_login import current_user
+
         def has_endpoint(name):
             try:
                 url_for(name)
@@ -116,7 +112,6 @@ def create_app():
 
         return dict(is_pro=is_pro, free_coins=free_coins, pro_coins=pro_coins, feature_links=feature_links)
 
-    # Register blueprints
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(billing_bp, url_prefix="/billing")
     app.register_blueprint(jobpack_bp, url_prefix="/jobpack")
@@ -151,7 +146,8 @@ def create_app():
 
     return app
 
+# >>> expose a module-level WSGI app for Gunicorn
+app = create_app()
 
 if __name__ == "__main__":
-    app = create_app()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8000")), debug=True)

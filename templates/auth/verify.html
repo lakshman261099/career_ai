@@ -1,10 +1,23 @@
 {% extends "base.html" %}
+{% block title %}Verify Account — CareerAI{% endblock %}
 {% block content %}
-<h2 class="text-2xl font-bold mb-4">Verify your email</h2>
-<form method="post" class="space-y-3 max-w-md">
-  <input name="email" type="email" required placeholder="Email" class="w-full p-2 rounded border">
-  <input name="otp" type="text" required placeholder="OTP" class="w-full p-2 rounded border">
-  <button class="px-4 py-2 rounded bg-purple-600 text-white">Verify</button>
-</form>
-<p class="text-sm text-slate-500 mt-2">We sent a 6-digit OTP to your email. (In dev, it prints to console.)</p>
+<section class="mx-auto max-w-md px-4 sm:px-6 lg:px-8 pt-12">
+  <div class="glass-panel rounded-3xl p-6">
+    <h1 class="text-2xl font-bold mb-6">Verify your account</h1>
+    <form method="post" class="space-y-4">
+      <div>
+        <label class="block text-sm text-white/70 mb-1">Email</label>
+        <input type="email" name="email" class="input" required />
+      </div>
+      <div>
+        <label class="block text-sm text-white/70 mb-1">Verification code</label>
+        <input type="text" name="code" class="input" required />
+      </div>
+      <button class="btn-primary w-full">Verify</button>
+      <p class="text-xs text-white/60 mt-3">
+        Paste the code you received via email. Once verified, you can log in.
+      </p>
+    </form>
+  </div>
+</section>
 {% endblock %}
