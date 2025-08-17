@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-2xl font-bold mb-3">Portfolio Builder</h2>
+<form method="post" class="space-y-3 max-w-2xl">
+  <input name="title" value="{{ page.title if page else '' }}" placeholder="Portfolio title" class="w-full p-2 rounded border" required>
+  <textarea name="about" placeholder="About (HTML ok)" class="w-full p-2 rounded border h-40">{{ page.about_html if page else '' }}</textarea>
+  <input name="skills" value="{{ page.skills_csv if page else '' }}" placeholder="Skills (comma separated)" class="w-full p-2 rounded border">
+  <select name="mode" class="w-full p-2 rounded border">
+    <option value="fast">Fast (uses silver)</option>
+    <option value="deep">Deep (uses gold)</option>
+  </select>
+  <button class="px-4 py-2 rounded bg-purple-600 text-white">Save & Publish</button>
+</form>
+{% if page %}
+  <div class="mt-4">
+    <p class="text-sm">Public link:</p>
+    <a class="underline text-purple-600" href="/portfolio/{{ page.slug }}" target="_blank">/portfolio/{{ page.slug }}</a>
+  </div>
+{% endif %}
+{% endblock %}

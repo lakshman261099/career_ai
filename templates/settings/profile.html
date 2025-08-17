@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-2xl font-bold mb-2">Profile & Credits</h2>
+<div class="grid md:grid-cols-3 gap-4">
+  <div class="p-4 rounded border">
+    <h3 class="font-semibold mb-2">Account</h3>
+    <p>Email: {{ user.email }}</p>
+    <p>Status: {% if is_pro() %}<span class="text-green-600 font-semibold">Pro</span>{% else %}Free{% endif %}</p>
+  </div>
+  <div class="p-4 rounded border">
+    <h3 class="font-semibold mb-2">Credits</h3>
+    <p>Silver (🥈): <span class="font-semibold">{{ user.silver_balance }}</span></p>
+    <p>Gold (🥇): <span class="font-semibold">{{ user.gold_balance }}</span></p>
+    <a href="/billing/subscribe" class="inline-block mt-2 px-3 py-1 rounded bg-purple-600 text-white">Get / Manage Pro</a>
+  </div>
+  <div class="p-4 rounded border">
+    <h3 class="font-semibold mb-2">Resume Hub</h3>
+    <p>Upload or update your resume to power all tools.</p>
+    <a class="underline" href="/resume">Open Resume Hub</a>
+  </div>
+</div>
+{% endblock %}

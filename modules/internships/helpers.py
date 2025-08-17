@@ -1,72 +1,103 @@
-import os, random
-from typing import List, Dict
+# modules/internships/helpers.py
+import os, json, textwrap
+from typing import Dict, Any
+from flask import current_app
+from models import db, UsageLedger
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
 
-MOCK = os.getenv("MOCK", "1") == "1"
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+def _client():
+    if current_app.config.get("MOCK", True): return None
+    if not os.getenv("OPENAI_API_KEY"): return None
+    return OpenAI()
 
-def mock_fetch(role: str, location: str) -> List[Dict]:
-    # existing simple mock list; adjust as needed
-    seeds = [
-        {"title": f"{role} Intern", "company": "Acme Labs", "source": "MockBoard", "link": "https://example.com/role1"},
-        {"title": f"Junior {role}", "company": "Nova Co", "source": "MockBoard", "link": "https://example.com/role2"},
-        {"title": f"{role} Summer", "company": "Luma", "source": "MockBoard", "link": "https://example.com/role3"},
-    ]
-    for j in seeds:
-        j["match_score"] = random.randint(62, 92)
-        j["missing_skills"] = random.sample(["SQL","Python","Tableau","React","APIs","Docker","Figma"], k=3)
-    return seeds
-
-def compute_learning_links(missing_skills: List[str]) -> List[Dict]:
-    links = []
-    for s in missing_skills:
-        q = s.lower().replace(" ", "-")
-        links.append({"skill": s, "link": f"https://www.freecodecamp.org/learn/{q}"})
-    return links
-
-def deep_enrich_jobs(jobs: List[Dict], role: str) -> List[Dict]:
-    """
-    Adds premium fields:
-      - portfolio_suggestions (list)
-      - outreach_blurb (str)
-    Uses MOCK unless MOCK=0 and OPENAI_API_KEY present.
-    """
-    if MOCK or not os.getenv("OPENAI_API_KEY"):
-        for j in jobs:
-            j["portfolio_suggestions"] = [
-                "Rebuild a feature that mirrors the product",
-                "KPI dashboard using public dataset",
-                "Mini ETL → report with insights"
-            ]
-            j["outreach_blurb"] = "I built a role-aligned mini‑project; happy to share a 2‑min Loom."
-        return jobs
-
-    # Real LLM enrichment
+def _log_usage(user_id:int, feature:str, mode:str, model:str, usage:Dict[str,int], spend:Dict[str,int]|None=None):
     try:
-        from openai import OpenAI
-        client = OpenAI()
-        for j in jobs:
-            prompt = f"""Act as a hiring manager. For a {role} intern job titled "{j.get('title','')}" at {j.get('company','')}:
-- Give 3 short portfolio mini-project ideas (actionable).
-- Give a one-line outreach blurb for LinkedIn DM.
-Return JSON with keys: portfolio_suggestions (list of strings), outreach_blurb (string)."""
-            resp = client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[{"role":"user","content":prompt}],
-                temperature=0.4,
-            )
-            content = resp.choices[0].message.content.strip()
-            # naive parse; tolerate non-JSON by fallback
-            import json
-            try:
-                data = json.loads(content)
-            except Exception:
-                data = {"portfolio_suggestions": [], "outreach_blurb": content[:240]}
-            j["portfolio_suggestions"] = data.get("portfolio_suggestions", [])[:3]
-            j["outreach_blurb"] = data.get("outreach_blurb","")[:240]
-        return jobs
+        rec = UsageLedger(
+            user_id=user_id, feature=feature, mode=mode, model=model,
+            prompt_tokens=usage.get("prompt_tokens",0),
+            completion_tokens=usage.get("completion_tokens",0),
+            total_tokens=usage.get("total_tokens",0),
+            silver_spent=(spend or {}).get("silver",0),
+            gold_spent=(spend or {}).get("gold",0),
+        )
+        db.session.add(rec); db.session.commit()
     except Exception:
-        # fail-safe: still return something
-        for j in jobs:
-            j["portfolio_suggestions"] = ["Small feature clone", "Public KPI dashboard", "Mini ETL + report"]
-            j["outreach_blurb"] = "Built a mini‑project aligned to this role—can share highlights."
-        return jobs
+        db.session.rollback()
+
+def _sys_fast():
+    return (
+        "You are CareerBoost Internship Analyzer (FAST). Return JSON only: "
+        "{ benefits (3-5 bullets: what student will learn), required_skills (3-6), suggested_prep (2-3 quick links), summary (2-3 sentences) }."
+    )
+
+def _sys_deep():
+    return (
+        "You are CareerBoost Internship Analyzer (DEEP). Return JSON only with: "
+        "overview (4-6 sentences), expectations (bullets), growth_path (bullets), "
+        "skills_gain (bullets), gaps_vs_resume (3-5), learning_plan (3-5 links with label+url), summary (2-3 sentences). "
+        "No markdown. Plain JSON."
+    )
+
+def analyze_fast(jd_text:str, resume_text:str, user_id:int|None=None, spend:Dict[str,int]|None=None)->Dict[str,Any]:
+    if current_app.config.get("MOCK", True) or _client() is None:
+        return {
+            "benefits":["Real-world teamwork","Practical Python","Basic dashboards"],
+            "required_skills":["Python","SQL","Collaboration"],
+            "suggested_prep":["https://mode.com/sql-tutorial","https://pandas.pydata.org/"],
+            "summary":"Good entry-level exposure with measurable learning."
+        }
+    model=current_app.config.get("OPENAI_MODEL_FAST","gpt-4o-mini")
+    cli=_client()
+    resp=cli.chat.completions.create(
+        model=model,
+        messages=[{"role":"system","content":_sys_fast()},
+                  {"role":"user","content":f"Internship description:\n{jd_text}\n\nResume snippet:\n{resume_text}\nReturn JSON."}],
+        temperature=0.4, max_tokens=4000
+    )
+    content=resp.choices[0].message.content.strip()
+    try:
+        data=json.loads(content)
+    except Exception:
+        data={"error":"LLM returned non-JSON","raw":content}
+    if user_id:
+        _log_usage(user_id,"internships","fast",model,{
+            "prompt_tokens": resp.usage.prompt_tokens,
+            "completion_tokens": resp.usage.completion_tokens,
+            "total_tokens": resp.usage.total_tokens
+        }, spend)
+    return data
+
+def analyze_deep(jd_text:str, resume_text:str, user_id:int|None=None, spend:Dict[str,int]|None=None)->Dict[str,Any]:
+    if current_app.config.get("MOCK", True) or _client() is None:
+        return {
+            "overview":"You will work with analytics and product stakeholders to build measurable outcomes.",
+            "expectations":["Own small tasks","Communicate clearly","Ship weekly progress"],
+            "growth_path":["From intern to junior analyst","Own one metric area","Lead a tiny project"],
+            "skills_gain":["SQL fluency","Data storytelling","Experiment basics"],
+            "gaps_vs_resume":["Experiment design","Visualization polish"],
+            "learning_plan":[{"label":"AB testing intro","url":"https://experiment.guide"}],
+            "summary":"Strong fit if you close 1-2 gaps quickly."
+        }
+    model=current_app.config.get("OPENAI_MODEL_DEEP","gpt-4o")
+    cli=_client()
+    resp=cli.chat.completions.create(
+        model=model,
+        messages=[{"role":"system","content":_sys_deep()},
+                  {"role":"user","content":f"Internship description:\n{jd_text}\n\nResume snippet:\n{resume_text}\nReturn JSON only."}],
+        temperature=0.35, max_tokens=9000
+    )
+    content=resp.choices[0].message.content.strip()
+    try:
+        data=json.loads(content)
+    except Exception:
+        data={"error":"LLM returned non-JSON","raw":content}
+    if user_id:
+        _log_usage(user_id,"internships","deep",model,{
+            "prompt_tokens": resp.usage.prompt_tokens,
+            "completion_tokens": resp.usage.completion_tokens,
+            "total_tokens": resp.usage.total_tokens
+        }, spend)
+    return data

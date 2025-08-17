@@ -1,96 +1,27 @@
-# modules/jobpack/routes.py
-import os, io, json, time, hashlib
-from flask import Blueprint, request, render_template, redirect, url_for, flash, send_file, abort
+from flask import Blueprint, render_template, request, current_app, flash
 from flask_login import login_required, current_user
-from models import db, JobPackReport, Subscription
-from .helpers import fetch_url_text, fast_jobpack_llm, deep_jobpack_llm, build_pdf_bytes
-from limits import enforce_free_feature
-from flask import current_app
+from models import db, JobPackReport, UsageLedger
+from limits import enforce_free_feature, spend_coins
+import datetime as dt
 
-jobpack_bp = Blueprint("jobpack", __name__)
+jobpack_bp = Blueprint("jobpack", __name__, template_folder="../../templates")
 
-def is_pro() -> bool:
-    sub = Subscription.query.filter_by(user_id=current_user.id).first()
-    return bool(sub and sub.status == "active")
-
-@jobpack_bp.route("", methods=["GET"])
+@jobpack_bp.route("/", methods=["GET","POST"])
 @login_required
-def index():
-    return render_template("jobpack_form.html")
-
-@jobpack_bp.route("/generate", methods=["POST"])
-@login_required
-@enforce_free_feature("jobpack")  # Free users: 1 run/day; Pro bypass
-def generate():
-    role = (request.form.get("role") or "").strip() or "Candidate"
-    jd = (request.form.get("jd") or "").strip()
-    resume = (request.form.get("resume") or "").strip()
-    mode = (request.form.get("mode") or "fast").strip().lower()
-
-    if mode == "deep" and not is_pro():
-        flash("Deep mode is Pro only. Upgrade to continue.", "error")
-        return redirect(url_for("pricing"))
-
-    if jd.startswith("http"):
-        if "linkedin.com" in jd.lower():
-            flash("LinkedIn URLs are not supported. Paste JD text.", "error")
-            return redirect(url_for("dashboard"))
-        fetched = fetch_url_text(jd)
-        jd_text = fetched if fetched else jd
-    else:
-        jd_text = jd
-
-    if not jd_text:
-        flash("Please paste a job description.", "error")
-        return redirect(url_for("jobpack.index"))
-
-    if mode != "deep":
-        key = "JDFAST:" + hashlib.sha256(jd_text.encode()).hexdigest()
-        ttl = int(current_app.config.get("CACHE_TTL_JD_FAST_SEC", 172800))
-        if not hasattr(current_app, "_jd_cache"):
-            current_app._jd_cache = {}
-        cached = current_app._jd_cache.get(key)
-        if cached and (time.time() - cached["ts"] < ttl):
-            pack = cached["val"]
-        else:
-            pack = fast_jobpack_llm(role, jd_text, resume)
-            current_app._jd_cache[key] = {"ts": time.time(), "val": pack}
-    else:
-        pack = deep_jobpack_llm(role, jd_text, resume)
-
-    verdict = pack.get("overall_verdict", {}).get("status", "")
-    report_id = None
-    if is_pro():
-        try:
-            rec = JobPackReport(
-                user_id=current_user.id, role=role, mode=mode, verdict=verdict, payload_json=json.dumps(pack)
-            )
-            db.session.add(rec)
-            db.session.commit()
-            report_id = rec.id
-        except Exception:
-            db.session.rollback()
-
-    return render_template("jobpack_view.html", pack=pack, report_id=report_id)
-
-@jobpack_bp.route("/view/<int:report_id>")
-@login_required
-def view(report_id: int):
-    rec = JobPackReport.query.filter_by(id=report_id, user_id=current_user.id).first_or_404()
-    pack = json.loads(rec.payload_json or "{}")
-    return render_template("jobpack_view.html", pack=pack, report_id=rec.id)
-
-@jobpack_bp.route("/export_pdf/<int:report_id>")
-@login_required
-def export_pdf(report_id: int):
-    rec = JobPackReport.query.filter_by(id=report_id, user_id=current_user.id).first_or_404()
-    if rec.mode == "deep" and not is_pro():
-        abort(403)
-    pack = json.loads(rec.payload_json or "{}")
-    pdf_bytes = build_pdf_bytes(pack)
-    return send_file(
-        io.BytesIO(pdf_bytes),
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=f"jobpack_{report_id}.pdf",
-    )
+@enforce_free_feature("jobpack")
+def run_jobpack():
+    if request.method=="POST":
+        role = request.form.get("role","")
+        mode = request.form.get("mode","fast")
+        ok,msg,spend = spend_coins(current_user,"jobpack",mode)
+        if not ok:
+            flash(msg,"error")
+            return render_template("jobpack/run.html")
+        # MOCK output
+        if current_app.config["MOCK"]:
+            result={"ats_score":80,"suggested_skills":["Python","Flask"],"interview_q":["Tell me about Flask?"],"links":["https://flask.palletsprojects.com/"]}
+            r=JobPackReport(user_id=current_user.id, role=role, mode=mode, verdict="ok", payload_json=str(result))
+            db.session.add(r); db.session.commit()
+            return render_template("jobpack/result.html", result=result)
+        # TODO: OpenAI call
+    return render_template("jobpack/run.html")

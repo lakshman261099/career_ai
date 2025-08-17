@@ -1,16 +1,40 @@
 {% extends "base.html" %}
-{% block title %}CareerAI – Get Hired Faster{% endblock %}
+{% block title %}{{ tenant_name() }} — Launch your career{% endblock %}
 {% block content %}
-<div class="glass rounded-2xl p-8 space-y-3">
-  <h1 class="text-3xl font-bold">Your AI hiring manager on campus</h1>
-  <p class="text-slate-700 dark:text-slate-300">Job Pack, Internships, Referrals (contacts-only), Portfolio, and an Agent that brings you top-3 daily packs.</p>
-  <div class="flex gap-3 flex-wrap">
-    {% if current_user.is_authenticated %}
-      <a href="/dashboard" class="px-5 py-2 rounded bg-purple-600 text-white">Get started</a>
-    {% else %}
-      <a href="/auth/register" class="px-5 py-2 rounded bg-purple-600 text-white">Get started</a>
-    {% endif %}
-    <a href="/pricing" class="px-5 py-2 rounded border">See pricing</a>
+<section class="rounded-2xl glass text-white p-8 mt-4">
+  <h1 class="text-3xl md:text-4xl font-bold mb-2">Career OS for Students</h1>
+  <p class="opacity-90">Upload your resume once. Get job match insights, internship outcomes, a public portfolio, referral messages, and role suggestions.</p>
+  <div class="mt-4 flex gap-2">
+    <a href="/auth/register" class="px-4 py-2 rounded bg-white text-purple-700 font-semibold">Get started</a>
+    <a href="/settings/pricing" class="px-4 py-2 rounded border border-white/70">See pricing</a>
   </div>
-</div>
+</section>
+
+<section class="grid md:grid-cols-2 gap-6 mt-8">
+  <div class="p-5 rounded-lg border">
+    <h3 class="font-semibold text-lg">1) Resume Hub</h3>
+    <p>Upload once. We parse and maintain your skills, experience, projects — reusable across all tools.</p>
+  </div>
+  <div class="p-5 rounded-lg border">
+    <h3 class="font-semibold text-lg">2) Job Pack</h3>
+    <p><span class="font-medium">Fast:</span> quick ATS score + gaps. <span class="font-medium">Deep:</span> full ATS, bullets, cover note, Q&A, PDF.</p>
+  </div>
+  <div class="p-5 rounded-lg border">
+    <h3 class="font-semibold text-lg">3) Internship Analyzer</h3>
+    <p><span class="font-medium">Fast:</span> what you’ll learn snapshot. <span class="font-medium">Deep:</span> expectations, growth path, missing skills vs resume.</p>
+  </div>
+  <div class="p-5 rounded-lg border">
+    <h3 class="font-semibold text-lg">4) Portfolio Builder</h3>
+    <p><span class="font-medium">Free:</span> simple public page. <span class="font-medium">Pro:</span> 3 project ideas (choose), rich portfolio + optional project page.</p>
+  </div>
+  <div class="p-5 rounded-lg border">
+    <h3 class="font-semibold text-lg">5) Referral Trainer</h3>
+    <p>Titles to target + “why you” bullets + 3 message templates. No scraping, safe by design.</p>
+  </div>
+</section>
+
+<section class="mt-8 p-5 rounded-lg border">
+  <h3 class="font-semibold text-lg">Coming soon: AI Agent</h3>
+  <p>Job alerts and tracking with safe sources. Launching with partner feeds — no scraping.</p>
+</section>
 {% endblock %}

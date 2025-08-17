@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>{% block title %}CareerAI{% endblock %}</title>
+  <title>{% block title %}{{ tenant_name() }} · Career OS{% endblock %}</title>
   <script src="https://cdn.tailwindcss.com"></script>
   {% block head %}{% endblock %}
   <style>
@@ -11,7 +11,7 @@
     html, body { overflow-x: hidden; }
     .glass { background: linear-gradient(135deg, rgba(109,40,217,.6), rgba(168,85,247,.4)); backdrop-filter: blur(8px); }
     .skeleton { position: relative; overflow: hidden; background: #e5e7eb; }
-    .skeleton::after { content:""; position:absolute; inset:0; transform: translateX(-100%);
+    .skeleton::after{ content:""; position:absolute; inset:0; transform: translateX(-100%);
       background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent); animation: shimmer 1.2s infinite;}
     @keyframes shimmer { 100% { transform: translateX(100%);} }
     .locked { position: relative; filter: blur(2px) grayscale(.2); pointer-events:none; }
@@ -26,29 +26,28 @@
 <body class="min-h-screen">
   <header class="p-4 flex justify-between items-center">
     <a href="/" class="font-bold text-xl flex items-center gap-2">
-      <span>Career<span class="text-purple-500">AI</span></span>
-      {% if is_pro() %}
-        <span class="text-xs px-2 py-0.5 rounded-full bg-purple-600 text-white">PRO</span>
-      {% endif %}
+      <span>{{ tenant_name() }}</span>
+      {% if is_pro() %}<span class="text-xs px-2 py-0.5 rounded-full bg-purple-600 text-white">PRO</span>{% endif %}
     </a>
 
     <button id="navToggle" class="md:hidden px-3 py-1 rounded border">☰</button>
 
     <nav id="navItems" class="hidden md:flex gap-3 items-center text-sm">
-      <a href="/pricing" class="underline whitespace-nowrap">Pricing</a>
       <a href="/jobpack" class="underline whitespace-nowrap">Job Pack</a>
       <a href="/internships" class="underline whitespace-nowrap">Internships</a>
-      <a href="/referral" class="underline whitespace-nowrap">Referrals</a>
       <a href="/portfolio" class="underline whitespace-nowrap">Portfolio</a>
-      <a href="/agent" class="underline whitespace-nowrap">Agent</a>
+      <a href="/referral" class="underline whitespace-nowrap">Referral Trainer</a>
+      <a href="/skillmapper" class="underline whitespace-nowrap">Skill Mapper</a>
+      <a href="/settings/pricing" class="underline whitespace-nowrap">Pricing</a>
 
       {% if current_user.is_authenticated %}
         <div class="relative">
           <button id="profBtn" class="px-3 py-1 rounded border whitespace-nowrap">Account ▾</button>
-          <div id="profMenu" class="hidden absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 border dark:border-slate-700 rounded shadow-lg z-20">
+          <div id="profMenu" class="hidden absolute right-0 mt-2 w-52 bg-white dark:bg-slate-900 border dark:border-slate-700 rounded shadow-lg z-20">
             <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/dashboard">Dashboard</a>
-            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/settings">Settings</a>
-            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/billing/portal">Manage subscription</a>
+            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/resume">Resume hub</a>
+            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/settings/profile">Profile & Credits</a>
+            <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/billing/subscribe">Get/Manage Pro</a>
             <a class="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800" href="/auth/logout">Logout</a>
           </div>
         </div>
@@ -63,16 +62,17 @@
   <!-- Mobile dropdown -->
   <div id="navMobile" class="hidden md:hidden px-4 pb-3 space-y-2">
     <div class="flex flex-col gap-2 text-sm">
-      <a href="/pricing" class="underline">Pricing</a>
       <a href="/jobpack" class="underline">Job Pack</a>
       <a href="/internships" class="underline">Internships</a>
-      <a href="/referral" class="underline">Referrals</a>
       <a href="/portfolio" class="underline">Portfolio</a>
-      <a href="/agent" class="underline">Agent</a>
+      <a href="/referral" class="underline">Referral Trainer</a>
+      <a href="/skillmapper" class="underline">Skill Mapper</a>
+      <a href="/settings/pricing" class="underline">Pricing</a>
       {% if current_user.is_authenticated %}
         <a href="/dashboard" class="underline">Dashboard</a>
-        <a href="/settings" class="underline">Settings</a>
-        <a href="/billing/portal" class="underline">Manage subscription</a>
+        <a href="/resume" class="underline">Resume hub</a>
+        <a href="/settings/profile" class="underline">Profile & Credits</a>
+        <a href="/billing/subscribe" class="underline">Get/Manage Pro</a>
         <a href="/auth/logout" class="underline">Logout</a>
       {% else %}
         <a href="/auth/login" class="underline">Login</a>
@@ -95,54 +95,27 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="text-center text-sm text-slate-500 p-8">
-    © {{ year|default(2025) }} CareerAI • <a href="/privacy" class="underline">Privacy</a>
-  </footer>
+  <footer class="text-center text-sm text-slate-500 p-8">© {{ year() }} {{ tenant_name() }} • <a href="/privacy" class="underline">Privacy</a></footer>
 
   <script>
     (function(){
       const k='careerai-theme';
       const saved=localStorage.getItem(k)||'light';
       document.documentElement.setAttribute('data-theme', saved);
-
-      const toggle=()=>{ 
-        const cur=document.documentElement.getAttribute('data-theme'); 
-        const next=cur==='light'?'dark':'light'; 
-        document.documentElement.setAttribute('data-theme', next); 
-        localStorage.setItem(k,next); 
-      };
-
       const btn=document.getElementById('themeToggle');
       const btnM=document.getElementById('themeToggleM');
-      if(btn) btn.onclick=toggle;
-      if(btnM) btnM.onclick=toggle;
-
+      const toggle=()=>{ const cur=document.documentElement.getAttribute('data-theme'); const next=cur==='light'?'dark':'light'; document.documentElement.setAttribute('data-theme', next); localStorage.setItem(k,next); };
+      if(btn){ btn.onclick=toggle; } if(btnM){ btnM.onclick=toggle; }
       const pb=document.getElementById('profBtn'), pm=document.getElementById('profMenu');
-      if(pb && pm){
-        pb.onclick=()=>pm.classList.toggle('hidden');
-        window.addEventListener('click', e=>{
-          if(!pb.contains(e.target) && !pm.contains(e.target)) pm.classList.add('hidden');
-        });
-      }
-
+      if(pb && pm){ pb.onclick=()=>pm.classList.toggle('hidden'); window.addEventListener('click', e=>{ if(!pb.contains(e.target) && !pm.contains(e.target)) pm.classList.add('hidden'); }); }
       const navToggle=document.getElementById('navToggle');
       const navMobile=document.getElementById('navMobile');
-      if(navToggle) navToggle.onclick=()=>navMobile.classList.toggle('hidden');
+      if(navToggle){ navToggle.onclick=()=>{ navMobile.classList.toggle('hidden'); }; }
     })();
-
-    {% if not is_pro() %}
-    document.addEventListener("DOMContentLoaded", function() {
-      document.querySelectorAll('[data-lock="pro"]').forEach(el=>{
-        el.classList.add('locked');
-        const overlay=document.createElement('div');
-        overlay.className='lock-overlay';
-        overlay.innerHTML='<div class="text-center"><div class="text-lg mb-2">Pro Feature</div><a class="px-3 py-1 rounded bg-purple-600 text-white" href="/pricing">Unlock Pro</a></div>';
-        el.appendChild(overlay);
-      });
-    });
-    {% endif %}
+    window.__confettiNow=function(){ const c=document.createElement('canvas'); c.style.position='fixed'; c.style.inset='0'; c.style.pointerEvents='none'; document.body.appendChild(c);
+      const ctx=c.getContext('2d'); c.width=innerWidth; c.height=innerHeight; const pieces=Array.from({length:120},()=>({x:Math.random()*c.width,y:-20,vy:2+Math.random()*4,w:6+Math.random()*6,h:8+Math.random()*12}));
+      let t=0; (function draw(){ ctx.clearRect(0,0,c.width,c.height); pieces.forEach(p=>{ p.y+=p.vy; p.x+=Math.sin((t+p.y)/20)*1.5; ctx.fillStyle=`hsl(${(t+p.x)%360},80%,60%)`; ctx.fillRect(p.x,p.y,p.w,p.h);}); t+=4; if(t<1200) requestAnimationFrame(draw); else c.remove(); })(); };
   </script>
-
   {% block scripts %}{% endblock %}
 </body>
 </html>

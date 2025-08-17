@@ -1,42 +1,53 @@
-# modules/billing/routes.py
-import os
-from flask import Blueprint, request, redirect, url_for, flash, current_app
+import stripe, os
+from flask import Blueprint, current_app, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-import stripe
-from models import db, Subscription
+from models import db, Subscription, User
 
-billing_bp = Blueprint("billing", __name__)
+billing_bp = Blueprint("billing", __name__, template_folder="../../templates")
 
-@billing_bp.post("/checkout")
+@billing_bp.route("/subscribe")
 @login_required
-def checkout():
+def subscribe():
     stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-    price = request.form.get("plan")  # "pro_monthly" | "pro_yearly"
-    price_id = os.getenv("STRIPE_PRICE_PRO_MONTHLY") if price == "pro_monthly" else os.getenv("STRIPE_PRICE_PRO_YEARLY")
-    if not stripe.api_key or not price_id:
-        flash("Stripe is not configured.", "error"); return redirect(url_for("pricing"))
-    session = stripe.checkout.Session.create(
-        mode="subscription",
-        line_items=[{"price": price_id, "quantity": 1}],
-        success_url=request.url_root.strip("/") + url_for("dashboard"),
-        cancel_url=request.url_root.strip("/") + url_for("pricing"),
-        customer_email=current_user.email
-    )
-    return redirect(session.url, code=303)
+    price_id = os.getenv("STRIPE_PRICE_PRO_MONTHLY")
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer_email=current_user.email,
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=url_for("settings.profile", _external=True),
+            cancel_url=url_for("settings.pricing", _external=True),
+        )
+        return redirect(session.url)
+    except Exception as e:
+        flash(f"Stripe error: {e}","error")
+        return redirect(url_for("settings.pricing"))
 
-@billing_bp.get("/portal")
-@login_required
-def portal():
+@billing_bp.route("/webhook", methods=["POST"])
+def webhook():
     stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-    if not stripe.api_key:
-        flash("Stripe is not configured.", "error"); return redirect(url_for("settings.page"))
-    # Ensure a subscription exists; otherwise show pricing
-    sub = Subscription.query.filter_by(user_id=current_user.id).order_by(Subscription.current_period_end.desc()).first()
-    if not sub or not sub.stripe_customer_id:
-        flash("No subscription found. Choose a plan.", "error")
-        return redirect(url_for("pricing"))
-    session = stripe.billing_portal.Session.create(
-        customer=sub.stripe_customer_id,
-        return_url=request.url_root.strip("/") + url_for("settings.page")
-    )
-    return redirect(session.url, code=303)
+    payload = request.data
+    sig = request.headers.get("Stripe-Signature")
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig, os.getenv("STRIPE_WEBHOOK_SECRET")
+        )
+    except Exception as e:
+        return str(e),400
+
+    if event["type"]=="checkout.session.completed":
+        email = event["data"]["object"].get("customer_email")
+        if email:
+            u = User.query.filter_by(email=email).first()
+            if u:
+                # mark pro
+                sub = Subscription.query.filter_by(user_id=u.id).first()
+                if not sub:
+                    sub = Subscription(user_id=u.id, plan="pro", status="active")
+                    db.session.add(sub)
+                else:
+                    sub.status="active"
+                    sub.plan="pro"
+                u.plan="pro"
+                db.session.commit()
+    return "ok"

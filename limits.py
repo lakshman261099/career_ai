@@ -1,81 +1,79 @@
-# limits.py
 import datetime as dt
 from functools import wraps
-from typing import Optional, Callable
-from flask import current_app, request, jsonify
+from flask import current_app, request, redirect, url_for, flash
 from flask_login import current_user
-from sqlalchemy import and_
-from models import db, FreeFeatureUsage, Subscription
+from models import db, FreeUsage, User, Subscription
 
-FEATURE_LIMITS = {
-    "jobpack": 1,
-    "internships": 1,
-    "portfolio": 1,
-}
-
-def is_pro_user(user) -> bool:
-    if not user or not getattr(user, "is_authenticated", False):
+# --- Pro check ---
+def is_pro_user(user: User) -> bool:
+    if not user or not user.is_authenticated:
         return False
-    try:
-        plan = (getattr(user, "plan", "") or "").lower()
-        if plan.startswith("pro"):
-            return True
-        sub = Subscription.query.filter_by(user_id=user.id, status="active").first()
-        return bool(sub)
-    except Exception:
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        return False
+    if (user.plan or "").lower().startswith("pro"):
+        return True
+    sub = Subscription.query.filter_by(user_id=user.id, status="active").first()
+    return bool(sub)
 
-def client_ip() -> str:
-    xf = request.headers.get("X-Forwarded-For", "")
-    if xf: return xf.split(",")[0].strip()
-    return (request.remote_addr or "0.0.0.0").strip()
-
-def _usage_row(feature: str, user_id: Optional[int], ip: str, day: dt.date):
-    return FreeFeatureUsage.query.filter(and_(
-        FreeFeatureUsage.feature==feature,
-        FreeFeatureUsage.user_id==user_id,
-        FreeFeatureUsage.ip==ip,
-        FreeFeatureUsage.day==day
-    )).first()
-
-def can_consume_feature(feature: str, user, ip: str) -> bool:
-    limit = int(FEATURE_LIMITS.get(feature, 1))
-    today = dt.date.today()
-    uid = user.id if user and getattr(user, "is_authenticated", False) else None
-    row = _usage_row(feature, uid, ip, today)
-    count = row.count if row else 0
-    return count < limit
-
-def consume_feature(feature: str, user, ip: str) -> None:
-    today = dt.date.today()
-    uid = user.id if user and getattr(user, "is_authenticated", False) else None
-    row = _usage_row(feature, uid, ip, today)
-    if not row:
-        row = FreeFeatureUsage(feature=feature, user_id=uid, ip=ip, day=today, count=0)
-        db.session.add(row)
-    row.count += 1
-    db.session.commit()
-
-def free_budget_blocked() -> bool:
-    return str(current_app.config.get("FREE_KILLSWITCH","0")) == "1"
-
-def enforce_free_feature(feature: str, error_code: int = 429) -> Callable:
-    """Use on FREE endpoints that consume one per-day run for the given feature."""
-    def _outer(fn):
+# --- Free guardrail: per-feature per-day count ---
+def enforce_free_feature(feature_name: str):
+    def deco(fn):
         @wraps(fn)
-        def _inner(*args, **kwargs):
+        def wrapper(*args, **kwargs):
             if is_pro_user(current_user):
                 return fn(*args, **kwargs)
-            if free_budget_blocked():
-                current_app.config["MOCK"] = True
-            ip = client_ip()
-            if not can_consume_feature(feature, current_user, ip):
-                return jsonify({"error": f"Free daily limit for {feature} reached (1/day). Upgrade to Pro for unlimited."}), error_code
-            consume_feature(feature, current_user, ip)
+            # must be verified to use free runs
+            if not current_user.is_verified:
+                flash("Please verify your email to use free features.", "error")
+                return redirect(url_for("settings.profile"))
+            limit = int(current_app.config.get("FREE_RUNS_PER_FEATURE_PER_DAY", 1))
+            today = dt.date.today()
+            fu = FreeUsage.query.filter_by(user_id=current_user.id, feature=feature_name, ymd=today).first()
+            if not fu:
+                fu = FreeUsage(user_id=current_user.id, feature=feature_name, ymd=today, count=0)
+                db.session.add(fu); db.session.commit()
+            if fu.count >= limit:
+                flash("Daily free limit reached for this feature. Upgrade to Pro for more runs.", "error")
+                return redirect(url_for("settings.pricing"))
+            # increment now (pre-charge)
+            fu.count += 1
+            db.session.commit()
             return fn(*args, **kwargs)
-        return _inner
-    return _outer
+        return wrapper
+    return deco
+
+# --- Coins (silver/gold) ---
+
+COIN_COSTS = {
+    # feature: {mode: ("silver"|"gold"|None, amount)}
+    "jobpack": {"fast": ("silver", 50), "deep": ("gold", 500)},
+    "portfolio": {"fast": ("silver", 100), "deep": ("gold", 700)},
+    "internships": {"fast": ("silver", 50), "deep": ("gold", 400)},
+    "skillmapper": {"deep": ("gold", 600)},
+    "referral": {"free": (None, 0)},
+}
+
+def spend_coins(user: User, feature: str, mode: str) -> (bool, str, dict):
+    """
+    Deducts coins if enabled. Returns (ok, err_msg, spend_record)
+    spend_record = {"silver": x, "gold": y}
+    """
+    if not current_app.config.get("CREDITS_ENABLED", True):
+        return True, "", {"silver":0,"gold":0}
+    cost_map = COIN_COSTS.get(feature, {})
+    coin_spec = cost_map.get(mode)
+    if not coin_spec:
+        # nothing to charge (e.g., referral free)
+        return True, "", {"silver":0,"gold":0}
+    coin_type, amount = coin_spec
+    if coin_type == "silver":
+        if user.silver_balance < amount:
+            return False, "Not enough silver credits.", {"silver":0,"gold":0}
+        user.silver_balance -= amount
+        db.session.commit()
+        return True, "", {"silver":amount,"gold":0}
+    if coin_type == "gold":
+        if user.gold_balance < amount:
+            return False, "Not enough gold credits. Buy a pack or upgrade.", {"silver":0,"gold":0}
+        user.gold_balance -= amount
+        db.session.commit()
+        return True, "", {"silver":0,"gold":amount}
+    return True, "", {"silver":0,"gold":0}

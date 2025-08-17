@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-2xl font-bold mb-4">Verify your email</h2>
+<form method="post" class="space-y-3 max-w-md">
+  <input name="email" type="email" required placeholder="Email" class="w-full p-2 rounded border">
+  <input name="otp" type="text" required placeholder="OTP" class="w-full p-2 rounded border">
+  <button class="px-4 py-2 rounded bg-purple-600 text-white">Verify</button>
+</form>
+<p class="text-sm text-slate-500 mt-2">We sent a 6-digit OTP to your email. (In dev, it prints to console.)</p>
+{% endblock %}

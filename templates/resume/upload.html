@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-2xl font-bold mb-3">Resume Hub</h2>
+<form method="post" enctype="multipart/form-data" class="space-y-3 max-w-xl">
+  <input type="file" name="resume" accept=".pdf,.txt,.docx" required class="w-full p-2 rounded border">
+  <button class="px-4 py-2 rounded bg-purple-600 text-white">Upload</button>
+</form>
+{% if asset %}
+  <div class="mt-6 p-4 rounded border">
+    <h3 class="font-semibold">Latest resume</h3>
+    <p class="text-sm text-slate-500">{{ asset.filename }} — {{ asset.created_at }}</p>
+    <details class="mt-2">
+      <summary class="cursor-pointer underline">Preview extracted text</summary>
+      <pre class="text-sm mt-2">{{ asset.content_text[:4000] }}{% if asset.content_text|length > 4000 %}…{% endif %}</pre>
+    </details>
+  </div>
+{% endif %}
+{% endblock %}

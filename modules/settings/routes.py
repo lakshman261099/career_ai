@@ -1,12 +1,15 @@
-# modules/settings/routes.py
 from flask import Blueprint, render_template
 from flask_login import login_required, current_user
-from models import Subscription
+from limits import is_pro_user
 
-settings_bp = Blueprint("settings", __name__)
+settings_bp = Blueprint("settings", __name__, template_folder="../../templates")
 
-@settings_bp.get("/")
+@settings_bp.route("/profile")
 @login_required
-def page():
-    sub = Subscription.query.filter_by(user_id=current_user.id).order_by(Subscription.current_period_end.desc()).first()
-    return render_template("settings.html", sub=sub)
+def profile():
+    return render_template("settings/profile.html", user=current_user)
+
+@settings_bp.route("/pricing")
+@login_required
+def pricing():
+    return render_template("settings/pricing.html", user=current_user, is_pro=is_pro_user(current_user))
