@@ -5,7 +5,7 @@ from flask_login import LoginManager, current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, User
 
-# Blueprints
+# Blueprints you already have
 from modules.auth.routes import auth_bp
 from modules.billing.routes import billing_bp
 from modules.jobpack.routes import jobpack_bp
@@ -23,14 +23,16 @@ except Exception:
 
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
+
     app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB uploads
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
-    # proxy fix for Render
+    # Render proxy
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
+    # Cookies/session (login persistence)
     is_prod = os.getenv("FLASK_ENV", "production").lower() == "production"
     app.config.update(
         SESSION_COOKIE_SAMESITE="Lax",
@@ -39,11 +41,11 @@ def create_app():
         REMEMBER_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SECURE=is_prod,
         REMEMBER_COOKIE_SECURE=is_prod,
+        REMEMBER_COOKIE_DURATION=timedelta(days=30),
     )
 
     db.init_app(app)
 
-    # --- Login manager ---
     login_manager = LoginManager()
     login_manager.login_view = "auth.login"
     login_manager.login_message_category = "warning"
@@ -56,19 +58,9 @@ def create_app():
         except Exception:
             return None
 
-    # --- Inject globals into Jinja ---
+    # ---- Template helpers (coins + hardcoded paths so links always work) ----
     @app.context_processor
     def inject_globals():
-        from flask import url_for
-        from flask_login import current_user
-
-        def has_endpoint(name):
-            try:
-                url_for(name)
-                return True
-            except Exception:
-                return False
-
         def free_coins():
             if not current_user.is_authenticated:
                 return 0
@@ -99,19 +91,22 @@ def create_app():
                     return True
             return pro_coins() > 0
 
-        feature_links = {
-            "resume": url_for("resume.upload") if has_endpoint("resume.upload") else "#",
-            "portfolio": url_for("portfolio.index") if has_endpoint("portfolio.index") else "#",
-            "internships": url_for("internships.index") if has_endpoint("internships.index") else "#",
-            "referrals": url_for("referral.index") if has_endpoint("referral.index") else "#",
-            "jobpack": url_for("jobpack.index") if has_endpoint("jobpack.index") else "#",
-            "pricing": url_for("billing.pricing") if has_endpoint("billing.pricing") else "#",
-            "settings": url_for("settings.index") if has_endpoint("settings.index") else "#",
+        # Use explicit paths to avoid dead links even if endpoint names differ
+        feature_paths = {
+            "resume": "/resume/upload",
+            "portfolio": "/portfolio/",
+            "internships": "/internships/",
+            "referrals": "/referrals/",
+            "jobpack": "/jobpack/",
+            "pricing": "/billing/pricing" if "pricing" in dir(billing_bp) else "/billing/",
+            "settings": "/settings/",
+            "login": "/auth/login",
+            "register": "/auth/register",
         }
 
-        return dict(is_pro=is_pro, free_coins=free_coins, pro_coins=pro_coins, feature_links=feature_links)
+        return dict(is_pro=is_pro, free_coins=free_coins, pro_coins=pro_coins, feature_paths=feature_paths)
 
-    # --- Register blueprints ---
+    # ---- Register blueprints ----
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(billing_bp, url_prefix="/billing")
     app.register_blueprint(jobpack_bp, url_prefix="/jobpack")
@@ -123,7 +118,7 @@ def create_app():
     if HAVE_AGENT:
         app.register_blueprint(agent_bp, url_prefix="/agent")
 
-    # --- Routes ---
+    # ---- Pages ----
     @app.route("/")
     def home():
         return render_template("landing.html")
@@ -148,7 +143,7 @@ def create_app():
     return app
 
 
-# Local dev only
+# Gunicorn will import from wsgi.py; this is for local dev only
 if __name__ == "__main__":
     app = create_app()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8000")), debug=True)

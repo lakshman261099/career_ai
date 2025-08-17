@@ -25,7 +25,6 @@
     }
   </script>
   <style>
-    /* Inline tiny noise pattern (no external file needed) */
     body::before{
       content:"";
       position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.18; mix-blend:soft-light;
@@ -40,7 +39,7 @@
   <header class="sticky top-0 z-40">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
       <div class="glass-bar rounded-2xl px-4 py-3 flex items-center justify-between">
-        <a href="{{ url_for('home') }}" class="flex items-center gap-2">
+        <a href="/" class="flex items-center gap-2">
           <div class="h-9 w-9 rounded-xl bg-brand-500/20 backdrop-blur border border-white/10 grid place-items-center shadow-glow">
             <span class="text-xl font-extrabold">C</span>
           </div>
@@ -49,16 +48,15 @@
         </a>
 
         <nav class="hidden md:flex items-center gap-6 text-sm">
-          <a class="nav-link" href="{{ feature_links.resume }}">Resume</a>
-          <a class="nav-link" href="{{ feature_links.portfolio }}">Portfolio</a>
-          <a class="nav-link" href="{{ feature_links.internships }}">Internships</a>
-          <a class="nav-link" href="{{ feature_links.referrals }}">Referrals</a>
-          <a class="nav-link" href="{{ feature_links.jobpack }}">Job Packs</a>
-          <a class="nav-link" href="{{ feature_links.pricing }}">Pricing</a>
+          <a class="nav-link" href="{{ feature_paths.resume }}">Resume</a>
+          <a class="nav-link" href="{{ feature_paths.portfolio }}">Portfolio</a>
+          <a class="nav-link" href="{{ feature_paths.internships }}">Internships</a>
+          <a class="nav-link" href="{{ feature_paths.referrals }}">Referrals</a>
+          <a class="nav-link" href="{{ feature_paths.jobpack }}">Job Packs</a>
+          <a class="nav-link" href="{{ feature_paths.pricing }}">Pricing</a>
         </nav>
 
         <div class="flex items-center gap-3">
-          <!-- Compact coins pill -->
           <div class="coins-pill">
             <span class="coins-chip">🪙 {{ FREE }}</span>
             <span class="coins-sep">|</span>
@@ -66,10 +64,10 @@
           </div>
 
           {% if current_user.is_authenticated %}
-            <a href="{{ feature_links.settings }}" class="btn-ghost hidden sm:inline">Settings</a>
-            <a href="{{ url_for('auth.logout') }}" class="btn-primary">Logout</a>
+            <a href="{{ feature_paths.settings }}" class="btn-ghost hidden sm:inline">Settings</a>
+            <a href="/auth/logout" class="btn-primary">Logout</a>
           {% else %}
-            <a href="{{ url_for('auth.login') }}" class="btn-primary">Login</a>
+            <a href="{{ feature_paths.login }}" class="btn-primary">Login</a>
           {% endif %}
         </div>
       </div>
