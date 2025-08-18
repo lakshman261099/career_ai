@@ -60,6 +60,7 @@ def register_template_globals(app: Flask):
 # ---------------------------------------------------------------------
 # Auto-migration on startup (Render-friendly; no shell required)
 # ---------------------------------------------------------------------
+
 def run_auto_migrations(app: Flask) -> None:
     """
     Robust auto-migrate for Render/Postgres:
