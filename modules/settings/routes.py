@@ -1,15 +1,19 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request, flash, redirect, url_for
 from flask_login import login_required, current_user
-from limits import is_pro_user
+from models import db
 
-settings_bp = Blueprint("settings", __name__, template_folder="../../templates")
+settings_bp = Blueprint("settings", __name__, template_folder="../../templates/settings")
 
-@settings_bp.route("/profile")
+@settings_bp.route("/", methods=["GET","POST"])
 @login_required
-def profile():
-    return render_template("settings/profile.html", user=current_user)
-
-@settings_bp.route("/pricing")
-@login_required
-def pricing():
-    return render_template("settings/pricing.html", user=current_user, is_pro=is_pro_user(current_user))
+def index():
+    if request.method == "POST":
+        name = request.form.get("name","").strip()
+        if name:
+            current_user.name = name
+            db.session.commit()
+            flash("Profile updated.", "success")
+            return redirect(url_for("settings.index"))
+        else:
+            flash("Name cannot be empty.", "error")
+    return render_template("settings/index.html")

@@ -1,143 +1,126 @@
+# app.py
+
 import os
-from datetime import timedelta
-from flask import Flask, render_template, url_for, redirect, request, flash
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, send_from_directory
 from flask_login import LoginManager, current_user
-from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, User
+from dotenv import load_dotenv
 
-# Blueprints
-from modules.auth.routes import auth_bp
+from models import db, User, University
+from limits import init_limits
+
+# blueprints
+from modules.auth.routes import auth_bp, login_manager
 from modules.billing.routes import billing_bp
-from modules.jobpack.routes import jobpack_bp
-from modules.internships.routes import internships_bp
-from modules.portfolio.routes import portfolio_bp
-from modules.referral.routes import referral_bp
 from modules.resume.routes import resume_bp
+from modules.portfolio.routes import portfolio_bp
+from modules.internships.routes import internships_bp
+from modules.referral.routes import referral_bp
+from modules.jobpack.routes import jobpack_bp
+from modules.skillmapper.routes import skillmapper_bp
 from modules.settings.routes import settings_bp
-try:
-    from modules.agent.routes import agent_bp
-    HAVE_AGENT = True
-except Exception:
-    HAVE_AGENT = False
+
+load_dotenv()
 
 
+# ----------------------------------------------------------------------
+# Template globals (fixes UndefinedError in base.html)
+# ----------------------------------------------------------------------
+def free_coins():
+    if current_user and current_user.is_authenticated:
+        return current_user.coins_free
+    return 0
+
+def pro_coins():
+    if current_user and current_user.is_authenticated:
+        return current_user.coins_pro
+    return 0
+
+def register_template_globals(app):
+    app.jinja_env.globals.update(
+        free_coins=free_coins,
+        pro_coins=pro_coins
+    )
+
+
+# ----------------------------------------------------------------------
+# App factory
+# ----------------------------------------------------------------------
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
 
-    app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+    # Config
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.getenv("FLASK_SECRET_KEY", "dev-secret-key"))
+    db_url = os.getenv("DATABASE_URL")
+    if db_url and db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url or os.getenv("DEV_DATABASE_URI", "sqlite:///career_ai.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB uploads
 
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
-
-    is_prod = os.getenv("FLASK_ENV", "production").lower() == "production"
-    app.config.update(
-        SESSION_COOKIE_SAMESITE="Lax",
-        REMEMBER_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_HTTPONLY=True,
-        REMEMBER_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SECURE=is_prod,
-        REMEMBER_COOKIE_SECURE=is_prod,
-        REMEMBER_COOKIE_DURATION=timedelta(days=30),
-    )
-
+    # Init extensions
     db.init_app(app)
+    login_manager.init_app(app)
+    init_limits(app)
 
-    lm = LoginManager()
-    lm.login_view = "auth.login"
-    lm.login_message_category = "warning"
-    lm.init_app(app)
-
-    @lm.user_loader
-    def load_user(user_id):
-        try:
-            return User.query.get(int(user_id))
-        except Exception:
-            return None
-
-    # ---------- Jinja helpers ----------
-    def _first_attr(obj, names, default=0):
-        for n in names:
-            if hasattr(obj, n):
-                try:
-                    return getattr(obj, n) or 0
-                except Exception:
-                    pass
-        return default
-
-    @app.context_processor
-    def inject_globals():
-        # Coins
-        def free_coins():
-            if not current_user.is_authenticated:
-                return 0
-            return int(max(0, _first_attr(current_user,
-                ["free_credits", "silver_balance", "credits_free", "free_balance"])))
-
-        def pro_coins():
-            if not current_user.is_authenticated:
-                return 0
-            return int(max(0, _first_attr(current_user,
-                ["gold_balance", "paid_credits", "pro_credits", "credit_balance"])))
-
-        def is_pro():
-            if not current_user.is_authenticated:
-                return False
-            if hasattr(current_user, "subscription_status"):
-                if str(getattr(current_user, "subscription_status") or "").lower() == "active":
-                    return True
-            return pro_coins() > 0
-
-        # Fix for your dashboard title
-        def tenant_name():
-            return os.getenv("TENANT_NAME", "CareerAI")
-
-        # Hard-safe paths so tiles/nav always navigate
-        feature_paths = {
-            "resume": "/resume/upload",
-            "portfolio": "/portfolio/",
-            "internships": "/internships/",
-            "referrals": "/referrals/",
-            "jobpack": "/jobpack/",
-            "pricing": "/billing/pricing",
-            "settings": "/settings/",
-            "login": "/auth/login",
-            "register": "/auth/register",
-        }
-
-        return dict(
-            is_pro=is_pro, free_coins=free_coins, pro_coins=pro_coins,
-            tenant_name=tenant_name, feature_paths=feature_paths
-        )
-
-    # ---------- Blueprints ----------
+    # Blueprints
     app.register_blueprint(auth_bp, url_prefix="/auth")
-    app.register_blueprint(billing_bp, url_prefix="/billing")
-    app.register_blueprint(jobpack_bp, url_prefix="/jobpack")
-    app.register_blueprint(internships_bp, url_prefix="/internships")
-    app.register_blueprint(portfolio_bp, url_prefix="/portfolio")
-    app.register_blueprint(referral_bp, url_prefix="/referrals")
+    app.register_blueprint(billing_bp)
     app.register_blueprint(resume_bp, url_prefix="/resume")
+    app.register_blueprint(portfolio_bp, url_prefix="/portfolio")
+    app.register_blueprint(internships_bp, url_prefix="/internships")
+    app.register_blueprint(referral_bp, url_prefix="/referral")
+    app.register_blueprint(jobpack_bp, url_prefix="/jobpack")
+    app.register_blueprint(skillmapper_bp, url_prefix="/skillmapper")
     app.register_blueprint(settings_bp, url_prefix="/settings")
-    if HAVE_AGENT:
-        app.register_blueprint(agent_bp, url_prefix="/agent")
 
-    # ---------- Pages ----------
+    # Template globals
+    register_template_globals(app)
+
+    # Routes
     @app.route("/")
-    def home(): return render_template("landing.html")
+    def landing():
+        return render_template("landing.html")
 
     @app.route("/dashboard")
-    def dashboard(): return render_template("dashboard.html")
+    def dashboard():
+        return render_template("dashboard.html")
 
-    @app.route("/healthz")
-    def healthz(): return {"ok": True}
+    # favicon to silence 404
+    @app.route('/favicon.ico')
+    def favicon():
+        return send_from_directory(os.path.join(app.static_folder),
+                                   'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
-    @app.route("/post-login")
-    def post_login():
-        nxt = request.args.get("next") or url_for("dashboard")
-        flash("Welcome back!", "success")
-        return redirect(nxt)
+    # Inject globals (tenant info + balances)
+    @app.context_processor
+    def inject_globals():
+        tenant_name = None
+        try:
+            host = request.host.split(":")[0]
+            uni = University.query.filter(
+                (University.domain == host) | (University.tenant_slug == host)
+            ).first()
+            tenant_name = uni.name if uni else None
+        except Exception:
+            tenant_name = None
+
+        return {
+            "now": datetime.utcnow(),
+            "tenant_name": tenant_name,
+            "user_free": current_user.coins_free if current_user.is_authenticated else 0,
+            "user_pro": current_user.coins_pro if current_user.is_authenticated else 0,
+            "subscription_status": current_user.subscription_status if current_user.is_authenticated else "free",
+        }
+
+    # Error handlers
+    @app.errorhandler(404)
+    def not_found(e):
+        return render_template("errors/404.html"), 404
+
+    @app.errorhandler(500)
+    def srv_error(e):
+        return render_template("errors/500.html"), 500
 
     with app.app_context():
         db.create_all()
@@ -145,6 +128,7 @@ def create_app():
     return app
 
 
-# Gunicorn uses wsgi.py; below is local dev only
-if __name__ == "__main__":
-    create_app().run(host="0.0.0.0", port=int(os.getenv("PORT", "8000")), debug=True)
+# ----------------------------------------------------------------------
+# Entry
+# ----------------------------------------------------------------------
+app = create_app()

@@ -1,24 +1,29 @@
-from flask import Blueprint, render_template, request, current_app, flash
+from flask import Blueprint, render_template, request, flash
 from flask_login import login_required, current_user
-from models import db, InternshipRecord
-from limits import enforce_free_feature, spend_coins
+from helpers import internships_search
+from limits import can_use_free, consume_free, can_use_pro, consume_pro
 
-internships_bp = Blueprint("internships", __name__, template_folder="../../templates")
+internships_bp = Blueprint("internships", __name__, template_folder="../../templates/internships")
 
-@internships_bp.route("/", methods=["GET","POST"])
+@internships_bp.route("/", methods=["GET", "POST"])
 @login_required
-@enforce_free_feature("internships")
-def internships():
-    if request.method=="POST":
-        role=request.form.get("role","")
-        mode=request.form.get("mode","fast")
-        ok,msg,spend=spend_coins(current_user,"internships",mode)
-        if not ok:
-            flash(msg,"error")
-            return render_template("internships/run.html")
-        # MOCK
-        result={"benefits":"You will learn teamwork.","skills":["Communication","Python"],"details":"Deep dive..." if mode=="deep" else "Basic info"}
-        rec=InternshipRecord(user_id=current_user.id, role=role, source="mock", title="Intern", company="Mock Inc", link="#", match_score=90, missing_skills="JS")
-        db.session.add(rec); db.session.commit()
-        return render_template("internships/result.html", result=result)
-    return render_template("internships/run.html")
+def index():
+    results = []
+    if request.method == "POST":
+        role = request.form.get("role","").strip() or "Software Engineer"
+        location = request.form.get("location","").strip() or "Remote"
+        deep = request.form.get("mode") == "pro"
+        feature = "internships"
+        if deep:
+            if not can_use_pro(current_user, feature):
+                flash("Not enough Pro coins.", "error")
+            else:
+                consume_pro(current_user, feature)
+                results = internships_search(role, location)
+        else:
+            if not can_use_free(current_user, feature):
+                flash("Daily free limit reached.", "error")
+            else:
+                consume_free(current_user, feature)
+                results = internships_search(role, location)
+    return render_template("internships/index.html", results=results)

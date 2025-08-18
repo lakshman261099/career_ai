@@ -1,28 +1,23 @@
-# python seed.py andhrauniversity "Andhra University" allowlist.csv
-import sys, csv, os
+from sqlalchemy.exc import OperationalError
 from app import app
-from models import db, University, UniversityAllowlist
+from models import db, University, User
 
-if __name__ == "__main__":
-    subdomain = sys.argv[1]
-    name = sys.argv[2]
-    csv_path = sys.argv[3] if len(sys.argv) > 3 else None
-    with app.app_context():
-        uni = University.query.filter_by(subdomain=subdomain).first()
-        if not uni:
-            uni = University(subdomain=subdomain, name=name, status="active")
-            db.session.add(uni); db.session.commit()
-            print("Created university:", subdomain)
-        else:
-            print("University exists:", subdomain)
-        if csv_path and os.path.exists(csv_path):
-            added=0
-            with open(csv_path) as f:
-                for row in csv.reader(f):
-                    email=(row[0] or "").strip().lower()
-                    if not email: continue
-                    if not UniversityAllowlist.query.filter_by(university_id=uni.id, email=email).first():
-                        db.session.add(UniversityAllowlist(university_id=uni.id, email=email))
-                        added+=1
-            db.session.commit()
-            print("Added allowlist rows:", added)
+with app.app_context():
+    db.create_all()
+    try:
+        needs_uni = University.query.first() is None
+    except OperationalError:
+        # If the table shape changed in old DB, try to create_all again
+        db.create_all()
+        needs_uni = University.query.first() is None
+
+    if needs_uni:
+        db.session.add(University(name="VelTech University", domain="veltech.edu", tenant_slug="veltech.jobpack.ai"))
+        db.session.add(University(name="Demo University", domain="demo.local", tenant_slug="demo.jobpack.ai"))
+
+    if not User.query.filter_by(email="demo@career.ai").first():
+        u = User(name="Demo User", email="demo@career.ai"); u.set_password("demo123")
+        db.session.add(u)
+
+    db.session.commit()
+    print("Seed complete.")

@@ -1,28 +1,28 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request, flash
 from flask_login import login_required, current_user
-from models import db, PortfolioPage
+from helpers import portfolio_suggestions
+from limits import can_use_free, consume_free, can_use_pro, consume_pro
 
-portfolio_bp = Blueprint("portfolio", __name__, template_folder="../../templates")
+portfolio_bp = Blueprint("portfolio", __name__, template_folder="../../templates/portfolio")
 
-@portfolio_bp.route("/")
+@portfolio_bp.route("/", methods=["GET", "POST"])
 @login_required
 def index():
-    page = PortfolioPage.query.filter_by(user_id=current_user.id).first()
-
-    show_public = False
-    public_url = None
-    if page and getattr(page, "is_published", False):
-        slug = getattr(page, "slug", None)
-        if getattr(page, "public_url", None):
-            public_url = page.public_url
-            show_public = True
-        elif slug:
-            public_url = f"/portfolio/view/{slug}"
-            show_public = True
-
-    return render_template(
-        "portfolio/edit.html",   # <<— matches your folder
-        page=page,
-        show_public=show_public,
-        public_url=public_url
-    )
+    ideas = []
+    if request.method == "POST":
+        role = request.form.get("role","").strip() or "Software Engineer Intern"
+        deep = request.form.get("mode") == "pro"
+        feature = "portfolio"
+        if deep:
+            if not can_use_pro(current_user, feature):
+                flash("Not enough Pro coins.", "error")
+            else:
+                consume_pro(current_user, feature)
+                ideas = portfolio_suggestions(current_user.name, role, deep=True)
+        else:
+            if not can_use_free(current_user, feature):
+                flash("Daily free limit reached.", "error")
+            else:
+                consume_free(current_user, feature)
+                ideas = portfolio_suggestions(current_user.name, role, deep=False)
+    return render_template("portfolio/index.html", ideas=ideas)
