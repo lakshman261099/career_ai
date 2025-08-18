@@ -10,71 +10,89 @@
       Five focused features. Use Free coins to try, unlock Pro when you’re ready.
     </p>
     <div class="flex gap-3">
-      <a href="{{ feature_paths.resume }}" class="btn-primary">Start with Resume</a>
+      <a href="{{ feature_paths.resume }}" class="btn-primary">
+        {% if is_pro() %}Upload Resume{% else %}Upload Resume (Pro) 🔒{% endif %}
+      </a>
       <a href="{{ feature_paths.internships }}" class="btn-ghost">Explore Internships</a>
     </div>
+    <p class="text-xs text-white/50">
+      Resume Vault is Pro-only. Your saved details auto-fill across all features.
+    </p>
   </div>
 
+  {# === FEATURE GRID (5 features, no separate Resume Critique card) === #}
   <div class="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-    <a href="{{ feature_paths.resume }}" class="feature-card group">
-      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_resume.svg') }}" alt="Resume" />
-      <h3 class="feature-title mt-3">Resume Critique</h3>
-      <div class="tier"><span class="tier-badge free">Free</span>
-        <ul class="tier-list"><li>Quick ATS check</li><li>2 keyword tips</li></ul>
-      </div>
-      <div class="tier"><span class="tier-badge pro">Pro</span>
-        <ul class="tier-list"><li>Deep rewrite with metrics</li><li>Role-specific variants</li></ul>
-      </div>
-      <span class="feature-cta">Open →</span>
-    </a>
 
+    {# 1) Portfolio Builder #}
     <a href="{{ feature_paths.portfolio }}" class="feature-card group">
       <img class="feature-img" src="{{ url_for('static', filename='assets/feature_portfolio.svg') }}" alt="Portfolio" />
       <h3 class="feature-title mt-3">Portfolio Builder</h3>
-      <div class="tier"><span class="tier-badge free">Free</span>
+      <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
         <ul class="tier-list"><li>One project outline</li><li>Share as draft</li></ul>
       </div>
-      <div class="tier"><span class="tier-badge pro">Pro</span>
+      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro)</span>
         <ul class="tier-list"><li>3 project writeups</li><li>Publish with custom slug</li></ul>
       </div>
       <span class="feature-cta">Open →</span>
     </a>
 
+    {# 2) Internship Finder #}
     <a href="{{ feature_paths.internships }}" class="feature-card group">
       <img class="feature-img" src="{{ url_for('static', filename='assets/feature_internships.svg') }}" alt="Internships" />
       <h3 class="feature-title mt-3">Internship Finder</h3>
-      <div class="tier"><span class="tier-badge free">Free</span>
+      <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
         <ul class="tier-list"><li>Top matches by skills</li><li>Learning links</li></ul>
       </div>
-      <div class="tier"><span class="tier-badge pro">Pro</span>
+      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro)</span>
         <ul class="tier-list"><li>Priority sorting</li><li>Save & export</li></ul>
       </div>
       <span class="feature-cta">Open →</span>
     </a>
 
+    {# 3) Referral Trainer #}
     <a href="{{ feature_paths.referrals }}" class="feature-card group">
       <img class="feature-img" src="{{ url_for('static', filename='assets/feature_referrals.svg') }}" alt="Referrals" />
       <h3 class="feature-title mt-3">Referral Trainer</h3>
-      <div class="tier"><span class="tier-badge free">Free</span>
+      <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
         <ul class="tier-list"><li>Warm + cold draft</li><li>Follow-up reminder</li></ul>
       </div>
-      <div class="tier"><span class="tier-badge pro">Pro</span>
+      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro)</span>
         <ul class="tier-list"><li>Tone tuning</li><li>Contact notes & saves</li></ul>
       </div>
       <span class="feature-cta">Open →</span>
     </a>
 
+    {# 4) Job Pack Reports — includes the moved “resume critique” capabilities in Deep #}
     <a href="{{ feature_paths.jobpack }}" class="feature-card group md:col-span-2 lg:col-span-1">
       <img class="feature-img" src="{{ url_for('static', filename='assets/feature_jobpack.svg') }}" alt="Job Packs" />
       <h3 class="feature-title mt-3">Job Pack Reports</h3>
-      <div class="tier"><span class="tier-badge free">Free</span>
+      <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
         <ul class="tier-list"><li>One quick summary</li></ul>
       </div>
-      <div class="tier"><span class="tier-badge pro">Pro</span>
-        <ul class="tier-list"><li>Detailed scoring</li><li>PDF/CSV export</li></ul>
+      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro)</span>
+        <ul class="tier-list">
+          <li>Detailed scoring for fit</li>
+          <li>Deep resume critique + role variants</li>
+          <li>Skill gaps & learning path</li>
+          <li>PDF/CSV export</li>
+        </ul>
       </div>
       <span class="feature-cta">Open →</span>
     </a>
+
+    {# 5) Skill Mapper #}
+    <a href="{{ feature_paths.skillmapper }}" class="feature-card group">
+      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_skillmapper.svg') }}" alt="Skill Mapper" />
+      <h3 class="feature-title mt-3">Skill Mapper</h3>
+      <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
+        <ul class="tier-list"><li>Core skills by role</li><li>Starter links</li></ul>
+      </div>
+      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro)</span>
+        <ul class="tier-list"><li>Tailored gaps via Resume Vault</li><li>Next-step plan</li></ul>
+      </div>
+      <span class="feature-cta">Open →</span>
+    </a>
+
   </div>
 </section>
 {% endblock %}

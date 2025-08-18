@@ -2,15 +2,15 @@
 
 import os
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, send_from_directory
-from flask_login import LoginManager, current_user
+from flask import Flask, render_template, request, send_from_directory, url_for
+from flask_login import current_user
 from dotenv import load_dotenv
 
 from models import db, User, University
 from limits import init_limits
 
-# blueprints
-from modules.auth.routes import auth_bp, login_manager
+# Blueprints
+from modules.auth.routes import auth_bp, login_manager  # provides login_manager
 from modules.billing.routes import billing_bp
 from modules.resume.routes import resume_bp
 from modules.portfolio.routes import portfolio_bp
@@ -23,47 +23,60 @@ from modules.settings.routes import settings_bp
 load_dotenv()
 
 
-# ----------------------------------------------------------------------
-# Template globals (fixes UndefinedError in base.html)
-# ----------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# Template helpers (available inside Jinja as simple functions)
+# ---------------------------------------------------------------------
 def free_coins():
-    if current_user and current_user.is_authenticated:
-        return current_user.coins_free
+    if getattr(current_user, "is_authenticated", False):
+        return getattr(current_user, "coins_free", 0) or 0
     return 0
+
 
 def pro_coins():
-    if current_user and current_user.is_authenticated:
-        return current_user.coins_pro
+    if getattr(current_user, "is_authenticated", False):
+        return getattr(current_user, "coins_pro", 0) or 0
     return 0
 
-def register_template_globals(app):
+
+def is_pro():
+    if getattr(current_user, "is_authenticated", False):
+        status = (getattr(current_user, "subscription_status", "free") or "free").lower()
+        return bool(getattr(current_user, "is_pro", False) or status == "pro")
+    return False
+
+
+def register_template_globals(app: Flask):
     app.jinja_env.globals.update(
         free_coins=free_coins,
-        pro_coins=pro_coins
+        pro_coins=pro_coins,
+        is_pro=is_pro,
     )
 
 
-# ----------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # App factory
-# ----------------------------------------------------------------------
+# ---------------------------------------------------------------------
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
 
-    # Config
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.getenv("FLASK_SECRET_KEY", "dev-secret-key"))
-    db_url = os.getenv("DATABASE_URL")
-    if db_url and db_url.startswith("postgres://"):
+    # ----- Config
+    secret = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY") or "dev-secret-key"
+    app.config["SECRET_KEY"] = secret
+
+    db_url = os.getenv("DATABASE_URL") or os.getenv("DEV_DATABASE_URI") or "sqlite:///career_ai.db"
+    # Alembic/SQLAlchemy expect "postgresql://" not "postgres://"
+    if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
-    app.config["SQLALCHEMY_DATABASE_URI"] = db_url or os.getenv("DEV_DATABASE_URI", "sqlite:///career_ai.db")
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB uploads
 
-    # Init extensions
+    # ----- Extensions
     db.init_app(app)
     login_manager.init_app(app)
     init_limits(app)
 
-    # Blueprints
+    # ----- Blueprints
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(billing_bp)
     app.register_blueprint(resume_bp, url_prefix="/resume")
@@ -74,30 +87,31 @@ def create_app():
     app.register_blueprint(skillmapper_bp, url_prefix="/skillmapper")
     app.register_blueprint(settings_bp, url_prefix="/settings")
 
-    # Template globals
+    # ----- Make helpers available in templates
     register_template_globals(app)
 
-    # Routes
-    @app.route("/")
+    # ----- Routes
+    @app.route("/", endpoint="landing")
     def landing():
         return render_template("landing.html")
 
-    @app.route("/dashboard")
+    @app.route("/dashboard", endpoint="dashboard")
     def dashboard():
         return render_template("dashboard.html")
 
-    # favicon to silence 404
-    @app.route('/favicon.ico')
+    # Favicon (prevents noisy 404s when you don't have a file yet)
+    @app.route("/favicon.ico")
     def favicon():
-        return send_from_directory(os.path.join(app.static_folder),
-                                   'favicon.ico', mimetype='image/vnd.microsoft.icon')
+        return send_from_directory(
+            app.static_folder, "favicon.ico", mimetype="image/vnd.microsoft.icon"
+        )
 
-    # Inject globals (tenant info + balances)
+    # ----- Context data available to all templates
     @app.context_processor
     def inject_globals():
         tenant_name = None
         try:
-            host = request.host.split(":")[0]
+            host = (request.host or "").split(":")[0]
             uni = University.query.filter(
                 (University.domain == host) | (University.tenant_slug == host)
             ).first()
@@ -105,15 +119,44 @@ def create_app():
         except Exception:
             tenant_name = None
 
-        return {
-            "now": datetime.utcnow(),
-            "tenant_name": tenant_name,
-            "user_free": current_user.coins_free if current_user.is_authenticated else 0,
-            "user_pro": current_user.coins_pro if current_user.is_authenticated else 0,
-            "subscription_status": current_user.subscription_status if current_user.is_authenticated else "free",
+        # Safe url_for to avoid crashes if an endpoint is missing
+        def safe_url(endpoint, **kwargs):
+            try:
+                return url_for(endpoint, **kwargs)
+            except Exception:
+                return "#"
+
+        # Centralized feature links used by base.html (e.g., feature_paths.resume)
+        feature_paths = {
+            "home":        safe_url("landing"),
+            "dashboard":   safe_url("dashboard"),
+            "resume":      safe_url("resume.index"),        # ensure your blueprint defines endpoint="index"
+            "portfolio":   safe_url("portfolio.index"),
+            "internships": safe_url("internships.index"),
+            "referral":    safe_url("referral.index"),
+            "jobpack":     safe_url("jobpack.index"),
+            "skillmapper": safe_url("skillmapper.index"),
+            "settings":    safe_url("settings.index"),
+            "billing":     safe_url("billing.index"),
+            "login":       safe_url("auth.login"),
+            "logout":      safe_url("auth.logout"),
+            "signup":      safe_url("auth.signup"),
         }
 
-    # Error handlers
+        return dict(
+            now=datetime.utcnow(),
+            tenant_name=tenant_name,
+            user_free=free_coins(),
+            user_pro=pro_coins(),
+            subscription_status=(
+                getattr(current_user, "subscription_status", "free")
+                if getattr(current_user, "is_authenticated", False)
+                else "free"
+            ),
+            feature_paths=feature_paths,
+        )
+
+    # ----- Error handlers
     @app.errorhandler(404)
     def not_found(e):
         return render_template("errors/404.html"), 404
@@ -122,13 +165,14 @@ def create_app():
     def srv_error(e):
         return render_template("errors/500.html"), 500
 
+    # ----- Create tables if they don't exist (safe on SQLite/local)
     with app.app_context():
         db.create_all()
 
     return app
 
 
-# ----------------------------------------------------------------------
-# Entry
-# ----------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------
 app = create_app()

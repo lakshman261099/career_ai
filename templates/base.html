@@ -48,9 +48,13 @@
         </a>
 
         <nav class="hidden md:flex items-center gap-6 text-sm">
-          <a class="nav-link" href="{{ feature_paths.resume }}">Resume</a>
+          {# Resume is NOT a feature card; it’s a Pro-only vault, but we keep the nav link #}
+          <a class="nav-link" href="{{ feature_paths.resume }}">
+            Resume{% if not is_pro() %} <span class="opacity-60">🔒</span>{% endif %}
+          </a>
           <a class="nav-link" href="{{ feature_paths.portfolio }}">Portfolio</a>
           <a class="nav-link" href="{{ feature_paths.internships }}">Internships</a>
+          <a class="nav-link" href="{{ feature_paths.skillmapper }}">Skill Mapper</a>
           <a class="nav-link" href="{{ feature_paths.referrals }}">Referrals</a>
           <a class="nav-link" href="{{ feature_paths.jobpack }}">Job Packs</a>
           <a class="nav-link" href="{{ feature_paths.pricing }}">Pricing</a>
