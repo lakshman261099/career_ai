@@ -20,10 +20,10 @@
     </p>
   </div>
 
-  {# === FEATURE GRID (5 features, no separate Resume Critique card) === #}
+  <!-- === FEATURE GRID (5 features, no separate Resume Critique card) === -->
   <div class="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
-    {# 1) Portfolio Builder #}
+    <!-- 1) Portfolio Builder -->
     <a href="{{ feature_paths.portfolio }}" class="feature-card group">
       <img class="feature-img" src="{{ url_for('static', filename='assets/feature_portfolio.svg') }}" alt="Portfolio" />
       <h3 class="feature-title mt-3">Portfolio Builder</h3>
@@ -36,7 +36,7 @@
       <span class="feature-cta">Open →</span>
     </a>
 
-    {# 2) Internship Finder #}
+    <!-- 2) Internship Finder -->
     <a href="{{ feature_paths.internships }}" class="feature-card group">
       <img class="feature-img" src="{{ url_for('static', filename='assets/feature_internships.svg') }}" alt="Internships" />
       <h3 class="feature-title mt-3">Internship Finder</h3>
@@ -49,21 +49,21 @@
       <span class="feature-cta">Open →</span>
     </a>
 
-    {# 3) Referral Trainer #}
-    <a href="{{ feature_paths.referrals }}" class="feature-card group">
+    <!-- 3) Referral Trainer -->
+    <a href="{{ feature_paths.referral }}" class="feature-card group">
       <img class="feature-img" src="{{ url_for('static', filename='assets/feature_referrals.svg') }}" alt="Referrals" />
       <h3 class="feature-title mt-3">Referral Trainer</h3>
       <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
         <ul class="tier-list"><li>Warm + cold draft</li><li>Follow-up reminder</li></ul>
       </div>
-      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro)</span>
+      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro — Coming Soon)</span>
         <ul class="tier-list"><li>Tone tuning</li><li>Contact notes & saves</li></ul>
       </div>
       <span class="feature-cta">Open →</span>
     </a>
 
-    {# 4) Job Pack Reports — includes the moved “resume critique” capabilities in Deep #}
-    <a href="{{ feature_paths.jobpack }}" class="feature-card group md:col-span-2 lg:col-span-1">
+    <!-- 4) Job Pack Reports -->
+    <a href "{{ feature_paths.jobpack }}" class="feature-card group md:col-span-2 lg:col-span-1">
       <img class="feature-img" src="{{ url_for('static', filename='assets/feature_jobpack.svg') }}" alt="Job Packs" />
       <h3 class="feature-title mt-3">Job Pack Reports</h3>
       <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
@@ -80,7 +80,7 @@
       <span class="feature-cta">Open →</span>
     </a>
 
-    {# 5) Skill Mapper #}
+    <!-- 5) Skill Mapper -->
     <a href="{{ feature_paths.skillmapper }}" class="feature-card group">
       <img class="feature-img" src="{{ url_for('static', filename='assets/feature_skillmapper.svg') }}" alt="Skill Mapper" />
       <h3 class="feature-title mt-3">Skill Mapper</h3>
@@ -92,7 +92,6 @@
       </div>
       <span class="feature-cta">Open →</span>
     </a>
-
   </div>
 </section>
 {% endblock %}

@@ -39,7 +39,7 @@
   <header class="sticky top-0 z-40">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
       <div class="glass-bar rounded-2xl px-4 py-3 flex items-center justify-between">
-        <a href="/" class="flex items-center gap-2">
+        <a href="{{ feature_paths.home }}" class="flex items-center gap-2">
           <div class="h-9 w-9 rounded-xl bg-brand-500/20 backdrop-blur border border-white/10 grid place-items-center shadow-glow">
             <span class="text-xl font-extrabold">C</span>
           </div>
@@ -48,16 +48,16 @@
         </a>
 
         <nav class="hidden md:flex items-center gap-6 text-sm">
-          {# Resume is NOT a feature card; it’s a Pro-only vault, but we keep the nav link #}
+          <!-- Resume lives under Settings (Pro-only); keep link visible -->
           <a class="nav-link" href="{{ feature_paths.resume }}">
             Resume{% if not is_pro() %} <span class="opacity-60">🔒</span>{% endif %}
           </a>
           <a class="nav-link" href="{{ feature_paths.portfolio }}">Portfolio</a>
           <a class="nav-link" href="{{ feature_paths.internships }}">Internships</a>
           <a class="nav-link" href="{{ feature_paths.skillmapper }}">Skill Mapper</a>
-          <a class="nav-link" href="{{ feature_paths.referrals }}">Referrals</a>
+          <a class="nav-link" href="{{ feature_paths.referral }}">Referrals</a>
           <a class="nav-link" href="{{ feature_paths.jobpack }}">Job Packs</a>
-          <a class="nav-link" href="{{ feature_paths.pricing }}">Pricing</a>
+          <a class="nav-link" href="{{ feature_paths.billing }}">Pricing</a>
         </nav>
 
         <div class="flex items-center gap-3">
@@ -69,7 +69,7 @@
 
           {% if current_user.is_authenticated %}
             <a href="{{ feature_paths.settings }}" class="btn-ghost hidden sm:inline">Settings</a>
-            <a href="/auth/logout" class="btn-primary">Logout</a>
+            <a href="{{ feature_paths.logout }}" class="btn-primary">Logout</a>
           {% else %}
             <a href="{{ feature_paths.login }}" class="btn-primary">Login</a>
           {% endif %}

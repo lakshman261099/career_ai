@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}My Portfolio — CareerAI{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 pt-12">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-2xl font-bold">My Portfolio</h1>
+    <a href="{{ url_for('portfolio.new') }}" class="btn-primary">New Draft</a>
+  </div>
+
+  {% if pages %}
+    <div class="space-y-3">
+      {% for p in pages %}
+        <div class="glass-panel rounded-2xl p-4 flex items-center justify-between">
+          <div>
+            <div class="font-semibold">{{ p.title }}</div>
+            <div class="text-xs text-white/60">
+              {% if p.is_public %}Public{% else %}Draft{% endif %} · {{ p.created_at.strftime('%Y-%m-%d %H:%M') }}
+            </div>
+            {% if p.is_public %}
+              <div class="text-xs mt-1">
+                <a href="{{ url_for('portfolio.view', page_id=p.id) }}" class="underline text-white/80" target="_blank" rel="noopener">
+                  View public link →
+                </a>
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="flex items-center gap-2">
+            <a class="btn-ghost" href="{{ url_for('portfolio.edit', page_id=p.id) }}">Edit</a>
+            {% if not p.is_public %}
+              <form method="POST" action="{{ url_for('portfolio.publish', page_id=p.id) }}">
+                <button class="btn-primary" type="submit">Publish ⭐</button>
+              </form>
+            {% else %}
+              <form method="POST" action="{{ url_for('portfolio.unpublish', page_id=p.id) }}">
+                <button class="btn-ghost" type="submit">Unpublish</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="glass-panel rounded-2xl p-6 text-white/70">No pages yet. Create your first draft.</div>
+  {% endif %}
+</section>
+{% endblock %}

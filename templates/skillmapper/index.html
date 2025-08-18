@@ -1,87 +1,50 @@
 {% extends "base.html" %}
 {% block title %}Skill Mapper — CareerAI{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pt-10 lg:pt-12">
-  <h1 class="text-3xl md:text-4xl font-extrabold">Skill Mapper</h1>
-  <p class="text-white/70 mt-2">
-    Pick a target role. We’ll map the core skills and learning links (Fast Pack).
-    Deep Pack gives tailored gap analysis using your Resume Vault (Pro).
-  </p>
+<section class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 pt-12">
+  <div class="glass-panel rounded-2xl p-6">
+    <h1 class="text-xl font-bold mb-3">Skill Mapper</h1>
+    <form method="POST">
+      <label class="block text-sm mb-1">Title (optional)</label>
+      <input name="title" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20" placeholder="e.g., Backend Engineer @ Acme">
 
-  <form class="glass-card mt-6 p-4 space-y-3"
-        method="post"
-        action="{{ url_for('skillmapper.map_skills') }}">
-    <label class="block text-sm text-white/80">Target role</label>
-    <input name="role"
-           class="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 focus:outline-none"
-           placeholder="e.g., Data Analyst"
-           value="{{ role or '' }}" />
+      <label class="block text-sm mt-4 mb-1">Paste Text (e.g., JD)</label>
+      <textarea name="text" rows="10" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+        placeholder="Paste a job description or text to extract skills from...">{{ raw_text }}</textarea>
 
-    <div class="flex items-center gap-4">
-      <label class="inline-flex items-center gap-2">
-        <input type="radio" name="pack" value="fast"
-               {% if pack != 'deep' %}checked{% endif %}/>
-        <span>Fast Pack (Free)</span>
-      </label>
-      <label class="inline-flex items-center gap-2">
-        <input type="radio" name="pack" value="deep"
-               {% if pack == 'deep' %}checked{% endif %}/>
-        <span>Deep Pack (Pro)</span>
-      </label>
-    </div>
-
-    <button class="btn-primary">Map Skills</button>
-  </form>
-
-  {% if core_skills %}
-    <div class="glass-card mt-6 p-4">
-      <h2 class="font-semibold">
-        Core skills for: <span class="text-brand-500">{{ role }}</span>
-      </h2>
-      <ul class="mt-2 list-disc list-inside text-white/80">
-        {% for s in core_skills %}<li>{{ s }}</li>{% endfor %}
-      </ul>
-    </div>
-  {% endif %}
-
-  {% if learning_links %}
-    <div class="glass-card mt-4 p-4">
-      <h2 class="font-semibold">Learning links</h2>
-      <ul class="mt-2 space-y-1">
-        {% for l in learning_links %}
-          <li><a class="text-brand-500 underline" href="{{ l.url }}" target="_blank" rel="noopener">
-            {{ l.title }}</a></li>
-        {% endfor %}
-      </ul>
-    </div>
-  {% endif %}
-
-  {% if tailored %}
-    <div class="glass-card mt-6 p-4 border border-emerald-400/40">
-      <div class="flex items-center gap-2">
-        <span class="text-[12px] px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40">Deep Pack</span>
-        <h2 class="font-semibold">Tailored gap analysis</h2>
+      <div class="mt-4 flex gap-2">
+        <button class="btn-primary" type="submit">Map Skills</button>
+        <a class="btn-ghost" href="{{ feature_paths.billing }}">Get Pro</a>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3 text-white/90">
-        <div>
-          <h3 class="text-white/70 text-sm">Strengths</h3>
-          <ul class="list-disc list-inside">
-            {% for s in tailored.strengths %}<li>{{ s }}</li>{% endfor %}
-          </ul>
+    </form>
+  </div>
+
+  {% if result %}
+    <div class="glass-panel rounded-2xl p-6 mt-6">
+      <h2 class="text-lg font-semibold mb-2">Detected Skills</h2>
+      {% if result.skills %}
+        <ul class="flex flex-wrap gap-2">
+          {% for s in result.skills %}
+            <li class="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm">{{ s }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="text-white/60 text-sm">No skills detected.</div>
+      {% endif %}
+
+      {% if result.categories %}
+        <div class="mt-5">
+          <h3 class="font-semibold mb-1">Categories</h3>
+          <div class="grid md:grid-cols-2 gap-3 text-sm">
+            {% for cat, items in result.categories.items() %}
+              <div class="glass-card p-3 rounded-xl">
+                <div class="font-semibold mb-1">{{ cat }}</div>
+                <div class="text-white/70">{{ items|join(', ') }}</div>
+              </div>
+            {% endfor %}
+          </div>
         </div>
-        <div>
-          <h3 class="text-white/70 text-sm">Gaps</h3>
-          <ul class="list-disc list-inside">
-            {% for g in tailored.gaps %}<li>{{ g }}</li>{% endfor %}
-          </ul>
-        </div>
-        <div>
-          <h3 class="text-white/70 text-sm">Next actions</h3>
-          <ul class="list-disc list-inside">
-            {% for a in tailored.next_actions %}<li>{{ a }}</li>{% endfor %}
-          </ul>
-        </div>
-      </div>
+      {% endif %}
     </div>
   {% endif %}
 </section>

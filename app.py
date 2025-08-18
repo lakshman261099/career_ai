@@ -12,7 +12,7 @@ from limits import init_limits
 # Blueprints
 from modules.auth.routes import auth_bp, login_manager  # provides login_manager
 from modules.billing.routes import billing_bp
-from modules.resume.routes import resume_bp
+# from modules.resume.routes import resume_bp  # (removed) resume lives under Settings (Pro-only)
 from modules.portfolio.routes import portfolio_bp
 from modules.internships.routes import internships_bp
 from modules.referral.routes import referral_bp
@@ -71,6 +71,23 @@ def create_app():
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB uploads
 
+    # Optional: dev nicety
+    if os.getenv("FLASK_ENV") != "production":
+        app.config["TEMPLATES_AUTO_RELOAD"] = True
+
+    # Optional: prod security + proxy headers (Render/CDN)
+    if os.getenv("FLASK_ENV") == "production" or os.getenv("ENV") == "production":
+        app.config.update(
+            SESSION_COOKIE_SECURE=True,
+            SESSION_COOKIE_SAMESITE="Lax",
+            REMEMBER_COOKIE_SECURE=True,
+        )
+        try:
+            from werkzeug.middleware.proxy_fix import ProxyFix
+            app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+        except Exception:
+            pass
+
     # ----- Extensions
     db.init_app(app)
     login_manager.init_app(app)
@@ -78,8 +95,8 @@ def create_app():
 
     # ----- Blueprints
     app.register_blueprint(auth_bp, url_prefix="/auth")
-    app.register_blueprint(billing_bp)
-    app.register_blueprint(resume_bp, url_prefix="/resume")
+    app.register_blueprint(billing_bp, url_prefix="/billing")  # ensure consistent path
+    # app.register_blueprint(resume_bp, url_prefix="/resume")   # (removed)
     app.register_blueprint(portfolio_bp, url_prefix="/portfolio")
     app.register_blueprint(internships_bp, url_prefix="/internships")
     app.register_blueprint(referral_bp, url_prefix="/referral")
@@ -130,7 +147,8 @@ def create_app():
         feature_paths = {
             "home":        safe_url("landing"),
             "dashboard":   safe_url("dashboard"),
-            "resume":      safe_url("resume.index"),        # ensure your blueprint defines endpoint="index"
+            # Resume upload/profile is under Settings for Pro; fall back to settings.index
+            "resume":      safe_url("settings.resume") if safe_url("settings.resume") != "#" else safe_url("settings.index"),
             "portfolio":   safe_url("portfolio.index"),
             "internships": safe_url("internships.index"),
             "referral":    safe_url("referral.index"),
@@ -165,9 +183,12 @@ def create_app():
     def srv_error(e):
         return render_template("errors/500.html"), 500
 
-    # ----- Create tables if they don't exist (safe on SQLite/local)
+    # ----- Create tables only for local SQLite/dev; use Alembic in prod
     with app.app_context():
-        db.create_all()
+        is_sqlite = str(app.config["SQLALCHEMY_DATABASE_URI"]).startswith("sqlite")
+        is_prod = os.getenv("FLASK_ENV") == "production" or os.getenv("ENV") == "production"
+        if is_sqlite and not is_prod:
+            db.create_all()
 
     return app
 

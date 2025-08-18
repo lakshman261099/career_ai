@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Job Pack — CareerAI{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 pt-12">
+  <div class="glass-panel rounded-2xl p-6">
+    <h1 class="text-xl font-bold mb-3">Job Pack</h1>
+    <form method="POST">
+      <label class="block text-sm mb-1">Job Description (paste)</label>
+      <textarea name="jd" rows="8" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20" required></textarea>
+
+      <label class="block text-sm mt-4 mb-1">Resume (optional, paste text)</label>
+      <textarea name="resume" rows="6" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"></textarea>
+
+      <div class="mt-4 flex items-center gap-3">
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input type="radio" name="mode" value="basic" checked> Basic
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input type="radio" name="mode" value="pro"> Deep (Pro ⭐)
+        </label>
+      </div>
+
+      <div class="mt-4 flex gap-2">
+        <button class="btn-primary" type="submit">Analyze</button>
+        <a class="btn-ghost" href="{{ feature_paths.billing }}">Get Pro</a>
+      </div>
+    </form>
+  </div>
+
+  {% if result %}
+    <div class="glass-panel rounded-2xl p-6 mt-6">
+      <h2 class="text-lg font-semibold mb-2">Results</h2>
+      <div class="text-sm text-white/80">
+        <div><strong>Fit Score:</strong> {{ result.fit.score if result.fit else '-' }}</div>
+        <div class="mt-1"><strong>Gaps:</strong> {{ result.fit.gaps|join(', ') if result.fit and result.fit.gaps else '-' }}</div>
+        <div class="mt-1"><strong>Keywords:</strong> {{ result.fit.keywords|join(', ') if result.fit and result.fit.keywords else '-' }}</div>
+      </div>
+
+      <div class="mt-4">
+        <h3 class="font-semibold">Cover Letter</h3>
+        <pre class="mt-1 whitespace-pre-wrap text-sm">{{ result.cover }}</pre>
+      </div>
+
+      <div class="mt-4">
+        <h3 class="font-semibold">Interview Q&A</h3>
+        <ul class="list-disc pl-5 text-sm">
+          {% for qa in result.qna %}
+            <li class="mb-2">
+              <div><strong>Q:</strong> {{ qa.q }}</div>
+              <div><strong>A:</strong> {{ qa.a }}</div>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      {% if current_user.is_pro %}
+        <form method="POST" action="{{ url_for('jobpack.export_pdf') }}" class="mt-4">
+          <input type="hidden" name="data" value="{{ result | tojson }}">
+          <button class="btn-ghost" type="submit">Export PDF ⭐</button>
+        </form>
+      {% else %}
+        <div class="text-xs text-white/60 mt-3">Export is a Pro feature.</div>
+      {% endif %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Referral Trainer — CareerAI{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pt-12">
+  <div class="glass-panel rounded-2xl p-6">
+    <h1 class="text-xl font-bold mb-3">Referral Trainer <span class="text-xs text-white/60">· Free</span></h1>
+    <form method="POST">
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm mb-1">Contact Name</label>
+          <input name="contact_name" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Contact Role</label>
+          <input name="contact_role" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Company</label>
+          <input name="contact_company" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Email (optional)</label>
+          <input name="contact_email" type="email" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+        </div>
+      </div>
+
+      <label class="block text-sm mt-4 mb-1">Where did you find them? (LinkedIn, alumni, etc.)</label>
+      <input name="contact_source" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+
+      <label class="block text-sm mt-4 mb-1">Your target role & highlights</label>
+      <textarea name="highlights" rows="5" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+        placeholder="Target role + 2–3 bullet highlights to mention..."></textarea>
+
+      <div class="mt-4 flex gap-2">
+        <button class="btn-primary">Generate Messages</button>
+      </div>
+
+      <div class="text-xs text-white/60 mt-3">
+        Deep tone-tuning is <strong>coming soon</strong>.
+      </div>
+    </form>
+  </div>
+
+  {% if msgs and (msgs.warm or msgs.cold or msgs.follow) %}
+    <div class="glass-panel rounded-2xl p-6 mt-6">
+      <h2 class="text-lg font-semibold mb-2">Messages</h2>
+      <div class="space-y-3 text-sm">
+        {% if msgs.warm %}
+          <div class="glass-card p-3 rounded-xl">
+            <div class="font-semibold mb-1">Warm</div>
+            <div class="whitespace-pre-wrap">{{ msgs.warm }}</div>
+          </div>
+        {% endif %}
+        {% if msgs.cold %}
+          <div class="glass-card p-3 rounded-xl">
+            <div class="font-semibold mb-1">Cold</div>
+            <div class="whitespace-pre-wrap">{{ msgs.cold }}</div>
+          </div>
+        {% endif %}
+        {% if msgs.follow %}
+          <div class="glass-card p-3 rounded-xl">
+            <div class="font-semibold mb-1">Follow-up</div>
+            <div class="whitespace-pre-wrap">{{ msgs.follow }}</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

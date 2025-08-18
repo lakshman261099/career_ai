@@ -1,31 +1,62 @@
 {% extends "base.html" %}
 {% block title %}Pricing — CareerAI{% endblock %}
+
 {% block content %}
 <section class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-12">
-  <h1 class="text-3xl font-extrabold mb-6">Pricing</h1>
+  <h1 class="text-3xl font-extrabold mb-2">Pricing</h1>
+  <p class="text-white/70 text-sm">
+    Status: <span class="font-semibold">{{ subscription_status|capitalize }}</span> ·
+    🪙 Free: <span class="font-semibold">{{ user_free }}</span> ·
+    ⭐ Pro: <span class="font-semibold">{{ user_pro }}</span>
+  </p>
 
-  <div class="grid md:grid-cols-2 gap-6">
+  <div class="grid md:grid-cols-2 gap-6 mt-6">
+    <!-- Free -->
     <div class="glass-panel rounded-2xl p-6">
       <h2 class="text-xl font-bold">Free</h2>
       <ul class="mt-3 space-y-2 text-white/80 text-sm">
-        <li>🪙 Starter Free Coins</li>
-        <li>Resume quick check</li>
-        <li>1 portfolio outline</li>
-        <li>Internship suggestions</li>
+        <li>🧰 Portfolio Builder (daily limits)</li>
+        <li>🧭 Internship Finder (paste-only)</li>
+        <li>🤝 Referral Trainer (Free feature)</li>
+        <li>🗂️ Job Pack (limited runs)</li>
+        <li>🧩 Skill Mapper (daily limits)</li>
       </ul>
-      <a href="/billing/mock-topup/free" class="btn-ghost mt-5 inline-flex">Add 25 Free Coins (dev)</a>
+
+      <!-- Dev only helper -->
+      <a href="{{ url_for('billing.mock_topup_free') }}" class="btn-ghost mt-5 inline-flex">
+        Add 5 Free Coins (dev)
+      </a>
     </div>
 
+    <!-- Pro -->
     <div class="glass-panel rounded-2xl p-6 border border-yellow-400/30">
       <h2 class="text-xl font-bold">Pro</h2>
       <ul class="mt-3 space-y-2 text-white/80 text-sm">
-        <li>⭐ Pro Coins</li>
-        <li>Deep resume rewrite</li>
-        <li>3 portfolio writeups + publish</li>
-        <li>Job Pack PDF/CSV export</li>
+        <li>⭐ Pro Coins for unlimited workflow</li>
+        <li>📄 Resume profile upload (Pro-only)</li>
+        <li>📰 3+ Portfolio writeups & publish</li>
+        <li>📦 Job Pack exports (PDF/CSV)</li>
+        <li>🚀 Priority credits & higher limits</li>
       </ul>
-      <a href="/billing/mock-topup/pro" class="btn-primary mt-5 inline-flex">Add 100 Pro Coins (dev)</a>
+
+      {% if subscription_status != 'pro' %}
+        <!-- Stripe Checkout (Subscription) -->
+        <form action="{{ url_for('billing.checkout_pro') }}" method="POST" class="mt-5">
+          <button type="submit" class="btn-primary inline-flex">Upgrade to Pro</button>
+        </form>
+      {% else %}
+        <div class="mt-5 text-green-300 text-sm">You’re on Pro 🎉</div>
+      {% endif %}
+
+      <!-- Dev only helper -->
+      <a href="{{ url_for('billing.mock_topup_pro') }}" class="btn-ghost mt-3 inline-flex">
+        Add 10 Pro Coins (dev)
+      </a>
     </div>
+  </div>
+
+  <div class="text-white/60 text-xs mt-6">
+    <p>We use Stripe for billing. No card details are handled by this site.</p>
   </div>
 </section>
 {% endblock %}

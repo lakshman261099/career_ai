@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Internships — CareerAI{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 pt-12">
+  <div class="glass-panel rounded-2xl p-6">
+    <h1 class="text-xl font-bold mb-3">Internship Finder (Paste-only)</h1>
+    <p class="text-white/70 text-sm mb-4">
+      Paste internship snippets (one per line) or separate with <code class="px-1 bg-white/10 rounded">---</code>.
+    </p>
+    <form method="POST">
+      <label class="block text-sm mb-1">Descriptions</label>
+      <textarea name="descriptions" rows="10" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+        placeholder="e.g.
+Summer SDE Intern — Bangalore — Python, SQL
+---
+Data Analyst Intern — Remote — Excel, Tableau">{{ raw_input }}</textarea>
+      <div class="mt-4 flex gap-2">
+        <button class="btn-primary">Analyze</button>
+        <a class="btn-ghost" href="{{ feature_paths.billing }}">Get Pro</a>
+      </div>
+    </form>
+  </div>
+
+  {% if results %}
+    <div class="glass-panel rounded-2xl p-6 mt-6">
+      <h2 class="text-lg font-semibold mb-2">Results</h2>
+      <ul class="space-y-2 text-sm">
+        {% for r in results %}
+          <li class="glass-card p-3 rounded-xl">
+            <div class="text-white/90">{{ r.notes }}</div>
+            {% if r.role or r.location %}
+              <div class="text-white/50 text-xs mt-1">
+                {% if r.role %}Role: {{ r.role }}{% endif %}
+                {% if r.role and r.location %} · {% endif %}
+                {% if r.location %}Location: {{ r.location }}{% endif %}
+              </div>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Resume Profile — CareerAI{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pt-12">
+  <div class="glass-panel rounded-2xl p-6">
+    <h1 class="text-xl font-bold">Resume Profile {% if not is_pro() %}<span class="text-xs opacity-70">· Pro</span>{% endif %}</h1>
+    <p class="text-white/70 text-sm mt-1">Upload a PDF/TXT or paste text. This consumes Pro credits.</p>
+
+    <form method="POST" enctype="multipart/form-data" class="mt-4">
+      <label class="block text-sm mb-1">Upload (PDF/TXT)</label>
+      <input type="file" name="file" accept=".pdf,.txt" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+
+      <div class="my-4 text-center text-white/50 text-xs">— or —</div>
+
+      <label class="block text-sm mb-1">Paste Text</label>
+      <textarea name="text" rows="8" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20" placeholder="Paste your resume text here..."></textarea>
+
+      <div class="mt-4 flex gap-2">
+        <button class="btn-primary" type="submit">Save to Profile ⭐</button>
+        <a class="btn-ghost" href="{{ url_for('settings.index') }}">Back</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

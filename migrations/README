@@ -1,1 +1,16 @@
-Generic single-database configuration.
+This folder contains Alembic migration scripts.
+
+Common commands:
+
+  # Create initial migration from current models
+  alembic revision --autogenerate -m "init schema"
+
+  # Apply migrations
+  alembic upgrade head
+
+  # Create a new migration after model changes
+  alembic revision --autogenerate -m "describe change"
+  alembic upgrade head
+
+  # Downgrade (careful)
+  alembic downgrade -1
