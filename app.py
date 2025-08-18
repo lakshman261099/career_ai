@@ -60,15 +60,20 @@ def register_template_globals(app: Flask):
 # ---------------------------------------------------------------------
 # Auto-migration on startup (Render-friendly; no shell required)
 # ---------------------------------------------------------------------
-# app.py (replace only this function)
 def run_auto_migrations(app: Flask) -> None:
     """
-    Force-resets Alembic pointer when AUTO_MIGRATE_RESET=1, then upgrades to head.
-    Skips for SQLite dev.
+    Robust auto-migrate for Render/Postgres (no shell needed):
+
+    Flow:
+      1) Try `upgrade head`.
+      2) If "Can't locate revision ..." -> drop alembic_version, stamp base, `upgrade head`.
+      3) If DuplicateTable/relations already exist -> STAMP HEAD (no DDL), AUTOGEN a sync migration, `upgrade head`.
+
+    Skips for SQLite (local dev).
     """
     from alembic import command
     from alembic.config import Config
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import create_engine, text, inspect
 
     if os.getenv("AUTO_MIGRATE", "1") != "1":
         return
@@ -86,23 +91,64 @@ def run_auto_migrations(app: Flask) -> None:
         with app.app_context():
             command.upgrade(cfg, "head")
 
+    # 1) First attempt: straight upgrade
     try:
-        if os.getenv("AUTO_MIGRATE_RESET", "0") == "1":
-            # Hard reset the pointer: drop alembic_version, stamp base, upgrade.
-            app.logger.warning("AUTO_MIGRATE_RESET=1 → dropping alembic_version, stamping base, upgrading...")
+        _upgrade()
+        app.logger.info("Alembic migrations applied (upgrade head).")
+        return
+    except Exception as e1:
+        msg1 = (str(e1) or "")
+        app.logger.error(f"Alembic upgrade failed (1st try): {msg1}")
+
+    # 2) Unknown/missing revision -> drop alembic_version, stamp base, upgrade
+    if "Can't locate revision" in msg1 or "No such revision" in msg1:
+        try:
+            app.logger.warning("Dropping alembic_version to clear stale revision pointer...")
             engine = create_engine(url)
             with engine.begin() as conn:
                 conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
             with app.app_context():
                 command.stamp(cfg, "base")
+                app.logger.warning("Alembic stamped to base.")
                 command.upgrade(cfg, "head")
-            app.logger.info("Alembic migrations applied after forced reset.")
-        else:
-            # Normal attempt
+                app.logger.info("Alembic migrations applied after stamp base.")
+                return
+        except Exception as e2:
+            app.logger.error(f"Alembic upgrade failed after stamp base: {e2}")
+
+    # 3) Tables already exist (DuplicateTable/relations exist): stamp HEAD, autogenerate, upgrade
+    if "already exists" in msg1 or "DuplicateTable" in msg1 or "relation" in msg1:
+        try:
+            engine = create_engine(url)
+            insp = inspect(engine)
+            existing = set(insp.get_table_names(schema="public"))
+            # if our core tables are there, treat DB as already at head
+            core_seen = {"university", "user"} & existing
+            if core_seen:
+                with app.app_context():
+                    command.stamp(cfg, "head")  # mark as up-to-date without running DDL
+                    from datetime import datetime
+                    autogen_msg = f"autosync_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+                    command.revision(cfg, message=autogen_msg, autogenerate=True)  # create diff-only migration
+                    app.logger.warning("Alembic created an autogenerate 'autosync' migration (diff-only).")
+                    command.upgrade(cfg, "head")  # apply missing columns/indexes only
+                    app.logger.info("Alembic migrations applied after autosync.")
+                    return
+        except Exception as e3:
+            app.logger.error(f"Alembic autosync path failed: {e3}")
+
+    # Last resort: try plain autogenerate then upgrade
+    try:
+        with app.app_context():
+            from datetime import datetime
+            autogen_msg = f"autosync_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+            command.revision(cfg, message=autogen_msg, autogenerate=True)
+            app.logger.warning("Alembic created an autogenerate 'autosync' migration (fallback).")
             _upgrade()
-            app.logger.info("Alembic migrations applied (upgrade head).")
-    except Exception as e:
-        app.logger.error(f"Alembic auto-migration failed: {e}")
+            app.logger.info("Alembic migrations applied after autosync fallback.")
+            return
+    except Exception as e4:
+        app.logger.error(f"Alembic autosync fallback failed: {e4}")
         # Optional: raise to fail deploy
         # raise
 
