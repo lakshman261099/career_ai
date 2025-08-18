@@ -60,15 +60,16 @@ def register_template_globals(app: Flask):
 # ---------------------------------------------------------------------
 # Auto-migration on startup (Render-friendly; no shell required)
 # ---------------------------------------------------------------------
-
+# app.py (replace only this function)
 def run_auto_migrations(app: Flask) -> None:
     """
-    Robust auto-migrate for Render/Postgres:
-      1) Try `upgrade head`.
-      2) If "Can't locate revision ..." -> `stamp base` then `upgrade head`.
-      3) If "already exists" DDL conflicts -> autogenerate a one-off "autosync" migration, then `upgrade head`.
-    Skips for SQLite (local dev).
+    Force-resets Alembic pointer when AUTO_MIGRATE_RESET=1, then upgrades to head.
+    Skips for SQLite dev.
     """
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine, text
+
     if os.getenv("AUTO_MIGRATE", "1") != "1":
         return
 
@@ -77,48 +78,32 @@ def run_auto_migrations(app: Flask) -> None:
         app.logger.info("AUTO_MIGRATE skipped (SQLite dev).")
         return
 
-    try:
-        cfg = Config(os.path.join(app.root_path, "alembic.ini"))
-        # ensure Alembic uses the same DB URL as Flask
-        url = db_url.replace("postgres://", "postgresql://", 1) if db_url.startswith("postgres://") else db_url
-        cfg.set_main_option("sqlalchemy.url", url)
+    cfg = Config(os.path.join(app.root_path, "alembic.ini"))
+    url = db_url.replace("postgres://", "postgresql://", 1) if db_url.startswith("postgres://") else db_url
+    cfg.set_main_option("sqlalchemy.url", url)
 
+    def _upgrade():
         with app.app_context():
-            # First attempt: straight upgrade
             command.upgrade(cfg, "head")
+
+    try:
+        if os.getenv("AUTO_MIGRATE_RESET", "0") == "1":
+            # Hard reset the pointer: drop alembic_version, stamp base, upgrade.
+            app.logger.warning("AUTO_MIGRATE_RESET=1 → dropping alembic_version, stamping base, upgrading...")
+            engine = create_engine(url)
+            with engine.begin() as conn:
+                conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+            with app.app_context():
+                command.stamp(cfg, "base")
+                command.upgrade(cfg, "head")
+            app.logger.info("Alembic migrations applied after forced reset.")
+        else:
+            # Normal attempt
+            _upgrade()
             app.logger.info("Alembic migrations applied (upgrade head).")
-            return
-
-    except Exception as e1:
-        msg = str(e1) or ""
-        app.logger.error(f"Alembic upgrade failed (1st try): {msg}")
-
-    # 2) If missing revision, stamp base then try upgrade
-    try:
-        with app.app_context():
-            command.stamp(cfg, "base")
-            app.logger.warning("Alembic stamped to base due to missing/unknown revision.")
-            command.upgrade(cfg, "head")
-            app.logger.info("Alembic migrations applied after stamp base.")
-            return
-    except Exception as e2:
-        msg2 = str(e2) or ""
-        app.logger.error(f"Alembic upgrade failed after stamp base: {msg2}")
-
-    # 3) If we hit DDL "already exists" conflicts, autogenerate a sync migration
-    try:
-        with app.app_context():
-            from datetime import datetime
-            autogen_msg = f"autosync {datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-            # Create a migration script that reflects current models vs DB
-            command.revision(cfg, message=autogen_msg, autogenerate=True)
-            app.logger.warning("Alembic created an autogenerate 'autosync' migration.")
-            command.upgrade(cfg, "head")
-            app.logger.info("Alembic migrations applied after autosync.")
-            return
-    except Exception as e3:
-        app.logger.error(f"Alembic autosync failed: {e3}")
-        # Optional: raise to fail deploy; or continue and let app run
+    except Exception as e:
+        app.logger.error(f"Alembic auto-migration failed: {e}")
+        # Optional: raise to fail deploy
         # raise
 
 # ---------------------------------------------------------------------
