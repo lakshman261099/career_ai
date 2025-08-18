@@ -1,27 +1,24 @@
 {% extends "base.html" %}
-{% block title %}Create account — CareerAI{% endblock %}
+{% block title %}Sign Up — CareerAI{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-md px-4 sm:px-6 lg:px-8 pt-12">
-  <div class="glass-panel rounded-3xl p-6">
-    <h1 class="text-2xl font-bold mb-6">Create account</h1>
-    <form method="post" class="space-y-4">
-      <div>
-        <label class="block text-sm text-white/70 mb-1">Name</label>
-        <input type="text" name="name" value="{{ name or '' }}" class="input" required />
-      </div>
-      <div>
-        <label class="block text-sm text-white/70 mb-1">Email</label>
-        <input type="email" name="email" value="{{ email or '' }}" class="input" required />
-      </div>
-      <div>
-        <label class="block text-sm text-white/70 mb-1">Password</label>
-        <input type="password" name="password" class="input" required />
-      </div>
-      <button class="btn-primary w-full">Create account</button>
-      <p class="text-xs text-white/60 mt-3">
-        Already have an account? <a href="/auth/login" class="underline">Login</a>
-      </p>
+<section class="mx-auto max-w-md px-4 sm:px-6 lg:px-8 pt-14">
+  <div class="glass-panel rounded-2xl p-6">
+    <h1 class="text-xl font-bold mb-3">Create Account</h1>
+    <form method="POST" action="{{ url_for('auth.register') }}">
+      <label class="block text-sm mb-1">Name</label>
+      <input name="name" required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+
+      <label class="block text-sm mt-4 mb-1">Email</label>
+      <input type="email" name="email" required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+
+      <label class="block text-sm mt-4 mb-1">Password</label>
+      <input type="password" name="password" required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+
+      <button type="submit" class="btn-primary mt-4 w-full">Create Account</button>
     </form>
+    <div class="mt-4 text-center text-sm">
+      <a class="btn-ghost inline-flex" href="{{ url_for('auth.login') }}">Already have an account? Log in</a>
+    </div>
   </div>
 </section>
 {% endblock %}

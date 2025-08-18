@@ -18,9 +18,6 @@ login_manager = LoginManager()
 login_manager.login_view = "auth.login"
 
 
-# ---------------------------
-# Flask-Login user loader
-# ---------------------------
 @login_manager.user_loader
 def load_user(user_id):
     try:
@@ -39,8 +36,8 @@ def _send_email(to_email: str, subject: str, body: str) -> None:
     password = os.getenv("SMTP_PASSWORD")
     sender = os.getenv("SMTP_FROM", user or "no-reply@example.com")
 
+    # Dev fallback: log to console if SMTP not configured
     if not host or not user or not password:
-        # In dev, just log to console to avoid hard failures
         print(f"[DEV EMAIL] To: {to_email}\nSubject: {subject}\n\n{body}")
         return
 
@@ -50,8 +47,12 @@ def _send_email(to_email: str, subject: str, body: str) -> None:
     msg["To"] = to_email
 
     with smtplib.SMTP(host, port) as smtp:
-        smtp.starttls()
-        smtp.login(user, password)
+        try:
+            smtp.starttls()
+        except Exception:
+            pass
+        if user and password:
+            smtp.login(user, password)
         smtp.sendmail(sender, [to_email], msg.as_string())
 
 
@@ -60,14 +61,14 @@ def _normalize_email(email: str) -> str:
 
 
 # ---------------------------
-# Password-based Register/Login (kept for compatibility)
+# Password-based Register/Login
 # ---------------------------
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        email = _normalize_email(request.form.get("email", ""))
-        pw = request.form.get("password", "")
+        name = (request.form.get("name") or "").strip()
+        email = _normalize_email(request.form.get("email"))
+        pw = request.form.get("password") or ""
 
         if not (name and email and pw):
             flash("All fields are required.", "error")
@@ -77,26 +78,29 @@ def register():
             flash("Email already registered.", "error")
             return render_template("auth/register.html")
 
-        u = User(name=name, email=email, verified=False)
+        u = User(name=name, email=email, verified=True)  # mark verified on password signup
         u.set_password(pw)
         db.session.add(u)
         db.session.commit()
 
         login_user(u)
-        flash("Welcome! Account created.", "success")
+        flash("Account created. Welcome!", "success")
         return redirect(url_for("dashboard"))
-
     return render_template("auth/register.html")
+
+
+# alias /signup -> /register (so links like feature_paths.signup work)
+@auth_bp.route("/signup", methods=["GET", "POST"])
+def signup():
+    return register()
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
-    """
-    Password login (legacy). The page should also link to OTP flow.
-    """
+    """Simple email+password login; OTP link remains optional."""
     if request.method == "POST":
-        email = _normalize_email(request.form.get("email", ""))
-        pw = request.form.get("password", "")
+        email = _normalize_email(request.form.get("email"))
+        pw = request.form.get("password") or ""
 
         u = User.query.filter_by(email=email).first()
         if not u or not u.check_password(pw):
@@ -106,72 +110,61 @@ def login():
         login_user(u)
         flash("Logged in.", "success")
         return redirect(url_for("dashboard"))
-
     return render_template("auth/login.html")
 
 
 # ---------------------------
-# OTP-based Login (KB default)
+# OTP-based Login (optional)
 # ---------------------------
 
-# Session keys (no DB schema change needed)
-OTP_SESSION_KEY = "otp_login"  # will store dict: {email, code_hash?, expires_at, csrf}
+OTP_SESSION_KEY = "otp_login"
 OTP_TTL_MINUTES = 10
 
 
 def _generate_otp_code(length=6) -> str:
-    digits = string.digits
-    return "".join(random.choice(digits) for _ in range(length))
+    return "".join(random.choice(string.digits) for _ in range(length))
 
 
 @auth_bp.route("/otp/request", methods=["GET", "POST"], endpoint="otp_request")
 def otp_request():
-    """
-    Step 1: Ask for email; send OTP.
-    """
     if request.method == "POST":
-        email = _normalize_email(request.form.get("email", ""))
+        email = _normalize_email(request.form.get("email"))
         if not email:
             flash("Please enter your email.", "error")
             return render_template("auth/otp_request.html")
 
         code = _generate_otp_code(6)
         expires_at = datetime.utcnow() + timedelta(minutes=OTP_TTL_MINUTES)
-        csrf = gen_salt(16)
 
+        # store in session only (no csrf arg needed)
         session[OTP_SESSION_KEY] = {
             "email": email,
-            "code": code,         # stored plain in session (server-side), not in DB
+            "code": code,
             "expires_at": expires_at.isoformat(),
-            "csrf": csrf,
         }
         session.modified = True
 
         _send_email(
             to_email=email,
             subject="Your Login Code",
-            body=f"Your OTP is: {code}\n\nThis code expires in {OTP_TTL_MINUTES} minutes.\nIf you did not request this, you can ignore this email.",
+            body=f"Your OTP is: {code}\n\nThis code expires in {OTP_TTL_MINUTES} minutes.",
         )
 
         flash("We’ve sent a 6-digit code to your email.", "info")
-        return redirect(url_for("auth.otp_verify", csrf=csrf))
+        return redirect(url_for("auth.otp_verify"))
 
     return render_template("auth/otp_request.html")
 
 
 @auth_bp.route("/otp/verify", methods=["GET", "POST"], endpoint="otp_verify")
 def otp_verify():
-    """
-    Step 2: Verify code; create user if not exists; mark verified; log in.
-    """
     data = session.get(OTP_SESSION_KEY) or {}
-    csrf_q = request.args.get("csrf") or request.form.get("csrf")
-    if not data or not csrf_q or data.get("csrf") != csrf_q:
-        flash("OTP session expired. Please request a new code.", "error")
+    if not data:
+        flash("OTP session not found. Request a new code.", "error")
         return redirect(url_for("auth.otp_request"))
 
     if request.method == "POST":
-        input_code = (request.form.get("code", "") or "").strip()
+        user_code = (request.form.get("code") or "").strip()
         stored_code = data.get("code", "")
         expires_at = datetime.fromisoformat(data.get("expires_at"))
 
@@ -180,40 +173,33 @@ def otp_verify():
             flash("Code expired. Please request a new one.", "error")
             return redirect(url_for("auth.otp_request"))
 
-        if input_code != stored_code:
-            flash("Invalid code. Please try again.", "error")
-            return render_template("auth/otp_verify.html", csrf=csrf_q)
+        if not (len(user_code) == 6 and user_code.isdigit()):
+            flash("Please enter a 6-digit numeric code.", "error")
+            return render_template("auth/otp_verify.html")
 
-        # Success: get or create user
+        if user_code != stored_code:
+            flash("Invalid code. Please try again.", "error")
+            return render_template("auth/otp_verify.html")
+
         email = data.get("email")
         user = User.query.filter_by(email=email).first()
         if not user:
-            # Minimal profile; user can complete name later in Settings
             user = User(name=email.split("@")[0].title(), email=email, verified=True)
-            # set a random password so password login remains disabled unless they set one
-            user.set_password(gen_salt(24))
+            user.set_password(gen_salt(24))  # random; user can set later
             db.session.add(user)
         else:
             user.verified = True
 
         db.session.commit()
-
-        # Log in
         login_user(user)
-
-        # Cleanup
         session.pop(OTP_SESSION_KEY, None)
 
         flash("Logged in with OTP. Welcome!", "success")
         return redirect(url_for("dashboard"))
 
-    # GET -> show form
-    return render_template("auth/otp_verify.html", csrf=csrf_q)
+    return render_template("auth/otp_verify.html")
 
 
-# ---------------------------
-# Logout
-# ---------------------------
 @auth_bp.route("/logout")
 @login_required
 def logout():

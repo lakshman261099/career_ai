@@ -11,7 +11,9 @@
       <input type="password" name="password" required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
       <button type="submit" class="btn-primary mt-4 w-full">Login</button>
     </form>
-    <div class="mt-4 text-center">
+
+    <div class="mt-4 flex items-center justify-between text-sm">
+      <a class="btn-ghost inline-flex" href="{{ url_for('auth.register') }}">Create account</a>
       <a class="btn-ghost inline-flex" href="{{ url_for('auth.otp_request') }}">Login with OTP</a>
     </div>
   </div>

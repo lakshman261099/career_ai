@@ -4,12 +4,11 @@
 <section class="mx-auto max-w-md px-4 sm:px-6 lg:px-8 pt-14">
   <div class="glass-panel rounded-2xl p-6">
     <h1 class="text-xl font-bold mb-2">Enter Code</h1>
-    <p class="text-white/70 text-sm mb-4">Check your email for the 6-digit code.</p>
+    <p class="text-white/70 text-sm mb-4">We emailed you a 6-digit code.</p>
     <form method="POST" action="{{ url_for('auth.otp_verify') }}">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
       <label class="block text-sm mb-1">Code</label>
-      <input type="text" name="code" inputmode="numeric" pattern="\\d{6}" maxlength="6"
-             required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+      <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+             required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20" placeholder="123456">
       <button type="submit" class="btn-primary mt-4 w-full">Verify & Login</button>
     </form>
     <a class="btn-ghost mt-3 inline-flex" href="{{ url_for('auth.otp_request') }}">Resend code</a>

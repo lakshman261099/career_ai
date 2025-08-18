@@ -6,13 +6,12 @@ from flask import Flask, render_template, request, send_from_directory, url_for
 from flask_login import current_user
 from dotenv import load_dotenv
 
-from models import db, User, University
+from models import db, University
 from limits import init_limits
 
 # Blueprints
 from modules.auth.routes import auth_bp, login_manager  # provides login_manager
 from modules.billing.routes import billing_bp
-# from modules.resume.routes import resume_bp  # (removed) resume lives under Settings (Pro-only)
 from modules.portfolio.routes import portfolio_bp
 from modules.internships.routes import internships_bp
 from modules.referral.routes import referral_bp
@@ -20,11 +19,15 @@ from modules.jobpack.routes import jobpack_bp
 from modules.skillmapper.routes import skillmapper_bp
 from modules.settings.routes import settings_bp
 
+# Alembic (for auto-migrate on startup)
+from alembic import command
+from alembic.config import Config
+
 load_dotenv()
 
 
 # ---------------------------------------------------------------------
-# Template helpers (available inside Jinja as simple functions)
+# Jinja helpers (available inside templates)
 # ---------------------------------------------------------------------
 def free_coins():
     if getattr(current_user, "is_authenticated", False):
@@ -41,6 +44,7 @@ def pro_coins():
 def is_pro():
     if getattr(current_user, "is_authenticated", False):
         status = (getattr(current_user, "subscription_status", "free") or "free").lower()
+        # prefer model property if present, else infer from status
         return bool(getattr(current_user, "is_pro", False) or status == "pro")
     return False
 
@@ -54,6 +58,38 @@ def register_template_globals(app: Flask):
 
 
 # ---------------------------------------------------------------------
+# Auto-migration on startup (Render-friendly; no shell required)
+# ---------------------------------------------------------------------
+def run_auto_migrations(app: Flask) -> None:
+    """
+    Runs `alembic upgrade head` on startup when:
+      - AUTO_MIGRATE is "1" (default), AND
+      - the DB is NOT SQLite (so Render/Postgres upgrades happen automatically).
+    """
+    if os.getenv("AUTO_MIGRATE", "1") != "1":
+        return
+
+    db_url = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+    if db_url.startswith("sqlite"):
+        # Keep SQLite local simple: use create_all() instead
+        app.logger.info("AUTO_MIGRATE skipped (SQLite dev).")
+        return
+
+    try:
+        cfg = Config(os.path.join(app.root_path, "alembic.ini"))
+        # Ensure Alembic uses the same URL as Flask
+        url = db_url.replace("postgres://", "postgresql://", 1) if db_url.startswith("postgres://") else db_url
+        cfg.set_main_option("sqlalchemy.url", url)
+        with app.app_context():
+            command.upgrade(cfg, "head")
+        app.logger.info("Alembic migrations applied (upgrade head).")
+    except Exception as e:
+        app.logger.error(f"Alembic auto-migration failed: {e}")
+        # Optional: fail fast on deploy
+        # raise
+
+
+# ---------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------
 def create_app():
@@ -64,18 +100,17 @@ def create_app():
     app.config["SECRET_KEY"] = secret
 
     db_url = os.getenv("DATABASE_URL") or os.getenv("DEV_DATABASE_URI") or "sqlite:///career_ai.db"
-    # Alembic/SQLAlchemy expect "postgresql://" not "postgres://"
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB uploads
 
-    # Optional: dev nicety
+    # Dev nicety
     if os.getenv("FLASK_ENV") != "production":
         app.config["TEMPLATES_AUTO_RELOAD"] = True
 
-    # Optional: prod security + proxy headers (Render/CDN)
+    # Prod security + proxy headers (Render)
     if os.getenv("FLASK_ENV") == "production" or os.getenv("ENV") == "production":
         app.config.update(
             SESSION_COOKIE_SECURE=True,
@@ -95,8 +130,7 @@ def create_app():
 
     # ----- Blueprints
     app.register_blueprint(auth_bp, url_prefix="/auth")
-    app.register_blueprint(billing_bp, url_prefix="/billing")  # ensure consistent path
-    # app.register_blueprint(resume_bp, url_prefix="/resume")   # (removed)
+    app.register_blueprint(billing_bp, url_prefix="/billing")   # pricing at /billing/
     app.register_blueprint(portfolio_bp, url_prefix="/portfolio")
     app.register_blueprint(internships_bp, url_prefix="/internships")
     app.register_blueprint(referral_bp, url_prefix="/referral")
@@ -104,7 +138,7 @@ def create_app():
     app.register_blueprint(skillmapper_bp, url_prefix="/skillmapper")
     app.register_blueprint(settings_bp, url_prefix="/settings")
 
-    # ----- Make helpers available in templates
+    # ----- Helpers in templates
     register_template_globals(app)
 
     # ----- Routes
@@ -116,14 +150,14 @@ def create_app():
     def dashboard():
         return render_template("dashboard.html")
 
-    # Favicon (prevents noisy 404s when you don't have a file yet)
+    # Favicon
     @app.route("/favicon.ico")
     def favicon():
         return send_from_directory(
             app.static_folder, "favicon.ico", mimetype="image/vnd.microsoft.icon"
         )
 
-    # ----- Context data available to all templates
+    # ----- Context for all templates
     @app.context_processor
     def inject_globals():
         tenant_name = None
@@ -143,12 +177,15 @@ def create_app():
             except Exception:
                 return "#"
 
-        # Centralized feature links used by base.html (e.g., feature_paths.resume)
+        # Feature links used by base.html
+        resume_url = safe_url("settings.resume")
+        if resume_url == "#":
+            resume_url = safe_url("settings.index")
+
         feature_paths = {
             "home":        safe_url("landing"),
             "dashboard":   safe_url("dashboard"),
-            # Resume upload/profile is under Settings for Pro; fall back to settings.index
-            "resume":      safe_url("settings.resume") if safe_url("settings.resume") != "#" else safe_url("settings.index"),
+            "resume":      resume_url,                # Pro-only vault under Settings
             "portfolio":   safe_url("portfolio.index"),
             "internships": safe_url("internships.index"),
             "referral":    safe_url("referral.index"),
@@ -158,7 +195,7 @@ def create_app():
             "billing":     safe_url("billing.index"),
             "login":       safe_url("auth.login"),
             "logout":      safe_url("auth.logout"),
-            "signup":      safe_url("auth.signup"),
+            "signup":      safe_url("auth.register"),  # or "auth.signup" if you kept the alias
         }
 
         return dict(
@@ -183,12 +220,15 @@ def create_app():
     def srv_error(e):
         return render_template("errors/500.html"), 500
 
-    # ----- Create tables only for local SQLite/dev; use Alembic in prod
+    # ----- Local SQLite only: create tables for quick start
     with app.app_context():
         is_sqlite = str(app.config["SQLALCHEMY_DATABASE_URI"]).startswith("sqlite")
         is_prod = os.getenv("FLASK_ENV") == "production" or os.getenv("ENV") == "production"
         if is_sqlite and not is_prod:
             db.create_all()
+
+    # ----- Auto-run Alembic migrations on startup (Render/Postgres)
+    run_auto_migrations(app)
 
     return app
 

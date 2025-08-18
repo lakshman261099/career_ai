@@ -3,80 +3,60 @@
 import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging.
+# Logging config from alembic.ini (optional)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# --- Load Flask app & metadata ----------------------------
-# Ensure project root is importable
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
-from app import create_app
-from models import db  # db.metadata is our target metadata
-
-flask_app = create_app()
-
-with flask_app.app_context():
-    url = flask_app.config.get("SQLALCHEMY_DATABASE_URI")
-    if url and url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
-
-    # Override alembic.ini sqlalchemy.url using Flask config
-    config.set_main_option("sqlalchemy.url", url or "sqlite:///career_ai.db")
-
+# Import models metadata directly (no app import; avoids recursion)
+from models import db
 target_metadata = db.metadata
 
-# SQLite needs "render_as_batch" for many ALTER operations
-is_sqlite = (config.get_main_option("sqlalchemy.url") or "").startswith("sqlite")
+def _db_url():
+    # Prefer env DATABASE_URL (Render provides it); fallback to alembic.ini value; then dev sqlite
+    url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url") or "sqlite:///career_ai.db"
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
 
-# ----------------------------------------------------------
-
-
-def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode."""
-    url = config.get_main_option("sqlalchemy.url")
+def run_migrations_offline():
+    url = _db_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=True,
-        render_as_batch=is_sqlite,
+        render_as_batch=url.startswith("sqlite"),
+        dialect_opts={"paramstyle": "named"},
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
+def run_migrations_online():
+    url = _db_url()
+    config.set_main_option("sqlalchemy.url", url)
 
-def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
     connectable = engine_from_config(
         config.get_section(config.config_ini_section),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=True,
-            render_as_batch=is_sqlite,
+            render_as_batch=url.startswith("sqlite"),
         )
-
         with context.begin_transaction():
             context.run_migrations()
-
 
 if context.is_offline_mode():
     run_migrations_offline()

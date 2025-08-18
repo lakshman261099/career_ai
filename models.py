@@ -52,8 +52,8 @@ class User(UserMixin, db.Model):
 
     # Billing / subscription
     subscription_status = db.Column(db.String(32), default="free", nullable=False)  # "free" | "pro" | "canceled" | etc.
-    stripe_customer_id = db.Column(db.String(120), nullable=True, index=True)
-    stripe_subscription_id = db.Column(db.String(120), nullable=True, index=True)
+    stripe_customer_id = db.Column(db.String(120), index=True, nullable=True)
+    stripe_subscription_id = db.Column(db.String(120), index=True, nullable=True)
     pro_since = db.Column(db.DateTime, nullable=True)
     pro_cancel_at = db.Column(db.DateTime, nullable=True)
 
@@ -80,7 +80,7 @@ class User(UserMixin, db.Model):
 
     @property
     def is_pro(self) -> bool:
-        return (self.subscription_status or "").lower() == "pro"
+        return (self.subscription_status or "free").lower() == "pro"
 
     def __repr__(self):
         return f"<User {self.id} {self.email}>"

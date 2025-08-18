@@ -20,6 +20,7 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 # ------------------------------------------
 # Pricing / Index
 # ------------------------------------------
+
 @billing_bp.route("/", endpoint="index")
 def index():
     """
@@ -29,9 +30,10 @@ def index():
         "pricing.html",
         stripe_public_key=STRIPE_PUBLISHABLE_KEY,
         price_id=STRIPE_PRICE_ID_PRO,
-        is_pro=getattr(current_user, "is_pro", False),
-        subscription_status=getattr(current_user, "subscription_status", "free"),
+        # DO NOT PASS 'is_pro' here; it shadows the template helper is_pro()
+        subscription_status=getattr(current_user, "subscription_status", "free") if getattr(current_user, "is_authenticated", False) else "free",
     )
+
 
 
 # Back-compat: /pricing -> /billing/
