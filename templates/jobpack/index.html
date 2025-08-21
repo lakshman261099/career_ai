@@ -13,10 +13,10 @@
 
       <div class="mt-4 flex items-center gap-3">
         <label class="inline-flex items-center gap-2 text-sm">
-          <input type="radio" name="mode" value="basic" checked> Basic
+          <input type="radio" name="mode" value="basic" {% if mode != 'pro' %}checked{% endif %}> Basic
         </label>
         <label class="inline-flex items-center gap-2 text-sm">
-          <input type="radio" name="mode" value="pro"> Deep (Pro ⭐)
+          <input type="radio" name="mode" value="pro" {% if mode == 'pro' %}checked{% endif %}> Deep (Pro ⭐)
         </label>
       </div>
 
@@ -28,34 +28,59 @@
   </div>
 
   {% if result %}
+    {# normalize locals so template never crashes #}
+    {% set fit = result.fit if result.fit is defined and result.fit else {'score':'-','gaps':[],'keywords':[]} %}
+    {% set cover = result.cover if result.cover is defined and result.cover else '' %}
+    {% set qna = result.qna if result.qna is defined and result.qna else [] %}
+    {% set notes = result.notes if result.notes is defined and result.notes else '' %}
+
     <div class="glass-panel rounded-2xl p-6 mt-6">
       <h2 class="text-lg font-semibold mb-2">Results</h2>
+
+      {% if notes %}
+        <div class="text-xs text-white/70 mb-3">{{ notes }}</div>
+      {% endif %}
+
       <div class="text-sm text-white/80">
-        <div><strong>Fit Score:</strong> {{ result.fit.score if result.fit else '-' }}</div>
-        <div class="mt-1"><strong>Gaps:</strong> {{ result.fit.gaps|join(', ') if result.fit and result.fit.gaps else '-' }}</div>
-        <div class="mt-1"><strong>Keywords:</strong> {{ result.fit.keywords|join(', ') if result.fit and result.fit.keywords else '-' }}</div>
+        <div><strong>Fit Score:</strong> {{ fit.score if fit.score is defined else '-' }}</div>
+        <div class="mt-1">
+          <strong>Gaps:</strong>
+          {% if fit.gaps is defined and fit.gaps %}{{ fit.gaps|join(', ') }}{% else %}-{% endif %}
+        </div>
+        <div class="mt-1">
+          <strong>Keywords:</strong>
+          {% if fit.keywords is defined and fit.keywords %}{{ fit.keywords|join(', ') }}{% else %}-{% endif %}
+        </div>
       </div>
 
       <div class="mt-4">
         <h3 class="font-semibold">Cover Letter</h3>
-        <pre class="mt-1 whitespace-pre-wrap text-sm">{{ result.cover }}</pre>
+        {% if cover %}
+          <pre class="mt-1 whitespace-pre-wrap text-sm">{{ cover }}</pre>
+        {% else %}
+          <div class="text-sm text-white/60 mt-1">No cover letter generated.</div>
+        {% endif %}
       </div>
 
       <div class="mt-4">
         <h3 class="font-semibold">Interview Q&A</h3>
-        <ul class="list-disc pl-5 text-sm">
-          {% for qa in result.qna %}
-            <li class="mb-2">
-              <div><strong>Q:</strong> {{ qa.q }}</div>
-              <div><strong>A:</strong> {{ qa.a }}</div>
-            </li>
-          {% endfor %}
-        </ul>
+        {% if qna %}
+          <ul class="list-disc pl-5 text-sm">
+            {% for qa in qna %}
+              <li class="mb-2">
+                <div><strong>Q:</strong> {{ qa.q if qa.q is defined else '' }}</div>
+                <div><strong>A:</strong> {{ qa.a if qa.a is defined else '' }}</div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="text-sm text-white/60 mt-1">No Q&A generated.</div>
+        {% endif %}
       </div>
 
-      {% if current_user.is_pro %}
+      {% if current_user.is_pro or (current_user.subscription_status|default('free') == 'pro') %}
         <form method="POST" action="{{ url_for('jobpack.export_pdf') }}" class="mt-4">
-          <input type="hidden" name="data" value="{{ result | tojson }}">
+          <input type="hidden" name="data" value='{{ result | tojson }}'>
           <button class="btn-ghost" type="submit">Export PDF ⭐</button>
         </form>
       {% else %}

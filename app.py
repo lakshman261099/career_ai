@@ -31,22 +31,40 @@ load_dotenv()
 # ---------------------------------------------------------------------
 def free_coins():
     if getattr(current_user, "is_authenticated", False):
-        return getattr(current_user, "coins_free", 0) or 0
+        try:
+            return getattr(current_user, "coins_free", 0) or 0
+        except Exception:
+            # transaction may be aborted; clear it and return a safe default
+            try: db.session.rollback()
+            except Exception: pass
+            return 0
     return 0
+    
 
 
 def pro_coins():
     if getattr(current_user, "is_authenticated", False):
-        return getattr(current_user, "coins_pro", 0) or 0
+        try:
+            return getattr(current_user, "coins_pro", 0) or 0
+        except Exception:
+            try: db.session.rollback()
+            except Exception: pass
+            return 0
     return 0
+    
 
 
 def is_pro():
     if getattr(current_user, "is_authenticated", False):
-        status = (getattr(current_user, "subscription_status", "free") or "free").lower()
-        # prefer model property if present, else infer from status
-        return bool(getattr(current_user, "is_pro", False) or status == "pro")
+        try:
+            status = (getattr(current_user, "subscription_status", "free") or "free").lower()
+            return bool(getattr(current_user, "is_pro", False) or status == "pro")
+        except Exception:
+            try: db.session.rollback()
+            except Exception: pass
+            return False
     return False
+   
 
 
 def register_template_globals(app: Flask):
@@ -291,7 +309,20 @@ def create_app():
 
     @app.errorhandler(500)
     def srv_error(e):
-        return render_template("errors/500.html"), 500
+       try:
+          db.session.rollback()
+       except Exception:
+          pass
+       return render_template("errors/500.html"), 500
+
+
+    @app.teardown_request
+    def _teardown_request(exc):
+      if exc:
+         try: db.session.rollback()
+         except Exception: pass
+
+    
 
     # ----- Local SQLite only: create tables for quick start
     with app.app_context():
