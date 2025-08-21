@@ -1,11 +1,11 @@
 # app.py
 
-import os
+import os, logging, sys
 from datetime import datetime
 from flask import Flask, render_template, request, send_from_directory, url_for
 from flask_login import current_user
 from dotenv import load_dotenv
-
+from logtail import LogtailHandler
 from models import db, University
 from limits import init_limits
 
@@ -157,6 +157,16 @@ def run_auto_migrations(app: Flask) -> None:
 # ---------------------------------------------------------------------
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
+    
+    handlers = [logging.StreamHandler(sys.stdout)]
+    token = os.getenv("LOGTAIL_TOKEN")
+    if token:
+        handlers.append(LogtailHandler(source_token=token))
+        
+    logging.basicConfig(level=logging.INFO, handlers=handlers)
+    app.logger.handlers = handlers
+    app.logger.setLevel(logging.INFO)
+    
 
     # ----- Config
     secret = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY") or "dev-secret-key"
