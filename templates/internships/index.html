@@ -3,41 +3,66 @@
 {% block content %}
 <section class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 pt-12">
   <div class="glass-panel rounded-2xl p-6">
-    <h1 class="text-xl font-bold mb-3">Internship Finder (Paste-only)</h1>
-    <p class="text-white/70 text-sm mb-4">
-      Paste internship snippets (one per line) or separate with <code class="px-1 bg-white/10 rounded">---</code>.
-    </p>
-    <form method="POST">
-      <label class="block text-sm mb-1">Descriptions</label>
-      <textarea name="descriptions" rows="10" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
-        placeholder="e.g.
-Summer SDE Intern — Bangalore — Python, SQL
----
-Data Analyst Intern — Remote — Excel, Tableau">{{ raw_input }}</textarea>
+    <h1 class="text-xl font-bold mb-3">Internships — Analyse</h1>
+    <form method="post" action="{{ url_for('internships.analyse') }}">
+      <label class="block text-sm mb-1">Paste role/keywords (e.g., "VR game design London")</label>
+      <textarea name="text" rows="5" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20" required></textarea>
+
+      <div class="mt-4 flex items-center gap-3">
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input type="radio" name="mode" value="basic" {% if mode != 'pro' %}checked{% endif %}> Basic
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input type="radio" name="mode" value="pro" {% if mode == 'pro' %}checked{% endif %}> Deep (Pro ⭐)
+        </label>
+      </div>
+
       <div class="mt-4 flex gap-2">
-        <button class="btn-primary">Analyze</button>
+        <button class="btn-primary" type="submit">Analyse</button>
         <a class="btn-ghost" href="{{ feature_paths.billing }}">Get Pro</a>
       </div>
     </form>
   </div>
 
-  {% if results %}
+  {% if r %}
+    {% set roles = r.roles if r.roles is defined and r.roles else [] %}
+    {% set companies = r.companies if r.companies is defined and r.companies else [] %}
+    {% set links = r.links if r.links is defined and r.links else [] %}
+    {% set notes = r.notes if r.notes is defined and r.notes else '' %}
+
     <div class="glass-panel rounded-2xl p-6 mt-6">
       <h2 class="text-lg font-semibold mb-2">Results</h2>
-      <ul class="space-y-2 text-sm">
-        {% for r in results %}
-          <li class="glass-card p-3 rounded-xl">
-            <div class="text-white/90">{{ r.notes }}</div>
-            {% if r.role or r.location %}
-              <div class="text-white/50 text-xs mt-1">
-                {% if r.role %}Role: {{ r.role }}{% endif %}
-                {% if r.role and r.location %} · {% endif %}
-                {% if r.location %}Location: {{ r.location }}{% endif %}
-              </div>
-            {% endif %}
-          </li>
-        {% endfor %}
-      </ul>
+
+      {% if notes %}
+        <div class="text-sm text-white/80 mb-3">{{ notes }}</div>
+      {% endif %}
+
+      {% if roles %}
+        <h3 class="font-semibold">Suggested roles</h3>
+        <ul class="list-disc pl-5 text-sm mb-3">
+          {% for role in roles %}<li>{{ role }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if companies %}
+        <h3 class="font-semibold">Companies</h3>
+        <ul class="list-disc pl-5 text-sm mb-3">
+          {% for c in companies %}<li>{{ c }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if links %}
+        <h3 class="font-semibold">Links</h3>
+        <ul class="list-disc pl-5 text-sm">
+          {% for L in links %}
+            <li><a href="{{ L }}" target="_blank" rel="noopener">{{ L }}</a></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        {% if not roles and not companies %}
+          <div class="text-sm text-white/60">No structured results. Try adding a city or skill to your query.</div>
+        {% endif %}
+      {% endif %}
     </div>
   {% endif %}
 </section>

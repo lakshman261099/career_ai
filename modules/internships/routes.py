@@ -1,66 +1,88 @@
 # modules/internships/routes.py
-
-import json
-from flask import Blueprint, render_template, request, flash, redirect, url_for
+from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
 
-from models import db, InternshipRecord
-from limits import authorize_and_consume
+from limits import authorize_and_consume, can_use_pro, consume_pro
+from models import db
 
-# NOTE: KB rule: never scrape. We require users to paste internship descriptions.
-# If you had a scraping helper before, remove it from this module.
+# Use whichever helper you actually have defined.
+# If you only have `internships_search` in helpers.py, this alias will wire it up.
+try:
+    from helpers import internships_analyze  # preferred name if present
+except ImportError:
+    from helpers import internships_search as internships_analyze  # alias to your existing function
 
-internships_bp = Blueprint("internships", __name__, template_folder="../../templates/internships")
+internships_bp = Blueprint("internships", __name__, template_folder='../../templates/internships')
 
 
-@internships_bp.route("/", methods=["GET", "POST"], endpoint="index")
+def _safe_result(raw):
+    """
+    Normalize helper output so Jinja never crashes.
+    Final shape:
+      { "ok": bool, "roles": [...], "companies": [...], "links": [...], "notes": str }
+    """
+    base = {"ok": True, "roles": [], "companies": [], "links": [], "notes": ""}
+
+    if isinstance(raw, dict):
+        base["roles"] = raw.get("roles") or []
+        base["companies"] = raw.get("companies") or []
+        base["links"] = raw.get("links") or []
+        base["notes"] = (raw.get("notes") or raw.get("summary") or "")[:4000]
+        return base
+
+    if isinstance(raw, list):
+        # e.g., a list of URLs/strings
+        base["links"] = [str(x) for x in raw][:20]
+        return base
+
+    if isinstance(raw, str):
+        base["notes"] = raw[:4000]
+        return base
+
+    base["notes"] = str(raw)[:4000]
+    return base
+
+
+@internships_bp.route("/", methods=["GET"], endpoint="index")
 @login_required
 def index():
-    """
-    Paste-only internship analyzer:
-    - User pastes 1..N internship snippets (one per line or separated by ---).
-    - We store the raw text as a record and return a lightweight structured view.
-    - Credits: free daily first, fallback to ⭐ via authorize_and_consume("internships")
-    """
-    results = []
-    raw_input = ""
+    return render_template("internships/index.html", r=None, mode="basic")
 
-    if request.method == "POST":
-        raw_input = (request.form.get("descriptions") or "").strip()
 
-        if not raw_input:
-            flash("Paste at least one internship description.", "error")
-            return render_template("internships/index.html", results=[], raw_input="")
+@internships_bp.route("/analyse", methods=["POST"], endpoint="analyse")
+@login_required
+def analyse():
+    text = (request.form.get("text") or request.form.get("query") or "").strip()
+    mode = (request.form.get("mode") or "basic").lower()
 
-        # Authorize (free first; fallback to Pro ⭐)
-        if not authorize_and_consume(current_user, "internships"):
-            flash("You’ve hit today’s free limit. Go Pro to continue.", "warning")
-            return redirect(url_for("billing.index"))
+    if not text:
+        flash("Paste a role or a short query (e.g., 'VR internships London').", "warning")
+        return redirect(url_for("internships.index"))
 
-        # Very light structuring: split by lines or '---'
-        chunks = [c.strip() for c in raw_input.replace("\r\n", "\n").split("\n---\n")]
-        if len(chunks) == 1:  # allow line-by-line
-            chunks = [ln.strip() for ln in raw_input.splitlines() if ln.strip()]
+    try:
+        # Credits: free for basic; pro when explicitly requested
+        if mode == "pro":
+            if not can_use_pro(current_user, "internships"):
+                flash("Not enough Pro credits for deep search.", "warning")
+                return redirect(url_for("billing.index"))
+            raw = internships_analyze(text)
+            r = _safe_result(raw)
+            consume_pro(current_user, "internships")
+        else:
+            if not authorize_and_consume(current_user, "internships"):
+                flash("You’ve hit today’s free limit. Upgrade to Pro to continue.", "warning")
+                return redirect(url_for("billing.index"))
+            raw = internships_analyze(text)
+            r = _safe_result(raw)
 
-        # Shape as list of {role, location, notes}
-        shaped = []
-        for c in chunks:
-            shaped.append({
-                "role": None,       # user-pasted; we don't infer to avoid hallucinations
-                "location": None,   # user-pasted; can enhance later if you add NLP
-                "notes": c[:1200],  # keep size predictable
-            })
-        results = shaped
+        # Never let empty arrays look like failure — show something helpful
+        if not (r["roles"] or r["companies"] or r["links"]):
+            r["notes"] = r["notes"] or "No specific results detected. Try role + city (e.g., 'Backend internships London')."
 
-        rec = InternshipRecord(
-            user_id=current_user.id,
-            role=None,
-            location=None,
-            results_json=json.dumps(results),
-        )
-        db.session.add(rec)
-        db.session.commit()
+        return render_template("internships/index.html", r=r, mode=mode)
 
-        flash(f"Processed {len(results)} pasted item(s).", "success")
-
-    return render_template("internships/index.html", results=results, raw_input=raw_input)
+    except Exception as e:
+        current_app.logger.exception("Internships analyse error: %s", e)
+        # Show a friendly page with guidance instead of 500
+        r = _safe_result({"notes": "We couldn’t analyze that input. Try a simpler query (e.g., 'Game design internships London')."})
+        return render_template("internships/index.html", r=r, mode=mode)

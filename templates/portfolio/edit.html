@@ -22,9 +22,6 @@
       <div class="mt-4 flex gap-2">
         <button class="btn-primary" type="submit">Update Draft</button>
         <a class="btn-ghost" href="{{ url_for('portfolio.index') }}">Back</a>
-        {% if not page.is_public %}
-          <form method="POST" action="{{ url_for('portfolio.publish', page_id=page.id) }}"></form>
-        {% endif %}
       </div>
     </form>
 

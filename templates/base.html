@@ -1,5 +1,5 @@
-{% set FREE = free_coins() %}
-{% set PRO = pro_coins() %}
+{% set FREE = user_free %}
+{% set PRO = user_pro %}
 <!doctype html>
 <html lang="en" class="h-full">
 <head>
@@ -44,13 +44,15 @@
             <span class="text-xl font-extrabold">C</span>
           </div>
           <span class="font-semibold tracking-wide">CareerAI</span>
-          {% if is_pro() %}<span class="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-white/10 border border-white/20 uppercase tracking-widest">Pro</span>{% endif %}
+          {% if subscription_status|default('free') == 'pro' %}
+            <span class="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-white/10 border border-white/20 uppercase tracking-widest">Pro</span>
+          {% endif %}
         </a>
 
         <nav class="hidden md:flex items-center gap-6 text-sm">
           <!-- Resume lives under Settings (Pro-only); keep link visible -->
           <a class="nav-link" href="{{ feature_paths.resume }}">
-            Resume{% if not is_pro() %} <span class="opacity-60">🔒</span>{% endif %}
+            Resume{% if subscription_status|default('free') != 'pro' %} <span class="opacity-60">🔒</span>{% endif %}
           </a>
           <a class="nav-link" href="{{ feature_paths.portfolio }}">Portfolio</a>
           <a class="nav-link" href="{{ feature_paths.internships }}">Internships</a>
