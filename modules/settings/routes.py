@@ -309,3 +309,20 @@ def credits():
         subscription_status=(current_user.subscription_status or "free"),
         features=features,
     )
+
+@settings_bp.route("/_debug/db", methods=["GET"])
+@login_required
+def _debug_db():
+    from sqlalchemy import text
+    try:
+        rows = db.session.execute(text("""
+            select table_name
+            from information_schema.tables
+            where table_schema='public'
+              and table_name in ('user_profile','resume_asset','portfolio_page','free_usage','user')
+            order by 1
+        """)).fetchall()
+        return {"tables": [r[0] for r in rows]}, 200
+    except Exception as e:
+        current_app.logger.exception("DB debug failed")
+        return {"error": str(e)}, 500
