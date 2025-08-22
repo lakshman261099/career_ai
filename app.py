@@ -70,8 +70,6 @@ def register_template_globals(app: Flask):
 # Auto-migration on startup (Render-friendly; no shell required)
 # ---------------------------------------------------------------------
 def run_auto_migrations(app: Flask) -> None:
-    from alembic import command
-    from alembic.config import Config
     from sqlalchemy import create_engine, text, inspect
 
     if os.getenv("AUTO_MIGRATE", "1") != "1":
@@ -90,6 +88,7 @@ def run_auto_migrations(app: Flask) -> None:
         with app.app_context():
             command.upgrade(cfg, "head")
 
+    # 1) Straight upgrade
     try:
         _upgrade()
         app.logger.info("Alembic migrations applied (upgrade head).")
@@ -98,10 +97,10 @@ def run_auto_migrations(app: Flask) -> None:
         msg1 = (str(e1) or "")
         app.logger.error(f"Alembic upgrade failed (1st try): {msg1}")
 
+    # 2) Stale revision pointer
     if "Can't locate revision" in msg1 or "No such revision" in msg1:
         try:
             app.logger.warning("Dropping alembic_version to clear stale revision pointer...")
-            from sqlalchemy import create_engine, text
             engine = create_engine(url)
             with engine.begin() as conn:
                 conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
@@ -114,9 +113,9 @@ def run_auto_migrations(app: Flask) -> None:
         except Exception as e2:
             app.logger.error(f"Alembic upgrade failed after stamp base: {e2}")
 
+    # 3) Tables already exist → stamp head, autogenerate diff, upgrade
     if "already exists" in msg1 or "DuplicateTable" in msg1 or "relation" in msg1:
         try:
-            from sqlalchemy import create_engine, inspect
             engine = create_engine(url)
             insp = inspect(engine)
             existing = set(insp.get_table_names(schema="public"))
@@ -134,6 +133,7 @@ def run_auto_migrations(app: Flask) -> None:
         except Exception as e3:
             app.logger.error(f"Alembic autosync path failed: {e3}")
 
+    # 4) Fallback: autogenerate then upgrade
     try:
         with app.app_context():
             from datetime import datetime
@@ -156,11 +156,9 @@ def create_app():
     token = os.getenv("LOGTAIL_TOKEN")
     if token:
         handlers.append(LogtailHandler(source_token=token))
-        
     logging.basicConfig(level=logging.INFO, handlers=handlers)
     app.logger.handlers = handlers
     app.logger.setLevel(logging.INFO)
-    
 
     # ----- Config
     secret = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY") or "dev-secret-key"
@@ -195,7 +193,7 @@ def create_app():
 
     # ----- Blueprints
     app.register_blueprint(auth_bp, url_prefix="/auth")
-    app.register_blueprint(billing_bp, url_prefix="/billing")   # pricing at /billing/
+    app.register_blueprint(billing_bp, url_prefix="/billing")
     app.register_blueprint(portfolio_bp, url_prefix="/portfolio")
     app.register_blueprint(internships_bp, url_prefix="/internships")
     app.register_blueprint(referral_bp, url_prefix="/referral")
@@ -248,8 +246,8 @@ def create_app():
         feature_paths = {
             "home":        safe_url("landing"),
             "dashboard":   safe_url("dashboard"),
-            "profile":     safe_url("settings.profile"),   # NEW: Profile Portal
-            "resume":      resume_url,                     # Resume Hub (Pro-only action)
+            "profile":     safe_url("settings.profile"),  # Profile Portal
+            "resume":      resume_url,                    # Resume Hub (Pro action)
             "portfolio":   safe_url("portfolio.index"),
             "internships": safe_url("internships.index"),
             "referral":    safe_url("referral.index"),
@@ -279,24 +277,15 @@ def create_app():
     @app.errorhandler(404)
     def not_found(e):
         return render_template("errors/404.html"), 404
-    
-    @app.errorhandler(500)
-    def srv_error(e):
-      try:
-         app.logger.exception("Unhandled 500 error", exc_info=e)
-         db.session.rollback()
-      except Exception:
-          pass
-      return render_template("errors/500.html"), 500
-
 
     @app.errorhandler(500)
     def srv_error(e):
-       try:
-          db.session.rollback()
-       except Exception:
-          pass
-       return render_template("errors/500.html"), 500
+        try:
+            app.logger.exception("Unhandled 500 error", exc_info=e)
+            db.session.rollback()
+        except Exception:
+            pass
+        return render_template("errors/500.html"), 500
 
     @app.teardown_request
     def _teardown_request(exc):

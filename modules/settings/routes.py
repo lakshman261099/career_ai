@@ -1,5 +1,3 @@
-# modules/settings/routes.py
-
 import os, json, re
 from datetime import datetime
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
