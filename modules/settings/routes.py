@@ -1,4 +1,6 @@
-import os, json, re
+# modules/settings/routes.py
+
+import re
 from datetime import datetime
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
@@ -9,7 +11,8 @@ from limits import authorize_and_consume, can_use_pro, get_feature_limits
 
 settings_bp = Blueprint("settings", __name__, template_folder="../../templates/settings")
 
-ALLOWED_RESUME_EXTS = {"pdf", "txt"}
+# Resume text paste is no longer needed; only PDF uploads are allowed for Pro scan.
+ALLOWED_RESUME_EXTS = {"pdf"}
 
 
 def _allowed_file(filename: str) -> bool:
@@ -34,45 +37,29 @@ def _ensure_profile():
         return None
 
 
-def _naive_parse_from_text(text: str) -> dict:
-    """Conservative seed from resume text."""
+def _parse_contacts_from_text(text: str) -> dict:
+    """Very conservative contact extraction from resume marker/text."""
+    out = {"links": {}}
     if not text:
-        return {}
-    parsed = {}
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-
-    if lines:
-        parsed["headline"] = lines[0][:200]
+        return out
 
     m_email = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
     if m_email:
-        parsed.setdefault("links", {})
-        parsed["links"]["email"] = m_email.group(0)
+        out["links"]["email"] = m_email.group(0)
 
     m_phone = re.search(r"(\+?\d[\d\s\-()]{8,})", text)
     if m_phone:
-        parsed["phone"] = m_phone.group(0).strip()
+        out["phone"] = m_phone.group(0).strip()
 
-    for l in lines:
-        if l.lower().startswith("skills"):
-            rest = l.split(":", 1)[-1] if ":" in l else l[6:]
-            skills = [s.strip() for s in rest.split(",") if s.strip()]
-            if skills:
-                # Convert to structured with default level=3
-                parsed["skills"] = [{"name": s, "level": 3} for s in skills[:30]]
-            break
+    low = text.lower()
+    m_li = re.search(r"https?://[^\s]*linkedin[^\s]*", text, re.I) if "linkedin.com" in low else None
+    if m_li:
+        out["links"]["linkedin"] = m_li.group(0)
+    m_gh = re.search(r"https?://[^\s]*github[^\s]*", text, re.I) if "github.com" in low else None
+    if m_gh:
+        out["links"]["github"] = m_gh.group(0)
 
-    lowtxt = text.lower()
-    if "linkedin.com" in lowtxt:
-        parsed.setdefault("links", {})
-        url = re.search(r"https?://[^\s]*linkedin[^\s]*", text, re.I)
-        if url: parsed["links"]["linkedin"] = url.group(0)
-    if "github.com" in lowtxt:
-        parsed.setdefault("links", {})
-        url = re.search(r"https?://[^\s]*github[^\s]*", text, re.I)
-        if url: parsed["links"]["github"] = url.group(0)
-
-    return parsed
+    return out
 
 
 def _seed_profile_from_parsed(profile: UserProfile, parsed: dict) -> bool:
@@ -90,27 +77,20 @@ def _seed_profile_from_parsed(profile: UserProfile, parsed: dict) -> bool:
             setattr(profile, attr, val)
             changed = True
 
-    set_if_blank("headline", parsed.get("headline"))
-    set_if_blank("summary", parsed.get("summary"))
     set_if_blank("phone", parsed.get("phone"))
 
-    # links
+    # links merge
     new_links = parsed.get("links") or {}
     if new_links:
         merged = dict(profile.links or {})
         added = False
         for k, v in new_links.items():
-            if k not in merged:
+            if k not in merged and v:
                 merged[k] = v
                 added = True
         if added or not (profile.links or {}):
             profile.links = merged
             changed = True
-
-    # skills (only if empty)
-    if parsed.get("skills") and not (profile.skills or []):
-        profile.skills = parsed["skills"]
-        changed = True
 
     if changed:
         try:
@@ -122,6 +102,9 @@ def _seed_profile_from_parsed(profile: UserProfile, parsed: dict) -> bool:
     return changed
 
 
+# ---------------------------
+# Normalizers for safe templating
+# ---------------------------
 def _normalize_skills(raw):
     """Return list[{'name':str,'level':int(1..5)}]. Accept strings/dicts/mixed."""
     norm = []
@@ -139,8 +122,7 @@ def _normalize_skills(raw):
         name = (name or "").strip()
         if not name:
             continue
-        if level < 1: level = 1
-        if level > 5: level = 5
+        level = min(5, max(1, level))
         norm.append({"name": name, "level": level})
     return norm
 
@@ -173,7 +155,7 @@ def _normalize_certs(raw):
 
 
 def _normalize_links(raw):
-    """Return dict[str->str]. Accept dict only; else empty."""
+    """Return dict[str->str]."""
     if isinstance(raw, dict):
         clean = {}
         for k, v in raw.items():
@@ -229,7 +211,7 @@ def _build_profile_view(profile: UserProfile):
 
 
 # ---------------------------
-# Settings index (kept simple, links to portal)
+# Settings index (simple)
 # ---------------------------
 @settings_bp.route("/", methods=["GET", "POST"], endpoint="index")
 @login_required
@@ -251,7 +233,6 @@ def index():
                 flash("Could not update profile. Try again.", "error")
         return redirect(url_for("settings.index"))
 
-    resumes = []
     try:
         resumes = (
             ResumeAsset.query.filter_by(user_id=current_user.id)
@@ -261,12 +242,13 @@ def index():
         )
     except Exception:
         current_app.logger.exception("Failed loading resumes")
+        resumes = []
 
     return render_template("settings/index.html", resumes=resumes)
 
 
 # ---------------------------
-# Unified Profile Portal (hero page)
+# Unified Profile Portal (with Pro resume upload)
 # ---------------------------
 @settings_bp.route("/profile", methods=["GET", "POST"], endpoint="profile")
 @login_required
@@ -276,91 +258,145 @@ def profile():
         flash("Could not load your profile. Please retry.", "error")
         return redirect(url_for("settings.index"))
 
-    if request.method == "POST":
+    # --- If a PDF is present, treat as Pro upload path ---
+    if request.method == "POST" and request.files.get("resume_file"):
+        file = request.files.get("resume_file")
+        if not file or not file.filename:
+            flash("Choose a PDF to upload.", "error")
+            return redirect(url_for("settings.profile"))
+
+        if not _allowed_file(file.filename):
+            flash("Only PDF files are allowed.", "error")
+            return redirect(url_for("settings.profile"))
+
+        # Pro gate & spend ⭐
         try:
-            # Simple fields
+            if not can_use_pro(current_user, "resume"):
+                flash("Resume scan is a Pro feature.", "warning")
+                return redirect(url_for("billing.index"))
+        except Exception:
+            current_app.logger.exception("can_use_pro failed")
+            flash("Plan check failed. Try again.", "error")
+            return redirect(url_for("settings.profile"))
+
+        filename = secure_filename(file.filename)
+        try:
+            _ = file.read()  # we do not parse PDFs here; store a marker
+            extracted_text = f"[PDF uploaded: {filename}]"
+        except Exception:
+            current_app.logger.exception("Failed reading uploaded PDF")
+            flash("Could not read the uploaded file.", "error")
+            return redirect(url_for("settings.profile"))
+
+        try:
+            ok = authorize_and_consume(current_user, "resume")
+        except Exception:
+            current_app.logger.exception("authorize_and_consume('resume') failed")
+            ok = False
+
+        if not ok:
+            flash("Not enough Pro credits. Please manage your subscription.", "error")
+            return redirect(url_for("billing.index"))
+
+        try:
+            asset = ResumeAsset(user_id=current_user.id, filename=filename, text=extracted_text)
+            db.session.add(asset)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Persisting ResumeAsset failed")
+            flash("Could not save resume.", "error")
+            return redirect(url_for("settings.profile"))
+
+        # Seed profile with conservative contact fields
+        try:
+            seed = _parse_contacts_from_text(extracted_text)
+            _seed_profile_from_parsed(prof, seed)
+        except Exception:
+            current_app.logger.exception("Seeding profile from resume failed")
+
+        flash("Resume uploaded. Your Profile Portal has been updated.", "success")
+        return redirect(url_for("settings.profile"))
+
+    # --- Manual profile save (free path) ---
+    if request.method == "POST" and not request.files.get("resume_file"):
+        try:
+            # Basic fields
             prof.full_name = (request.form.get("full_name") or "").strip() or prof.full_name
             prof.headline = (request.form.get("headline") or "").strip() or None
             prof.summary = (request.form.get("summary") or "").strip() or None
-            # Optional, not shown in UI right now but kept for completeness
             prof.location = (request.form.get("location") or prof.location or "").strip() or None
             prof.phone = (request.form.get("phone") or prof.phone or "").strip() or None
 
-            # ---- Structured arrays ----
-            # Skills (parallel arrays)
+            # Skills arrays -> [{name, level}]
             names = request.form.getlist("skills_names[]")
             levels = request.form.getlist("skills_levels[]")
-            new_skills = []
-            for i, nm in enumerate(names):
-                nm = (nm or "").strip()
-                if not nm:
+            skills = []
+            for i, n in enumerate(names):
+                n = (n or "").strip()
+                if not n:
                     continue
                 try:
-                    lv = int(levels[i]) if i < len(levels) else 3
+                    lvl = int(levels[i]) if i < len(levels) else 3
                 except Exception:
-                    lv = 3
-                if lv < 1: lv = 1
-                if lv > 5: lv = 5
-                new_skills.append({"name": nm, "level": lv})
-            prof.skills = new_skills
+                    lvl = 3
+                lvl = min(5, max(1, lvl))
+                skills.append({"name": n, "level": lvl})
+            prof.skills = skills or None
 
-            # Education (triples)
-            edu_degree = request.form.getlist("edu_degree[]")
-            edu_school = request.form.getlist("edu_school[]")
-            edu_year = request.form.getlist("edu_year[]")
-            new_edu = []
-            for i in range(max(len(edu_degree), len(edu_school), len(edu_year))):
-                deg = (edu_degree[i] if i < len(edu_degree) else "").strip()
-                sch = (edu_school[i] if i < len(edu_school) else "").strip()
-                yr  = (edu_year[i] if i < len(edu_year) else "").strip()
-                if not (deg or sch or yr):
-                    continue
-                new_edu.append({"degree": deg, "school": sch, "year": yr})
-            prof.education = new_edu
+            # Education arrays -> [{degree, school, year}]
+            ed_deg = request.form.getlist("edu_degree[]")
+            ed_sch = request.form.getlist("edu_school[]")
+            ed_yr  = request.form.getlist("edu_year[]")
+            education = []
+            for i in range(max(len(ed_deg), len(ed_sch), len(ed_yr))):
+                d = (ed_deg[i] if i < len(ed_deg) else "").strip()
+                s = (ed_sch[i] if i < len(ed_sch) else "").strip()
+                y = (ed_yr[i]  if i < len(ed_yr)  else "").strip()
+                if d or s or y:
+                    education.append({"degree": d, "school": s, "year": y})
+            prof.education = education or None
 
-            # Certifications (pairs)
-            cert_name = request.form.getlist("cert_name[]")
-            cert_year = request.form.getlist("cert_year[]")
-            new_certs = []
-            for i in range(max(len(cert_name), len(cert_year))):
-                cn = (cert_name[i] if i < len(cert_name) else "").strip()
-                cy = (cert_year[i] if i < len(cert_year) else "").strip() or None
-                if not cn:
-                    continue
-                new_certs.append({"name": cn, "year": cy})
-            prof.certifications = new_certs
+            # Certifications arrays -> [{name, year}]
+            c_name = request.form.getlist("cert_name[]")
+            c_year = request.form.getlist("cert_year[]")
+            certs = []
+            for i in range(max(len(c_name), len(c_year))):
+                n = (c_name[i] if i < len(c_name) else "").strip()
+                y = (c_year[i] if i < len(c_year) else "").strip() or None
+                if n or y:
+                    certs.append({"name": n, "year": y})
+            prof.certifications = certs or None
 
-            # Links (pairs)
+            # Links arrays -> dict
             link_keys = request.form.getlist("link_keys[]")
             link_urls = request.form.getlist("link_urls[]")
             links = {}
-            for i in range(max(len(link_keys), len(link_urls))):
-                k = (link_keys[i] if i < len(link_keys) else "").strip()
+            for i, k in enumerate(link_keys):
+                k = (k or "").strip()
                 v = (link_urls[i] if i < len(link_urls) else "").strip()
-                if not (k and v):
-                    continue
-                links[k] = v
-            prof.links = links
+                if k and v:
+                    links[k] = v
+            prof.links = links or None
 
-            # Experience (blocks)
-            exp_role = request.form.getlist("exp_role[]")
-            exp_company = request.form.getlist("exp_company[]")
-            exp_start = request.form.getlist("exp_start[]")
-            exp_end = request.form.getlist("exp_end[]")
-            exp_bullets = request.form.getlist("exp_bullets[]")
-            new_exp = []
-            max_n = max(len(exp_role), len(exp_company), len(exp_start), len(exp_end), len(exp_bullets))
-            for i in range(max_n):
-                role = (exp_role[i] if i < len(exp_role) else "").strip()
-                comp = (exp_company[i] if i < len(exp_company) else "").strip()
-                st = (exp_start[i] if i < len(exp_start) else "").strip()
-                en = (exp_end[i] if i < len(exp_end) else "").strip() or None
-                bl_raw = (exp_bullets[i] if i < len(exp_bullets) else "")
-                bl = [b.strip() for b in (bl_raw or "").split("\n") if b.strip()]
-                if not (role or comp or st or en or bl):
-                    continue
-                new_exp.append({"role": role, "company": comp, "start": st, "end": en, "bullets": bl})
-            prof.experience = new_exp
+            # Experience arrays -> [{role, company, start, end, bullets:[]}]
+            role = request.form.getlist("exp_role[]")
+            comp = request.form.getlist("exp_company[]")
+            start = request.form.getlist("exp_start[]")
+            end = request.form.getlist("exp_end[]")
+            bullets = request.form.getlist("exp_bullets[]")
+            experience = []
+            rows = max(len(role), len(comp), len(start), len(end), len(bullets))
+            for i in range(rows):
+                r = (role[i] if i < len(role) else "").strip()
+                c = (comp[i] if i < len(comp) else "").strip()
+                st = (start[i] if i < len(start) else "").strip()
+                en = (end[i] if i < len(end) else "").strip() or None
+                bl = (bullets[i] if i < len(bullets) else "")
+                bl_list = [b.strip() for b in (bl or "").splitlines() if b.strip()]
+                if r or c or st or en or bl_list:
+                    experience.append({"role": r, "company": c, "start": st, "end": en, "bullets": bl_list})
+            prof.experience = experience or None
 
             prof.updated_at = datetime.utcnow()
             db.session.commit()
@@ -381,7 +417,7 @@ def profile():
 
     return render_template(
         "settings/profile.html",
-        profile=prof,               # raw (kept for ID/name fallback)
+        profile=prof,               # raw object for fallback titles
         latest_resume=latest_resume,
         skills=view["skills"],
         education=view["education"],
