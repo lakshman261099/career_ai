@@ -60,8 +60,9 @@
           {% endif %}
         </a>
 
-        <!-- Center nav (no Resume here) -->
+        <!-- Center nav (no Resume here anymore) -->
         <nav class="hidden md:flex items-center gap-6 text-sm">
+          <a class="nav-link" href="{{ feature_paths.profile }}">Profile</a>
           <a class="nav-link" href="{{ feature_paths.portfolio }}">Portfolio</a>
           <a class="nav-link" href="{{ feature_paths.internships }}">Internships</a>
           <a class="nav-link" href="{{ feature_paths.skillmapper }}">Skill Mapper</a>
@@ -70,7 +71,7 @@
           <a class="nav-link" href="{{ feature_paths.billing }}">Pricing</a>
         </nav>
 
-        <!-- Right cluster: coins + Resume button + Settings/Login -->
+        <!-- Right actions: coins + Profile Portal quick action -->
         <div class="flex items-center gap-3">
           <div class="coins-pill">
             <span class="coins-chip">🪙 {{ FREE }}</span>
@@ -78,12 +79,9 @@
             <span class="coins-chip">⭐ {{ PRO }}</span>
           </div>
 
-          <!-- Resume: always visible, Pro-locked by server when POSTing -->
-          <a class="btn-ghost hidden sm:inline" href="{{ feature_paths.resume }}">
-            Resume{% if subscription_status|default('free') != 'pro' %} <span class="opacity-60">🔒</span>{% endif %}
-          </a>
-
           {% if current_user.is_authenticated %}
+            <!-- Quick access to unified Profile Portal (replaces Resume quick link) -->
+            <a href="{{ feature_paths.profile }}" class="btn-ghost hidden sm:inline">Profile Portal</a>
             <a href="{{ feature_paths.settings }}" class="btn-ghost hidden sm:inline">Settings</a>
             <a href="{{ feature_paths.logout }}" class="btn-primary">Logout</a>
           {% else %}

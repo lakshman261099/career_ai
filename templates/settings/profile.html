@@ -10,12 +10,11 @@
       <div class="glass-panel rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 class="text-2xl font-extrabold tracking-tight">Your Profile Portal</h1>
-          <p class="text-white/70 text-sm">Built for hiring managers. Powers Job Packs, Skill Mapper, and Internships.</p>
+          <p class="text-white/70 text-sm">Upload your resume or edit details manually. This powers Job Packs, Skill Mapper, and Internships.</p>
         </div>
         <div class="flex items-center gap-3 text-sm">
           <span class="px-3 py-1 rounded-full bg-white/10 border border-white/20">Plan: {{ 'Pro ⭐' if is_pro() else 'Free 🪙' }}</span>
           <span class="px-3 py-1 rounded-full bg-white/10 border border-white/20">Resume: {{ '✅' if latest_resume else '❌' }}</span>
-          <a href="{{ url_for('settings.resume') }}" class="btn-primary">Open Resume Hub</a>
         </div>
       </div>
 
@@ -113,7 +112,19 @@
 
         <!-- Edit Panel -->
         <section class="glass-panel rounded-2xl p-6">
-          <h3 class="text-lg font-semibold mb-3">Edit Profile</h3>
+          <h3 class="text-lg font-semibold mb-3">Update Your Profile</h3>
+
+          <!-- Resume Upload -->
+          <form method="POST" enctype="multipart/form-data" action="{{ url_for('settings.upload_resume') }}" class="mb-6 space-y-3">
+            <div>
+              <label class="block text-sm mb-1">Upload Resume (PDF/TXT)</label>
+              <input type="file" name="file" accept=".pdf,.txt" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              <p class="text-xs text-white/50 mt-1">Uploading will scan and auto-fill your profile.</p>
+            </div>
+            <button class="btn-primary" type="submit">Upload & Scan</button>
+          </form>
+
+          <!-- Manual Edit -->
           <form method="post" class="space-y-5">
             <input type="hidden" name="json_mode" value="structured">
 
@@ -142,8 +153,8 @@
                 {% for s in profile.skills or [] %}
                   <div class="flex gap-2 items-center">
                     <input name="skills_names[]" value="{{ s.name }}" placeholder="Skill" class="flex-1 rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-                    <input type="number" min="1" max="5" name="skills_levels[]" value="{{ s.level }}" class="w-24 rounded-xl px-3 py-2 bg-white/10 border border-white/20" title="Strength 1–5">
-                    <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
+                    <input type="number" min="1" max="5" name="skills_levels[]" value="{{ s.level }}" class="w-20 rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                    <button type="button" onclick="removeRow(this)" class="px-2 rounded-lg border border-white/20 text-white/60">✖</button>
                   </div>
                 {% endfor %}
               </div>
@@ -160,10 +171,7 @@
                   <div class="grid grid-cols-3 gap-2 items-start">
                     <input name="edu_degree[]" value="{{ ed.degree }}" placeholder="Degree" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
                     <input name="edu_school[]" value="{{ ed.school }}" placeholder="School" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-                    <div class="flex gap-2">
-                      <input name="edu_year[]" value="{{ ed.year }}" placeholder="Year" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-                      <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
-                    </div>
+                    <input name="edu_year[]" value="{{ ed.year }}" placeholder="Year" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
                   </div>
                 {% endfor %}
               </div>
@@ -179,10 +187,7 @@
                 {% for c in profile.certifications or [] %}
                   <div class="grid grid-cols-2 gap-2 items-start">
                     <input name="cert_name[]" value="{{ c.name }}" placeholder="Certification" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-                    <div class="flex gap-2">
-                      <input name="cert_year[]" value="{{ c.year }}" placeholder="Year (optional)" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-                      <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
-                    </div>
+                    <input name="cert_year[]" value="{{ c.year }}" placeholder="Year (optional)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
                   </div>
                 {% endfor %}
               </div>
@@ -198,10 +203,7 @@
                 {% for k, v in (profile.links or {}).items() %}
                   <div class="grid grid-cols-2 gap-2 items-start">
                     <input name="link_keys[]" value="{{ k }}" placeholder="Label (e.g., LinkedIn)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-                    <div class="flex gap-2">
-                      <input name="link_urls[]" value="{{ v }}" placeholder="URL" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-                      <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
-                    </div>
+                    <input name="link_urls[]" value="{{ v }}" placeholder="URL" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
                   </div>
                 {% endfor %}
               </div>
@@ -221,13 +223,10 @@
                       <input name="exp_company[]" value="{{ job.company }}" placeholder="Company" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
                     </div>
                     <div class="grid grid-cols-2 gap-2">
-                      <input name="exp_start[]" value="{{ job.start }}" placeholder="Start (e.g., Jan 2024)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-                      <input name="exp_end[]" value="{{ job.end }}" placeholder="End (or Present)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                      <input name="exp_start[]" value="{{ job.start }}" placeholder="Start" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                      <input name="exp_end[]" value="{{ job.end }}" placeholder="End or Present" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
                     </div>
                     <textarea name="exp_bullets[]" placeholder="Bullets (one per line)" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ job.bullets | join('\n') if job.bullets }}</textarea>
-                    <div class="text-right">
-                      <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeCard(this)">✖ Remove</button>
-                    </div>
                   </div>
                 {% endfor %}
               </div>
@@ -245,64 +244,11 @@
 </section>
 
 <script>
-function removeRow(btn){ const row = btn.closest('.grid, .flex'); if(row) row.remove(); }
-function removeCard(btn){ const card = btn.closest('.border'); if(card) card.remove(); }
-
-function addSkill() {
-  document.getElementById("skills-container").insertAdjacentHTML("beforeend",
-    `<div class="flex gap-2 items-center">
-      <input name="skills_names[]" placeholder="Skill" class="flex-1 rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      <input type="number" min="1" max="5" name="skills_levels[]" placeholder="1–5" class="w-24 rounded-xl px-3 py-2 bg-white/10 border border-white/20" title="Strength 1–5">
-      <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
-    </div>`);
-}
-function addEducation() {
-  document.getElementById("education-container").insertAdjacentHTML("beforeend",
-    `<div class="grid grid-cols-3 gap-2 items-start">
-      <input name="edu_degree[]" placeholder="Degree" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      <input name="edu_school[]" placeholder="School" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      <div class="flex gap-2">
-        <input name="edu_year[]" placeholder="Year" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-        <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
-      </div>
-    </div>`);
-}
-function addCert() {
-  document.getElementById("cert-container").insertAdjacentHTML("beforeend",
-    `<div class="grid grid-cols-2 gap-2 items-start">
-      <input name="cert_name[]" placeholder="Certification" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      <div class="flex gap-2">
-        <input name="cert_year[]" placeholder="Year (optional)" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-        <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
-      </div>
-    </div>`);
-}
-function addLink() {
-  document.getElementById("links-container").insertAdjacentHTML("beforeend",
-    `<div class="grid grid-cols-2 gap-2 items-start">
-      <input name="link_keys[]" placeholder="Label (e.g., LinkedIn)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      <div class="flex gap-2">
-        <input name="link_urls[]" placeholder="URL" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-        <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
-      </div>
-    </div>`);
-}
-function addExperience() {
-  document.getElementById("exp-container").insertAdjacentHTML("beforeend",
-    `<div class="border border-white/10 rounded-xl p-3 space-y-2">
-      <div class="grid grid-cols-2 gap-2">
-        <input name="exp_role[]" placeholder="Role" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-        <input name="exp_company[]" placeholder="Company" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <input name="exp_start[]" placeholder="Start (e.g., Jan 2024)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-        <input name="exp_end[]" placeholder="End (or Present)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      </div>
-      <textarea name="exp_bullets[]" placeholder="Bullets (one per line)" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"></textarea>
-      <div class="text-right">
-        <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeCard(this)">✖ Remove</button>
-      </div>
-    </div>`);
-}
+function removeRow(btn){ btn.closest('.grid,.flex').remove(); }
+function addSkill(){document.getElementById("skills-container").insertAdjacentHTML("beforeend",`<div class="flex gap-2 items-center"><input name="skills_names[]" placeholder="Skill" class="flex-1 rounded-xl px-3 py-2 bg-white/10 border border-white/20"><input type="number" min="1" max="5" name="skills_levels[]" placeholder="1–5" class="w-20 rounded-xl px-3 py-2 bg-white/10 border border-white/20"><button type="button" onclick="removeRow(this)" class="px-2 rounded-lg border border-white/20 text-white/60">✖</button></div>`);}
+function addEducation(){document.getElementById("education-container").insertAdjacentHTML("beforeend",`<div class="grid grid-cols-3 gap-2"><input name="edu_degree[]" placeholder="Degree" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"><input name="edu_school[]" placeholder="School" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"><input name="edu_year[]" placeholder="Year" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"></div>`);}
+function addCert(){document.getElementById("cert-container").insertAdjacentHTML("beforeend",`<div class="grid grid-cols-2 gap-2"><input name="cert_name[]" placeholder="Certification" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"><input name="cert_year[]" placeholder="Year" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"></div>`);}
+function addLink(){document.getElementById("links-container").insertAdjacentHTML("beforeend",`<div class="grid grid-cols-2 gap-2"><input name="link_keys[]" placeholder="Label" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"><input name="link_urls[]" placeholder="URL" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"></div>`);}
+function addExperience(){document.getElementById("exp-container").insertAdjacentHTML("beforeend",`<div class="border border-white/10 rounded-xl p-3 space-y-2"><div class="grid grid-cols-2 gap-2"><input name="exp_role[]" placeholder="Role" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"><input name="exp_company[]" placeholder="Company" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"></div><div class="grid grid-cols-2 gap-2"><input name="exp_start[]" placeholder="Start" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"><input name="exp_end[]" placeholder="End or Present" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20"></div><textarea name="exp_bullets[]" placeholder="Bullets (one per line)" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"></textarea></div>`);}
 </script>
 {% endblock %}

@@ -1,32 +1,37 @@
-{% set ep = request.endpoint or '' %}
-<aside class="glass-panel rounded-2xl p-4 h-max sticky top-24">
-  <nav class="space-y-1 text-sm">
-    <a href="{{ url_for('settings.index') }}"
-       class="flex items-center justify-between px-3 py-2 rounded-lg border {% if ep == 'settings.index' %}border-brand-500 bg-brand-500/10{% else %}border-white/10 hover:border-white/20{% endif %}">
-      <span>Account</span>
-    </a>
+<aside class="glass-panel rounded-2xl p-4 h-fit space-y-1 text-sm">
+  <a href="{{ url_for('settings.profile') }}"
+     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.profile' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
+    Profile Portal
+  </a>
 
-    <a href="{{ url_for('settings.profile') }}"
-       class="flex items-center justify-between px-3 py-2 rounded-lg border {% if ep == 'settings.profile' %}border-brand-500 bg-brand-500/10{% else %}border-white/10 hover:border-white/20{% endif %}">
-      <span>Profile Portal</span>
-      <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 border border-white/20">Core</span>
-    </a>
+  <a href="{{ url_for('settings.credits') }}"
+     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.credits' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
+    Credits
+  </a>
 
-    <a href="{{ url_for('settings.resume') }}"
-       class="flex items-center justify-between px-3 py-2 rounded-lg border {% if ep == 'settings.resume' %}border-brand-500 bg-brand-500/10{% else %}border-white/10 hover:border-white/20{% endif %}">
-      <span>Resume Hub</span>
-      <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 border border-white/20">Pro ⭐</span>
-    </a>
+  <a href="{{ url_for('settings.billing') }}"
+     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.billing' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
+    Pricing
+  </a>
 
-    <a href="{{ url_for('settings.credits') }}"
-       class="flex items-center justify-between px-3 py-2 rounded-lg border {% if ep == 'settings.credits' %}border-brand-500 bg-brand-500/10{% else %}border-white/10 hover:border-white/20{% endif %}">
-      <span>Credits</span>
-    </a>
+  <a href="{{ url_for('settings.notifications') }}"
+     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.notifications' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
+    Notifications
+  </a>
 
-    <a href="{{ feature_paths.billing }}"
-       class="flex items-center justify-between px-3 py-2 rounded-lg border border-white/10 hover:border-white/20">
-      <span>Billing</span>
-      <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 border border-white/20">Stripe</span>
-    </a>
-  </nav>
+  <a href="{{ url_for('settings.account') }}"
+     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.account' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
+    Account Settings
+  </a>
+
+  <a href="{{ url_for('settings.security') }}"
+     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.security' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
+    Security
+  </a>
+
+  <a href="{{ url_for('settings.integrations') }}"
+     class="block px-3 py-2 rounded-lg flex items-center justify-between {% if request.endpoint == 'settings.integrations' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
+    Integrations
+    <span class="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 border border-white/20">Pro</span>
+  </a>
 </aside>
