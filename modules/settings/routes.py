@@ -1,4 +1,4 @@
-import os, re
+import os, json, re
 from datetime import datetime
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
@@ -9,16 +9,18 @@ from limits import authorize_and_consume, can_use_pro, get_feature_limits
 
 settings_bp = Blueprint("settings", __name__, template_folder="../../templates/settings")
 
-ALLOWED_RESUME_EXTS = {"pdf", "txt"}
+ALLOWED_RESUME_EXTS = {"pdf"}  # unified portal: file upload only (PDF)
 
 
 def _allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_RESUME_EXTS
 
 
-# --------------------------- Profile helpers ---------------------------
+# ---------------------------
+# Profile helpers
+# ---------------------------
 def _ensure_profile():
-    """Return a UserProfile row for the current user (create if missing)."""
+    """Always return a UserProfile row for the current user (or None on hard failure)."""
     try:
         prof = UserProfile.query.filter_by(user_id=current_user.id).first()
         if not prof:
@@ -33,7 +35,7 @@ def _ensure_profile():
 
 
 def _naive_parse_from_text(text: str) -> dict:
-    """Very conservative seeding from plain text."""
+    """Conservative seed from resume text."""
     if not text:
         return {}
     parsed = {}
@@ -91,18 +93,20 @@ def _seed_profile_from_parsed(profile: UserProfile, parsed: dict) -> bool:
     set_if_blank("summary", parsed.get("summary"))
     set_if_blank("phone", parsed.get("phone"))
 
+    # links
     new_links = parsed.get("links") or {}
     if new_links:
         merged = dict(profile.links or {})
         added = False
         for k, v in new_links.items():
-            if k not in merged:
+            if k not in merged and v:
                 merged[k] = v
                 added = True
         if added or not (profile.links or {}):
             profile.links = merged
             changed = True
 
+    # skills (only if empty)
     if parsed.get("skills") and not (profile.skills or []):
         profile.skills = parsed["skills"]
         changed = True
@@ -117,7 +121,99 @@ def _seed_profile_from_parsed(profile: UserProfile, parsed: dict) -> bool:
     return changed
 
 
-# --------------------------- Settings index ---------------------------
+# -------- Normalizers to make template safe --------
+def _normalize_skills(raw):
+    """Return list[{'name':str,'level':int(1..5)}]. Accept strings/dicts/mixed."""
+    norm = []
+    for item in (raw or []):
+        if isinstance(item, dict):
+            name = item.get("name") or item.get("skill") or item.get("title") or ""
+            try:
+                level = int(item.get("level", 3))
+            except Exception:
+                level = 3
+        elif isinstance(item, str):
+            name, level = item, 3
+        else:
+            continue
+        name = (name or "").strip()
+        if not name:
+            continue
+        if level < 1: level = 1
+        if level > 5: level = 5
+        norm.append({"name": name, "level": level})
+    return norm
+
+
+def _normalize_education(raw):
+    """Return list[{'degree':str,'school':str,'year':str}]."""
+    out = []
+    for ed in (raw or []):
+        if isinstance(ed, dict):
+            out.append({
+                "degree": (ed.get("degree") or "").strip(),
+                "school": (ed.get("school") or "").strip(),
+                "year": (str(ed.get("year") or "").strip()),
+            })
+    return out
+
+
+def _normalize_certs(raw):
+    """Return list[{'name':str,'year':str|None}]."""
+    out = []
+    for c in (raw or []):
+        if isinstance(c, dict):
+            out.append({
+                "name": (c.get("name") or "").strip(),
+                "year": (str(c.get("year") or "").strip()) or None,
+            })
+        elif isinstance(c, str):
+            out.append({"name": c.strip(), "year": None})
+    return out
+
+
+def _normalize_links(raw):
+    """Return dict[str->str]."""
+    if isinstance(raw, dict):
+        clean = {}
+        for k, v in raw.items():
+            key = (k or "").strip()
+            val = (v or "").strip()
+            if not key or not val:
+                continue
+            clean[key] = val
+        return clean
+    return {}
+
+
+def _normalize_experience(raw):
+    """
+    Return list[{'role':str,'company':str,'start':str,'end':str|None,'bullets':list[str]}]
+    """
+    out = []
+    for j in (raw or []):
+        if not isinstance(j, dict):
+            continue
+        bullets = j.get("bullets")
+        if isinstance(bullets, list):
+            bl = [str(b).strip() for b in bullets if str(b).strip()]
+        elif isinstance(bullets, str):
+            bl = [b.strip() for b in bullets.split("\n") if b.strip()]
+        else:
+            bl = []
+        out.append({
+            "role": (j.get("role") or "").strip(),
+            "company": (j.get("company") or "").strip(),
+            "start": (j.get("start") or "").strip(),
+            "end": (j.get("end") or "").strip() or None,
+            "bullets": bl,
+        })
+    return out
+
+
+# ---------------------------
+# Settings index (kept simple)
+# ---------------------------
 @settings_bp.route("/", methods=["GET", "POST"], endpoint="index")
 @login_required
 def index():
@@ -138,10 +234,23 @@ def index():
                 flash("Could not update profile. Try again.", "error")
         return redirect(url_for("settings.index"))
 
-    return render_template("settings/index.html")
+    resumes = []
+    try:
+        resumes = (
+            ResumeAsset.query.filter_by(user_id=current_user.id)
+            .order_by(ResumeAsset.created_at.desc())
+            .limit(5)
+            .all()
+        )
+    except Exception:
+        current_app.logger.exception("Failed loading resumes")
+
+    return render_template("settings/index.html", resumes=resumes)
 
 
-# --------------------- Unified Profile Portal -------------------------
+# ---------------------------
+# Unified Profile Portal
+# ---------------------------
 @settings_bp.route("/profile", methods=["GET", "POST"], endpoint="profile")
 @login_required
 def profile():
@@ -150,73 +259,39 @@ def profile():
         flash("Could not load your profile. Please retry.", "error")
         return redirect(url_for("settings.index"))
 
-    # POST: either resume upload OR manual edit
+    # Handle optional PDF upload (auto-scan), same form
     if request.method == "POST":
-        # 1) Resume upload path (Pro-gated)
-        resume_file = request.files.get("resume_file")
-        if resume_file and resume_file.filename:
-            if not _allowed_file(resume_file.filename):
-                flash("Only PDF or TXT files are allowed.", "error")
+        # 1) Optional resume file
+        file = request.files.get("resume_pdf")
+        if file and file.filename:
+            if not _allowed_file(file.filename):
+                flash("Only PDF files are allowed.", "error")
                 return redirect(url_for("settings.profile"))
-
+            filename = secure_filename(file.filename)
             try:
-                if not can_use_pro(current_user, "resume"):
-                    flash("Resume scanning is a Pro feature.", "warning")
-                    return redirect(url_for("billing.index"))
-            except Exception:
-                current_app.logger.exception("Error checking Pro")
-                flash("Something went wrong checking your plan.", "error")
-                return redirect(url_for("settings.profile"))
-
-            filename = secure_filename(resume_file.filename)
-            try:
-                content = resume_file.read() or b""
-                if filename.lower().endswith(".txt"):
-                    extracted_text = content.decode("utf-8", errors="ignore")
-                else:
-                    # PDF parsing can be integrated later; placeholder marker
-                    extracted_text = f"[PDF uploaded: {filename}]"
-            except Exception:
-                current_app.logger.exception("Could not read uploaded resume")
-                flash("Could not read the uploaded file.", "error")
-                return redirect(url_for("settings.profile"))
-
-            try:
-                ok = authorize_and_consume(current_user, "resume")
-            except Exception:
-                current_app.logger.exception("authorize_and_consume failed")
-                ok = False
-            if not ok:
-                flash("Not enough Pro credits.", "error")
-                return redirect(url_for("billing.index"))
-
-            try:
+                # We don't parse PDF here; we store a marker and allow downstream parser later.
+                extracted_text = f"[PDF uploaded: {filename}]"
                 asset = ResumeAsset(user_id=current_user.id, filename=filename, text=extracted_text)
                 db.session.add(asset)
                 db.session.commit()
+                # Seed blanks from a conservative parser (works even for placeholder text)
+                _seed_profile_from_parsed(prof, _naive_parse_from_text(extracted_text))
+                flash("Resume uploaded. We pre-filled what we safely could. Review & save below.", "success")
             except Exception:
                 db.session.rollback()
                 current_app.logger.exception("Failed saving ResumeAsset")
                 flash("Could not save your resume.", "error")
                 return redirect(url_for("settings.profile"))
 
-            # Seed profile conservatively
-            try:
-                parsed = _naive_parse_from_text(extracted_text)
-                _seed_profile_from_parsed(prof, parsed)
-            except Exception:
-                current_app.logger.exception("Seeding profile from resume failed")
-
-            flash("Resume saved. Profile Portal updated.", "success")
-            return redirect(url_for("settings.profile"))
-
-        # 2) Manual edit path (always allowed)
+        # 2) Structured fields
         try:
             prof.full_name = (request.form.get("full_name") or "").strip() or prof.full_name
             prof.headline = (request.form.get("headline") or "").strip() or None
             prof.summary = (request.form.get("summary") or "").strip() or None
+            prof.location = (request.form.get("location") or prof.location or "").strip() or None
+            prof.phone = (request.form.get("phone") or prof.phone or "").strip() or None
 
-            # Skills (parallel arrays)
+            # Skills
             names = request.form.getlist("skills_names[]")
             levels = request.form.getlist("skills_levels[]")
             new_skills = []
@@ -228,7 +303,8 @@ def profile():
                     lv = int(levels[i]) if i < len(levels) else 3
                 except Exception:
                     lv = 3
-                lv = max(1, min(5, lv))
+                if lv < 1: lv = 1
+                if lv > 5: lv = 5
                 new_skills.append({"name": nm, "level": lv})
             prof.skills = new_skills
 
@@ -299,20 +375,39 @@ def profile():
             flash("Could not save profile. Try again.", "error")
         return redirect(url_for("settings.profile"))
 
-    # GET
+    # GET: normalize and render (use ONLY normalized vars in template)
     latest_resume = (
         ResumeAsset.query.filter_by(user_id=current_user.id)
         .order_by(ResumeAsset.created_at.desc())
         .first()
     )
-    return render_template("settings/profile.html", profile=prof, latest_resume=latest_resume)
+
+    skills = _normalize_skills(prof.skills)
+    education = _normalize_education(prof.education)
+    certifications = _normalize_certs(prof.certifications)
+    links = _normalize_links(prof.links)
+    experience = _normalize_experience(prof.experience)
+
+    return render_template(
+        "settings/profile.html",
+        profile=prof,
+        latest_resume=latest_resume,
+        skills=skills,
+        education=education,
+        certifications=certifications,
+        links=links,
+        experience=experience,
+    )
 
 
-# --------------------------- Credits ---------------------------
+# ---------------------------
+# Credits
+# ---------------------------
 @settings_bp.route("/credits", endpoint="credits")
 @login_required
 def credits():
-    feature_keys = ["resume", "portfolio", "internships", "referral", "jobpack", "skillmapper"]
+    # kept for the settings menu
+    feature_keys = ["portfolio", "internships", "referral", "jobpack", "skillmapper"]
     features = {k: get_feature_limits(k) for k in feature_keys}
     return render_template(
         "settings/credits.html",
