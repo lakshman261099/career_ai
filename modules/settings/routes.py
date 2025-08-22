@@ -9,16 +9,16 @@ from limits import authorize_and_consume, can_use_pro, get_feature_limits
 
 settings_bp = Blueprint("settings", __name__, template_folder="../../templates/settings")
 
-ALLOWED_RESUME_EXTS = {"pdf", "txt"}  # keep simple; parsing handled elsewhere
+ALLOWED_RESUME_EXTS = {"pdf", "txt"}
 
 
+# ---------------------------
+# Helpers
+# ---------------------------
 def _allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_RESUME_EXTS
 
 
-# ---------------------------
-# Helpers for Profile seeding
-# ---------------------------
 def _ensure_profile():
     """Always return a UserProfile row for the current user."""
     try:
@@ -62,7 +62,7 @@ def _naive_parse_from_text(text: str) -> dict:
             rest = l.split(":", 1)[-1] if ":" in l else l[6:]
             skills = [s.strip() for s in rest.split(",") if s.strip()]
             if skills:
-                parsed["skills"] = skills[:30]
+                parsed["skills"] = [{"name": s, "level": 3} for s in skills[:30]]
             break
 
     # Links
@@ -104,14 +104,10 @@ def _seed_profile_from_parsed(profile: UserProfile, parsed: dict) -> bool:
     plinks = parsed.get("links") or {}
     if plinks:
         merged = dict(profile.links or {})
-        added = False
         for k, v in plinks.items():
-            if k not in merged:
-                merged[k] = v
-                added = True
-        if added or not (profile.links or {}):
-            profile.links = merged
-            changed = True
+            merged.setdefault(k, v)
+        profile.links = merged
+        changed = True
 
     # skills only if empty
     if parsed.get("skills") and not (profile.skills or []):
@@ -175,40 +171,72 @@ def profile():
 
     if request.method == "POST":
         try:
+            # Basic fields
             prof.full_name = (request.form.get("full_name") or "").strip() or prof.full_name
             prof.headline = (request.form.get("headline") or "").strip() or None
             prof.summary = (request.form.get("summary") or "").strip() or None
             prof.location = (request.form.get("location") or "").strip() or None
             prof.phone = (request.form.get("phone") or "").strip() or None
 
-            skills_csv = (request.form.get("skills_csv") or "").strip()
-            if skills_csv:
-                prof.skills = [s.strip() for s in skills_csv.split(",") if s.strip()][:50]
+            # --- Skills ---
+            skill_names = request.form.getlist("skills_names[]")
+            skill_levels = request.form.getlist("skills_levels[]")
+            skills = []
+            for n, l in zip(skill_names, skill_levels):
+                n = (n or "").strip()
+                if n:
+                    try:
+                        lvl = max(1, min(5, int(l)))
+                    except Exception:
+                        lvl = 1
+                    skills.append({"name": n, "level": lvl})
+            prof.skills = skills
 
+            # --- Education ---
+            edu_degrees = request.form.getlist("edu_degree[]")
+            edu_schools = request.form.getlist("edu_school[]")
+            edu_years = request.form.getlist("edu_year[]")
+            education = []
+            for d, s, y in zip(edu_degrees, edu_schools, edu_years):
+                if d.strip() or s.strip() or y.strip():
+                    education.append({"degree": d.strip(), "school": s.strip(), "year": y.strip()})
+            prof.education = education
+
+            # --- Certifications ---
+            cert_names = request.form.getlist("cert_name[]")
+            cert_years = request.form.getlist("cert_year[]")
+            certs = []
+            for n, y in zip(cert_names, cert_years):
+                if n.strip() or y.strip():
+                    certs.append({"name": n.strip(), "year": y.strip()})
+            prof.certifications = certs
+
+            # --- JSON fields (optional advanced) ---
             def parse_json_field(field, default):
                 raw = (request.form.get(field) or "").strip()
                 if not raw:
-                    return None
+                    return default
                 try:
                     return json.loads(raw)
                 except Exception:
                     flash(f"{field.replace('_',' ').title()} must be valid JSON.", "warning")
                     return default
 
-            prof.links = parse_json_field("links_json", prof.links or {}) or prof.links
-            prof.education = parse_json_field("education_json", prof.education or []) or prof.education
-            prof.experience = parse_json_field("experience_json", prof.experience or []) or prof.experience
-            prof.certifications = parse_json_field("certifications_json", prof.certifications or []) or prof.certifications
+            prof.links = parse_json_field("links_json", prof.links or {})
+            prof.experience = parse_json_field("experience_json", prof.experience or [])
 
             prof.updated_at = datetime.utcnow()
             db.session.commit()
             flash("Profile saved.", "success")
+
         except Exception:
             db.session.rollback()
             current_app.logger.error("Failed saving profile", exc_info=True)
             flash("Could not save profile. Try again.", "error")
+
         return redirect(url_for("settings.profile"))
 
+    # GET request
     latest_resume = None
     try:
         latest_resume = (
