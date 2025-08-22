@@ -281,7 +281,9 @@ def create_app():
     @app.errorhandler(500)
     def srv_error(e):
         try:
-            app.logger.exception("Unhandled 500 error", exc_info=e)
+            # IMPORTANT: logger.exception already records the active exception;
+            # don't pass the exception object as exc_info (it expects True or a tuple)
+            app.logger.exception("Unhandled 500 error")
             db.session.rollback()
         except Exception:
             pass

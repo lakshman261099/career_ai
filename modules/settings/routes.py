@@ -30,8 +30,7 @@ def _ensure_profile():
 
 def _naive_parse_from_text(text: str) -> dict:
     """
-    Light-touch extractor to seed profile fields.
-    Conservative by design.
+    Light-touch extractor to seed profile fields. Conservative by design.
     """
     if not text:
         return {}
@@ -123,23 +122,30 @@ def _seed_profile_from_parsed(profile: UserProfile, parsed: dict) -> bool:
 @settings_bp.route("/", methods=["GET", "POST"], endpoint="index")
 @login_required
 def index():
-    if request.method == "POST":
-        name = (request.form.get("name") or "").strip()
-        if not name:
-            flash("Name cannot be empty.", "error")
-        else:
-            current_user.name = name
-            db.session.commit()
-            flash("Profile updated.", "success")
-            return redirect(url_for("settings.index"))
+    try:
+        # ensure a profile row exists for current user (defensive)
+        _ensure_profile()
 
-    resumes = (
-        ResumeAsset.query.filter_by(user_id=current_user.id)
-        .order_by(ResumeAsset.created_at.desc())
-        .limit(5)
-        .all()
-    )
-    return render_template("settings/index.html", resumes=resumes)
+        if request.method == "POST":
+            name = (request.form.get("name") or "").strip()
+            if not name:
+                flash("Name cannot be empty.", "error")
+            else:
+                current_user.name = name
+                db.session.commit()
+                flash("Profile updated.", "success")
+                return redirect(url_for("settings.index"))
+
+        resumes = (
+            ResumeAsset.query.filter_by(user_id=current_user.id)
+            .order_by(ResumeAsset.created_at.desc())
+            .limit(5)
+            .all()
+        )
+        return render_template("settings/index.html", resumes=resumes)
+    except Exception:
+        current_app.logger.exception("/settings index failed")
+        raise
 
 
 # ---------------------------
@@ -148,54 +154,58 @@ def index():
 @settings_bp.route("/profile", methods=["GET", "POST"], endpoint="profile")
 @login_required
 def profile():
-    prof = _ensure_profile()
+    try:
+        prof = _ensure_profile()
 
-    if request.method == "POST":
-        # Simple fields
-        prof.full_name = (request.form.get("full_name") or "").strip() or prof.full_name
-        prof.headline = (request.form.get("headline") or "").strip() or None
-        prof.summary = (request.form.get("summary") or "").strip() or None
-        prof.location = (request.form.get("location") or "").strip() or None
-        prof.phone = (request.form.get("phone") or "").strip() or None
+        if request.method == "POST":
+            # Simple fields
+            prof.full_name = (request.form.get("full_name") or "").strip() or prof.full_name
+            prof.headline = (request.form.get("headline") or "").strip() or None
+            prof.summary = (request.form.get("summary") or "").strip() or None
+            prof.location = (request.form.get("location") or "").strip() or None
+            prof.phone = (request.form.get("phone") or "").strip() or None
 
-        # Skills CSV
-        skills_csv = (request.form.get("skills_csv") or "").strip()
-        if skills_csv:
-            prof.skills = [s.strip() for s in skills_csv.split(",") if s.strip()][:50]
+            # Skills CSV
+            skills_csv = (request.form.get("skills_csv") or "").strip()
+            if skills_csv:
+                prof.skills = [s.strip() for s in skills_csv.split(",") if s.strip()][:50]
 
-        # JSON sections
-        def parse_json_field(field, default):
-            raw = (request.form.get(field) or "").strip()
-            if not raw:
-                return None
-            try:
-                return json.loads(raw)
-            except Exception:
-                flash(f"{field.replace('_',' ').title()} must be valid JSON.", "warning")
-                return default
+            # JSON sections
+            def parse_json_field(field, default):
+                raw = (request.form.get(field) or "").strip()
+                if not raw:
+                    return None
+                try:
+                    return json.loads(raw)
+                except Exception:
+                    flash(f"{field.replace('_',' ').title()} must be valid JSON.", "warning")
+                    return default
 
-        links = parse_json_field("links_json", prof.links or {})
-        education = parse_json_field("education_json", prof.education or [])
-        experience = parse_json_field("experience_json", prof.experience or [])
-        certs = parse_json_field("certifications_json", prof.certifications or [])
+            links = parse_json_field("links_json", prof.links or {})
+            education = parse_json_field("education_json", prof.education or [])
+            experience = parse_json_field("experience_json", prof.experience or [])
+            certs = parse_json_field("certifications_json", prof.certifications or [])
 
-        if links is not None: prof.links = links
-        if education is not None: prof.education = education
-        if experience is not None: prof.experience = experience
-        if certs is not None: prof.certifications = certs
+            if links is not None: prof.links = links
+            if education is not None: prof.education = education
+            if experience is not None: prof.experience = experience
+            if certs is not None: prof.certifications = certs
 
-        prof.updated_at = datetime.utcnow()
-        db.session.commit()
-        flash("Profile saved.", "success")
-        return redirect(url_for("settings.profile"))
+            prof.updated_at = datetime.utcnow()
+            db.session.commit()
+            flash("Profile saved.", "success")
+            return redirect(url_for("settings.profile"))
 
-    latest_resume = (
-        ResumeAsset.query.filter_by(user_id=current_user.id)
-        .order_by(ResumeAsset.created_at.desc())
-        .first()
-    )
+        latest_resume = (
+            ResumeAsset.query.filter_by(user_id=current_user.id)
+            .order_by(ResumeAsset.created_at.desc())
+            .first()
+        )
 
-    return render_template("settings/profile.html", profile=prof, latest_resume=latest_resume)
+        return render_template("settings/profile.html", profile=prof, latest_resume=latest_resume)
+    except Exception:
+        current_app.logger.exception("/settings/profile failed")
+        raise
 
 
 # ---------------------------
