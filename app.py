@@ -280,20 +280,17 @@ def create_app():
 
     @app.errorhandler(500)
     def srv_error(e):
+        # Always log real trace to Render
+        app.logger.error("500 Internal Server Error", exc_info=True)
+
+        # Try rollback if DB messed
         try:
-            # IMPORTANT: logger.exception already records the active exception;
-            # don't pass the exception object as exc_info (it expects True or a tuple)
-            app.logger.exception("Unhandled 500 error")
             db.session.rollback()
         except Exception:
             pass
-        return render_template("errors/500.html"), 500
 
-    @app.teardown_request
-    def _teardown_request(exc):
-        if exc:
-            try: db.session.rollback()
-            except Exception: pass
+        # Show a friendly page
+        return render_template("errors/500.html"), 500
 
     # ----- Local SQLite only: create tables for quick start
     with app.app_context():
