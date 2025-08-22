@@ -1,5 +1,3 @@
-# app.py
-
 import os, logging, sys
 from datetime import datetime
 from flask import Flask, render_template, request, send_from_directory, url_for
@@ -34,13 +32,10 @@ def free_coins():
         try:
             return getattr(current_user, "coins_free", 0) or 0
         except Exception:
-            # transaction may be aborted; clear it and return a safe default
             try: db.session.rollback()
             except Exception: pass
             return 0
     return 0
-    
-
 
 def pro_coins():
     if getattr(current_user, "is_authenticated", False):
@@ -51,8 +46,6 @@ def pro_coins():
             except Exception: pass
             return 0
     return 0
-    
-
 
 def is_pro():
     if getattr(current_user, "is_authenticated", False):
@@ -64,8 +57,6 @@ def is_pro():
             except Exception: pass
             return False
     return False
-   
-
 
 def register_template_globals(app: Flask):
     app.jinja_env.globals.update(
@@ -79,16 +70,6 @@ def register_template_globals(app: Flask):
 # Auto-migration on startup (Render-friendly; no shell required)
 # ---------------------------------------------------------------------
 def run_auto_migrations(app: Flask) -> None:
-    """
-    Robust auto-migrate for Render/Postgres (no shell needed):
-
-    Flow:
-      1) Try `upgrade head`.
-      2) If "Can't locate revision ..." -> drop alembic_version, stamp base, `upgrade head`.
-      3) If DuplicateTable/relations already exist -> STAMP HEAD (no DDL), AUTOGEN a sync migration, `upgrade head`.
-
-    Skips for SQLite (local dev).
-    """
     from alembic import command
     from alembic.config import Config
     from sqlalchemy import create_engine, text, inspect
@@ -109,7 +90,6 @@ def run_auto_migrations(app: Flask) -> None:
         with app.app_context():
             command.upgrade(cfg, "head")
 
-    # 1) First attempt: straight upgrade
     try:
         _upgrade()
         app.logger.info("Alembic migrations applied (upgrade head).")
@@ -118,10 +98,10 @@ def run_auto_migrations(app: Flask) -> None:
         msg1 = (str(e1) or "")
         app.logger.error(f"Alembic upgrade failed (1st try): {msg1}")
 
-    # 2) Unknown/missing revision -> drop alembic_version, stamp base, upgrade
     if "Can't locate revision" in msg1 or "No such revision" in msg1:
         try:
             app.logger.warning("Dropping alembic_version to clear stale revision pointer...")
+            from sqlalchemy import create_engine, text
             engine = create_engine(url)
             with engine.begin() as conn:
                 conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
@@ -134,41 +114,37 @@ def run_auto_migrations(app: Flask) -> None:
         except Exception as e2:
             app.logger.error(f"Alembic upgrade failed after stamp base: {e2}")
 
-    # 3) Tables already exist (DuplicateTable/relations exist): stamp HEAD, autogenerate, upgrade
     if "already exists" in msg1 or "DuplicateTable" in msg1 or "relation" in msg1:
         try:
+            from sqlalchemy import create_engine, inspect
             engine = create_engine(url)
             insp = inspect(engine)
             existing = set(insp.get_table_names(schema="public"))
-            # if our core tables are there, treat DB as already at head
             core_seen = {"university", "user"} & existing
             if core_seen:
                 with app.app_context():
-                    command.stamp(cfg, "head")  # mark as up-to-date without running DDL
+                    command.stamp(cfg, "head")
                     from datetime import datetime
                     autogen_msg = f"autosync_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-                    command.revision(cfg, message=autogen_msg, autogenerate=True)  # create diff-only migration
+                    command.revision(cfg, message=autogen_msg, autogenerate=True)
                     app.logger.warning("Alembic created an autogenerate 'autosync' migration (diff-only).")
-                    command.upgrade(cfg, "head")  # apply missing columns/indexes only
+                    command.upgrade(cfg, "head")
                     app.logger.info("Alembic migrations applied after autosync.")
                     return
         except Exception as e3:
             app.logger.error(f"Alembic autosync path failed: {e3}")
 
-    # Last resort: try plain autogenerate then upgrade
     try:
         with app.app_context():
             from datetime import datetime
             autogen_msg = f"autosync_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
             command.revision(cfg, message=autogen_msg, autogenerate=True)
-            app.logger.warning("Alembic created an autogenerate 'autosync' migration (fallback).")
             _upgrade()
             app.logger.info("Alembic migrations applied after autosync fallback.")
             return
     except Exception as e4:
         app.logger.error(f"Alembic autosync fallback failed: {e4}")
-        # Optional: raise to fail deploy
-        # raise
+
 
 # ---------------------------------------------------------------------
 # App factory
@@ -197,11 +173,9 @@ def create_app():
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB uploads
 
-    # Dev nicety
     if os.getenv("FLASK_ENV") != "production":
         app.config["TEMPLATES_AUTO_RELOAD"] = True
 
-    # Prod security + proxy headers (Render)
     if os.getenv("FLASK_ENV") == "production" or os.getenv("ENV") == "production":
         app.config.update(
             SESSION_COOKIE_SECURE=True,
@@ -261,14 +235,12 @@ def create_app():
         except Exception:
             tenant_name = None
 
-        # Safe url_for to avoid crashes if an endpoint is missing
         def safe_url(endpoint, **kwargs):
             try:
                 return url_for(endpoint, **kwargs)
             except Exception:
                 return "#"
 
-        # Feature links used by base.html
         resume_url = safe_url("settings.resume")
         if resume_url == "#":
             resume_url = safe_url("settings.index")
@@ -276,7 +248,8 @@ def create_app():
         feature_paths = {
             "home":        safe_url("landing"),
             "dashboard":   safe_url("dashboard"),
-            "resume":      resume_url,                # Pro-only vault under Settings
+            "profile":     safe_url("settings.profile"),   # NEW: Profile Portal
+            "resume":      resume_url,                     # Resume Hub (Pro-only action)
             "portfolio":   safe_url("portfolio.index"),
             "internships": safe_url("internships.index"),
             "referral":    safe_url("referral.index"),
@@ -286,7 +259,7 @@ def create_app():
             "billing":     safe_url("billing.index"),
             "login":       safe_url("auth.login"),
             "logout":      safe_url("auth.logout"),
-            "signup":      safe_url("auth.register"),  # or "auth.signup" if you kept the alias
+            "signup":      safe_url("auth.register"),
         }
 
         return dict(
@@ -315,14 +288,11 @@ def create_app():
           pass
        return render_template("errors/500.html"), 500
 
-
     @app.teardown_request
     def _teardown_request(exc):
-      if exc:
-         try: db.session.rollback()
-         except Exception: pass
-
-    
+        if exc:
+            try: db.session.rollback()
+            except Exception: pass
 
     # ----- Local SQLite only: create tables for quick start
     with app.app_context():

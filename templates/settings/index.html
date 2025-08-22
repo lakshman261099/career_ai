@@ -7,15 +7,16 @@
     <form method="POST" action="{{ url_for('settings.index') }}">
       <label class="block text-sm mb-1">Name</label>
       <input name="name" value="{{ current_user.name }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      <div class="mt-4">
+      <div class="mt-4 flex items-center gap-2">
         <button class="btn-primary">Save</button>
+        <a class="btn-ghost" href="{{ url_for('settings.profile') }}">Open Profile Portal</a>
       </div>
     </form>
   </div>
 
   <div class="glass-panel rounded-2xl p-6 mt-6">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold">Resume Profile</h2>
+      <h2 class="text-lg font-semibold">Resume Hub</h2>
       <a href="{{ feature_paths.resume }}" class="btn-ghost">Open</a>
     </div>
     {% if resumes and resumes|length %}

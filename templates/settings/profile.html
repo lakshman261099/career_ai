@@ -1,22 +1,160 @@
 {% extends "base.html" %}
+{% block title %}Profile Portal — CareerAI{% endblock %}
 {% block content %}
-<h2 class="text-2xl font-bold mb-2">Profile & Credits</h2>
-<div class="grid md:grid-cols-3 gap-4">
-  <div class="p-4 rounded border">
-    <h3 class="font-semibold mb-2">Account</h3>
-    <p>Email: {{ user.email }}</p>
-    <p>Status: {% if is_pro() %}<span class="text-green-600 font-semibold">Pro</span>{% else %}Free{% endif %}</p>
+<section class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-10 space-y-6">
+
+  <!-- Header / Status -->
+  <div class="glass-panel rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-extrabold tracking-tight">Your Profile Portal</h1>
+      <p class="text-white/70 text-sm">Built for hiring managers. Everything here powers Job Packs, Skill Mapper, and Internships.</p>
+    </div>
+    <div class="flex items-center gap-3 text-sm">
+      <span class="px-3 py-1 rounded-full bg-white/10 border border-white/20">
+        Plan: {{ 'Pro ⭐' if is_pro() else 'Free 🪙' }}
+      </span>
+      <span class="px-3 py-1 rounded-full bg-white/10 border border-white/20">
+        Resume: {{ '✅' if latest_resume else '❌' }}
+      </span>
+      <a href="{{ url_for('settings.resume') }}" class="btn-primary">Open Resume Hub</a>
+    </div>
   </div>
-  <div class="p-4 rounded border">
-    <h3 class="font-semibold mb-2">Credits</h3>
-    <p>Silver (🥈): <span class="font-semibold">{{ user.silver_balance }}</span></p>
-    <p>Gold (🥇): <span class="font-semibold">{{ user.gold_balance }}</span></p>
-    <a href="/billing/subscribe" class="inline-block mt-2 px-3 py-1 rounded bg-purple-600 text-white">Get / Manage Pro</a>
+
+  <div class="grid lg:grid-cols-2 gap-6">
+    <!-- Hiring Manager View -->
+    <section class="glass-panel rounded-2xl p-6">
+      <header class="mb-4">
+        <h2 class="text-xl font-bold">{{ profile.full_name or current_user.name }}</h2>
+        <p class="text-white/70">{{ profile.headline or 'Add a headline to stand out' }}</p>
+      </header>
+
+      <div class="space-y-4">
+        <div>
+          <h3 class="font-semibold text-sm uppercase tracking-wider text-white/60">Summary</h3>
+          <p class="mt-1">{{ profile.summary or 'No summary yet.' }}</p>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-sm uppercase tracking-wider text-white/60">Skills</h3>
+          {% if profile.skills %}
+            <div class="mt-2 flex flex-wrap gap-2">
+              {% for s in profile.skills %}
+                <span class="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-xs">{{ s }}</span>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="mt-1 text-white/60">No skills added.</p>
+          {% endif %}
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-sm uppercase tracking-wider text-white/60">Experience</h3>
+          {% if profile.experience %}
+            <ul class="mt-2 space-y-2">
+              {% for job in profile.experience %}
+                <li class="border border-white/10 rounded-xl p-3">
+                  <div class="font-semibold">{{ job.role }}</div>
+                  <div class="text-white/60 text-sm">{{ job.company }} · {{ job.start }} – {{ job.end or 'Present' }}</div>
+                  {% if job.bullets %}
+                    <ul class="list-disc pl-5 mt-2 space-y-1 text-sm">
+                      {% for b in job.bullets %}<li>{{ b }}</li>{% endfor %}
+                    </ul>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="mt-1 text-white/60">No experience added.</p>
+          {% endif %}
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-sm uppercase tracking-wider text-white/60">Education</h3>
+          {% if profile.education %}
+            <ul class="mt-2 space-y-1">
+              {% for ed in profile.education %}
+                <li>{{ ed.degree }} — {{ ed.school }} ({{ ed.year }})</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="mt-1 text-white/60">No education added.</p>
+          {% endif %}
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-sm uppercase tracking-wider text-white/60">Links</h3>
+          {% if profile.links %}
+            <ul class="mt-2 space-y-1 text-sm">
+              {% for k, v in profile.links.items() %}
+                <li><span class="text-white/60">{{ k|title }}:</span> <a class="underline" href="{{ v }}" target="_blank" rel="noopener">{{ v }}</a></li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="mt-1 text-white/60">No links added.</p>
+          {% endif %}
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Edit Panel -->
+    <section class="glass-panel rounded-2xl p-6">
+      <h3 class="text-lg font-semibold mb-3">Edit Profile</h3>
+      <form method="post" class="space-y-4">
+        <div>
+          <label class="block text-sm mb-1">Full Name</label>
+          <input name="full_name" value="{{ profile.full_name or current_user.name or '' }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Headline</label>
+          <input name="headline" value="{{ profile.headline or '' }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Summary</label>
+          <textarea name="summary" rows="5" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.summary or '' }}</textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm mb-1">Location</label>
+            <input name="location" value="{{ profile.location or '' }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Phone</label>
+            <input name="phone" value="{{ profile.phone or '' }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm mb-1">Skills (comma‑separated)</label>
+          <input name="skills_csv" value="{{ profile.skills|join(', ') if profile.skills else '' }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+        </div>
+
+        <div>
+          <label class="block text-sm mb-1">Links (JSON)</label>
+          <textarea name="links_json" rows="3" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.links|tojson if profile.links else '{}' }}</textarea>
+        </div>
+
+        <div>
+          <label class="block text-sm mb-1">Education (JSON)</label>
+          <textarea name="education_json" rows="4" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.education|tojson if profile.education else '[]' }}</textarea>
+        </div>
+
+        <div>
+          <label class="block text-sm mb-1">Experience (JSON)</label>
+          <textarea name="experience_json" rows="5" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.experience|tojson if profile.experience else '[]' }}</textarea>
+        </div>
+
+        <div>
+          <label class="block text-sm mb-1">Certifications (JSON)</label>
+          <textarea name="certifications_json" rows="3" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.certifications|tojson if profile.certifications else '[]' }}</textarea>
+        </div>
+
+        <div class="flex gap-2">
+          <button class="btn-primary" type="submit">Save</button>
+          <a class="btn-ghost" href="{{ url_for('settings.index') }}">Back</a>
+        </div>
+      </form>
+    </section>
   </div>
-  <div class="p-4 rounded border">
-    <h3 class="font-semibold mb-2">Resume Hub</h3>
-    <p>Upload or update your resume to power all tools.</p>
-    <a class="underline" href="/resume">Open Resume Hub</a>
-  </div>
-</div>
+</section>
 {% endblock %}

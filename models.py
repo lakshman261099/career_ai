@@ -87,6 +87,46 @@ class User(UserMixin, db.Model):
 
 
 # ---------------------------------------------------------------------
+# NEW: Hiring‑Manager style editable Profile (1–1 with User)
+# ---------------------------------------------------------------------
+class UserProfile(db.Model):
+    __tablename__ = "user_profile"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+        unique=True,
+    )
+
+    # Core identity
+    full_name = db.Column(db.String(120), nullable=True)
+    headline = db.Column(db.String(200), nullable=True)
+    summary = db.Column(db.Text, nullable=True)
+    location = db.Column(db.String(120), nullable=True)
+    phone = db.Column(db.String(32), nullable=True)
+
+    # Flexible structured fields
+    links = db.Column(db.JSON, default=dict)           # {"linkedin": "...", "github": "...", ...}
+    skills = db.Column(db.JSON, default=list)          # ["Python", "SQL", ...]
+    education = db.Column(db.JSON, default=list)       # [{school, degree, year}, ...]
+    experience = db.Column(db.JSON, default=list)      # [{company, role, start, end, bullets:[...]}]
+    certifications = db.Column(db.JSON, default=list)  # ["AWS CCP", ...]
+
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    user = db.relationship(
+        "User",
+        backref=db.backref("profile", uselist=False, cascade="all, delete-orphan"),
+    )
+
+    def __repr__(self):
+        return f"<UserProfile {self.id} u={self.user_id}>"
+
+
+# ---------------------------------------------------------------------
 # Free usage counters (rate/credit governance for Free tier)
 # ---------------------------------------------------------------------
 class FreeUsage(db.Model):
