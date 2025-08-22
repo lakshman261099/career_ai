@@ -1,26 +1,26 @@
-import os, json, re
+# modules/settings/routes.py
+
+import os, re, json
 from datetime import datetime
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
 from models import db, ResumeAsset, UserProfile
-from limits import authorize_and_consume, can_use_pro, get_feature_limits
 
 settings_bp = Blueprint("settings", __name__, template_folder="../../templates/settings")
 
-ALLOWED_RESUME_EXTS = {"pdf"}  # unified portal: file upload only (PDF)
+ALLOWED_RESUME_EXTS = {"pdf"}  # unified portal: PDF only (no paste)
 
-
-def _allowed_file(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_RESUME_EXTS
+def _allowed_file(fname: str) -> bool:
+    return "." in fname and fname.rsplit(".", 1)[1].lower() in ALLOWED_RESUME_EXTS
 
 
 # ---------------------------
-# Profile helpers
+# Data helpers (robust/forgiving)
 # ---------------------------
 def _ensure_profile():
-    """Always return a UserProfile row for the current user (or None on hard failure)."""
+    """Return a UserProfile row for the current user, creating if missing."""
     try:
         prof = UserProfile.query.filter_by(user_id=current_user.id).first()
         if not prof:
@@ -29,190 +29,112 @@ def _ensure_profile():
             db.session.commit()
         return prof
     except Exception:
-        current_app.logger.exception("Failed ensuring profile")
-        db.session.rollback()
+        current_app.logger.exception("ensure_profile failed")
+        try: db.session.rollback()
+        except Exception: pass
         return None
 
 
-def _naive_parse_from_text(text: str) -> dict:
-    """Conservative seed from resume text."""
-    if not text:
-        return {}
-    parsed = {}
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-
-    if lines:
-        parsed["headline"] = lines[0][:200]
-
-    m_email = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
-    if m_email:
-        parsed.setdefault("links", {})
-        parsed["links"]["email"] = m_email.group(0)
-
-    m_phone = re.search(r"(\+?\d[\d\s\-()]{8,})", text)
-    if m_phone:
-        parsed["phone"] = m_phone.group(0).strip()
-
-    for l in lines:
-        if l.lower().startswith("skills"):
-            rest = l.split(":", 1)[-1] if ":" in l else l[6:]
-            skills = [s.strip() for s in rest.split(",") if s.strip()]
-            if skills:
-                parsed["skills"] = [{"name": s, "level": 3} for s in skills[:30]]
-            break
-
-    lowtxt = text.lower()
-    if "linkedin.com" in lowtxt:
-        parsed.setdefault("links", {})
-        url = re.search(r"https?://[^\s]*linkedin[^\s]*", text, re.I)
-        if url: parsed["links"]["linkedin"] = url.group(0)
-    if "github.com" in lowtxt:
-        parsed.setdefault("links", {})
-        url = re.search(r"https?://[^\s]*github[^\s]*", text, re.I)
-        if url: parsed["links"]["github"] = url.group(0)
-
-    return parsed
-
-
-def _seed_profile_from_parsed(profile: UserProfile, parsed: dict) -> bool:
-    """Fill blanks only; return True if changed."""
-    if not parsed or not profile:
-        return False
-    changed = False
-
-    def set_if_blank(attr, val):
-        nonlocal changed
-        if val is None:
-            return
-        cur = getattr(profile, attr)
-        if not cur:
-            setattr(profile, attr, val)
-            changed = True
-
-    set_if_blank("headline", parsed.get("headline"))
-    set_if_blank("summary", parsed.get("summary"))
-    set_if_blank("phone", parsed.get("phone"))
-
-    # links
-    new_links = parsed.get("links") or {}
-    if new_links:
-        merged = dict(profile.links or {})
-        added = False
-        for k, v in new_links.items():
-            if k not in merged and v:
-                merged[k] = v
-                added = True
-        if added or not (profile.links or {}):
-            profile.links = merged
-            changed = True
-
-    # skills (only if empty)
-    if parsed.get("skills") and not (profile.skills or []):
-        profile.skills = parsed["skills"]
-        changed = True
-
-    if changed:
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            current_app.logger.exception("Failed committing seeded profile")
-            return False
-    return changed
-
-
-# -------- Normalizers to make template safe --------
 def _normalize_skills(raw):
-    """Return list[{'name':str,'level':int(1..5)}]. Accept strings/dicts/mixed."""
-    norm = []
-    for item in (raw or []):
+    """Return list of {'name': str, 'level': int 1..5} from mixed input."""
+    out = []
+    if not raw:
+        return out
+    for item in raw:
+        name, level = "", 3
         if isinstance(item, dict):
-            name = item.get("name") or item.get("skill") or item.get("title") or ""
+            name = (item.get("name") or item.get("skill") or item.get("title") or "").strip()
             try:
                 level = int(item.get("level", 3))
             except Exception:
                 level = 3
         elif isinstance(item, str):
-            name, level = item, 3
-        else:
-            continue
-        name = (name or "").strip()
+            name = item.strip()
         if not name:
             continue
         if level < 1: level = 1
         if level > 5: level = 5
-        norm.append({"name": name, "level": level})
-    return norm
+        out.append({"name": name, "level": level})
+    return out
 
 
 def _normalize_education(raw):
-    """Return list[{'degree':str,'school':str,'year':str}]."""
     out = []
-    for ed in (raw or []):
-        if isinstance(ed, dict):
-            out.append({
-                "degree": (ed.get("degree") or "").strip(),
-                "school": (ed.get("school") or "").strip(),
-                "year": (str(ed.get("year") or "").strip()),
-            })
+    if not raw:
+        return out
+    for ed in raw:
+        if not isinstance(ed, dict):
+            continue
+        out.append({
+            "degree": (ed.get("degree") or "").strip(),
+            "school": (ed.get("school") or "").strip(),
+            "year": (str(ed.get("year") or "").strip()),
+        })
     return out
 
 
 def _normalize_certs(raw):
-    """Return list[{'name':str,'year':str|None}]."""
     out = []
-    for c in (raw or []):
+    if not raw:
+        return out
+    for c in raw:
         if isinstance(c, dict):
-            out.append({
-                "name": (c.get("name") or "").strip(),
-                "year": (str(c.get("year") or "").strip()) or None,
-            })
+            out.append({"name": (c.get("name") or "").strip(),
+                        "year": (str(c.get("year") or "").strip()) or None})
         elif isinstance(c, str):
             out.append({"name": c.strip(), "year": None})
     return out
 
 
 def _normalize_links(raw):
-    """Return dict[str->str]."""
+    """Return dict[str -> str]."""
+    res = {}
     if isinstance(raw, dict):
-        clean = {}
         for k, v in raw.items():
-            key = (k or "").strip()
-            val = (v or "").strip()
-            if not key or not val:
-                continue
-            clean[key] = val
-        return clean
-    return {}
+            k2 = (k or "").strip()
+            v2 = (v or "").strip()
+            if k2 and v2:
+                res[k2] = v2
+    return res
 
 
 def _normalize_experience(raw):
-    """
-    Return list[{'role':str,'company':str,'start':str,'end':str|None,'bullets':list[str]}]
-    """
     out = []
-    for j in (raw or []):
+    if not raw:
+        return out
+    for j in raw:
         if not isinstance(j, dict):
             continue
-        bullets = j.get("bullets")
-        if isinstance(bullets, list):
-            bl = [str(b).strip() for b in bullets if str(b).strip()]
-        elif isinstance(bullets, str):
-            bl = [b.strip() for b in bullets.split("\n") if b.strip()]
+        bullets_raw = j.get("bullets")
+        if isinstance(bullets_raw, list):
+            bullets = [str(b).strip() for b in bullets_raw if str(b).strip()]
+        elif isinstance(bullets_raw, str):
+            bullets = [b.strip() for b in bullets_raw.split("\n") if b.strip()]
         else:
-            bl = []
+            bullets = []
         out.append({
             "role": (j.get("role") or "").strip(),
             "company": (j.get("company") or "").strip(),
             "start": (j.get("start") or "").strip(),
             "end": (j.get("end") or "").strip() or None,
-            "bullets": bl,
+            "bullets": bullets,
         })
     return out
 
 
+def _build_view(prof: UserProfile):
+    """Produce safe, template-friendly structures."""
+    return dict(
+        skills=_normalize_skills(prof.skills or []),
+        education=_normalize_education(prof.education or []),
+        certifications=_normalize_certs(prof.certifications or []),
+        links=_normalize_links(prof.links or {}),
+        experience=_normalize_experience(prof.experience or []),
+    )
+
+
 # ---------------------------
-# Settings index (kept simple)
+# Settings index (unchanged)
 # ---------------------------
 @settings_bp.route("/", methods=["GET", "POST"], endpoint="index")
 @login_required
@@ -229,39 +151,37 @@ def index():
                 db.session.commit()
                 flash("Profile updated.", "success")
             except Exception:
-                db.session.rollback()
                 current_app.logger.exception("Failed updating name")
+                try: db.session.rollback()
+                except Exception: pass
                 flash("Could not update profile. Try again.", "error")
         return redirect(url_for("settings.index"))
 
-    resumes = []
     try:
-        resumes = (
-            ResumeAsset.query.filter_by(user_id=current_user.id)
-            .order_by(ResumeAsset.created_at.desc())
-            .limit(5)
-            .all()
-        )
+        resumes = (ResumeAsset.query
+                   .filter_by(user_id=current_user.id)
+                   .order_by(ResumeAsset.created_at.desc())
+                   .limit(5).all())
     except Exception:
         current_app.logger.exception("Failed loading resumes")
+        resumes = []
 
     return render_template("settings/index.html", resumes=resumes)
 
 
 # ---------------------------
-# Unified Profile Portal
+# Unified Profile Portal (with optional PDF upload)
 # ---------------------------
 @settings_bp.route("/profile", methods=["GET", "POST"], endpoint="profile")
 @login_required
 def profile():
     prof = _ensure_profile()
     if not prof:
-        flash("Could not load your profile. Please retry.", "error")
+        flash("Could not load your profile. Please reload.", "error")
         return redirect(url_for("settings.index"))
 
-    # Handle optional PDF upload (auto-scan), same form
     if request.method == "POST":
-        # 1) Optional resume file
+        # 1) Optional resume PDF
         file = request.files.get("resume_pdf")
         if file and file.filename:
             if not _allowed_file(file.filename):
@@ -269,33 +189,37 @@ def profile():
                 return redirect(url_for("settings.profile"))
             filename = secure_filename(file.filename)
             try:
-                # We don't parse PDF here; we store a marker and allow downstream parser later.
-                extracted_text = f"[PDF uploaded: {filename}]"
-                asset = ResumeAsset(user_id=current_user.id, filename=filename, text=extracted_text)
+                # we store the file name and a marker; real parsing can be added later
+                asset = ResumeAsset(user_id=current_user.id, filename=filename, text=f"[PDF uploaded: {filename}]")
                 db.session.add(asset)
                 db.session.commit()
-                # Seed blanks from a conservative parser (works even for placeholder text)
-                _seed_profile_from_parsed(prof, _naive_parse_from_text(extracted_text))
-                flash("Resume uploaded. We pre-filled what we safely could. Review & save below.", "success")
+                flash("Resume uploaded. We’ll auto-fill what we can.", "success")
             except Exception:
-                db.session.rollback()
-                current_app.logger.exception("Failed saving ResumeAsset")
-                flash("Could not save your resume.", "error")
+                current_app.logger.exception("Failed to persist ResumeAsset")
+                try: db.session.rollback()
+                except Exception: pass
+                flash("Could not save resume file.", "error")
                 return redirect(url_for("settings.profile"))
 
-        # 2) Structured fields
+        # 2) Basic fields
         try:
             prof.full_name = (request.form.get("full_name") or "").strip() or prof.full_name
-            prof.headline = (request.form.get("headline") or "").strip() or None
-            prof.summary = (request.form.get("summary") or "").strip() or None
-            prof.location = (request.form.get("location") or prof.location or "").strip() or None
-            prof.phone = (request.form.get("phone") or prof.phone or "").strip() or None
+            prof.headline  = (request.form.get("headline") or "").strip() or None
+            prof.summary   = (request.form.get("summary") or "").strip() or None
+        except Exception:
+            current_app.logger.exception("Failed to set basic fields")
+            try: db.session.rollback()
+            except Exception: pass
+            flash("Could not save profile basics.", "error")
+            return redirect(url_for("settings.profile"))
 
+        # 3) Structured fields
+        try:
             # Skills
-            names = request.form.getlist("skills_names[]")
+            names  = request.form.getlist("skills_names[]")
             levels = request.form.getlist("skills_levels[]")
-            new_skills = []
-            for i, nm in enumerate(names):
+            skills = []
+            for i, nm in enumerate(names or []):
                 nm = (nm or "").strip()
                 if not nm:
                     continue
@@ -305,114 +229,114 @@ def profile():
                     lv = 3
                 if lv < 1: lv = 1
                 if lv > 5: lv = 5
-                new_skills.append({"name": nm, "level": lv})
-            prof.skills = new_skills
+                skills.append({"name": nm, "level": lv})
+            prof.skills = skills
 
             # Education
             edu_degree = request.form.getlist("edu_degree[]")
             edu_school = request.form.getlist("edu_school[]")
-            edu_year = request.form.getlist("edu_year[]")
-            new_edu = []
-            for i in range(max(len(edu_degree), len(edu_school), len(edu_year))):
+            edu_year   = request.form.getlist("edu_year[]")
+            education = []
+            n_edu = max(len(edu_degree), len(edu_school), len(edu_year))
+            for i in range(n_edu):
                 deg = (edu_degree[i] if i < len(edu_degree) else "").strip()
                 sch = (edu_school[i] if i < len(edu_school) else "").strip()
                 yr  = (edu_year[i] if i < len(edu_year) else "").strip()
-                if not (deg or sch or yr):
-                    continue
-                new_edu.append({"degree": deg, "school": sch, "year": yr})
-            prof.education = new_edu
+                if deg or sch or yr:
+                    education.append({"degree": deg, "school": sch, "year": yr})
+            prof.education = education
 
             # Certifications
             cert_name = request.form.getlist("cert_name[]")
             cert_year = request.form.getlist("cert_year[]")
-            new_certs = []
-            for i in range(max(len(cert_name), len(cert_year))):
+            certs = []
+            n_c = max(len(cert_name), len(cert_year))
+            for i in range(n_c):
                 cn = (cert_name[i] if i < len(cert_name) else "").strip()
                 cy = (cert_year[i] if i < len(cert_year) else "").strip() or None
-                if not cn:
-                    continue
-                new_certs.append({"name": cn, "year": cy})
-            prof.certifications = new_certs
+                if cn:
+                    certs.append({"name": cn, "year": cy})
+            prof.certifications = certs
 
             # Links
             link_keys = request.form.getlist("link_keys[]")
             link_urls = request.form.getlist("link_urls[]")
             links = {}
-            for i in range(max(len(link_keys), len(link_urls))):
+            n_l = max(len(link_keys), len(link_urls))
+            for i in range(n_l):
                 k = (link_keys[i] if i < len(link_keys) else "").strip()
                 v = (link_urls[i] if i < len(link_urls) else "").strip()
-                if not (k and v):
-                    continue
-                links[k] = v
+                if k and v:
+                    links[k] = v
             prof.links = links
 
             # Experience
-            exp_role = request.form.getlist("exp_role[]")
+            exp_role    = request.form.getlist("exp_role[]")
             exp_company = request.form.getlist("exp_company[]")
-            exp_start = request.form.getlist("exp_start[]")
-            exp_end = request.form.getlist("exp_end[]")
+            exp_start   = request.form.getlist("exp_start[]")
+            exp_end     = request.form.getlist("exp_end[]")
             exp_bullets = request.form.getlist("exp_bullets[]")
-            new_exp = []
-            max_n = max(len(exp_role), len(exp_company), len(exp_start), len(exp_end), len(exp_bullets))
-            for i in range(max_n):
-                role = (exp_role[i] if i < len(exp_role) else "").strip()
+            experience = []
+            n_e = max(len(exp_role), len(exp_company), len(exp_start), len(exp_end), len(exp_bullets))
+            for i in range(n_e):
+                role = (exp_role[i]    if i < len(exp_role)    else "").strip()
                 comp = (exp_company[i] if i < len(exp_company) else "").strip()
-                st = (exp_start[i] if i < len(exp_start) else "").strip()
-                en = (exp_end[i] if i < len(exp_end) else "").strip() or None
-                bl_raw = (exp_bullets[i] if i < len(exp_bullets) else "")
-                bl = [b.strip() for b in (bl_raw or "").split("\n") if b.strip()]
-                if not (role or comp or st or en or bl):
-                    continue
-                new_exp.append({"role": role, "company": comp, "start": st, "end": en, "bullets": bl})
-            prof.experience = new_exp
+                st   = (exp_start[i]   if i < len(exp_start)   else "").strip()
+                en   = (exp_end[i]     if i < len(exp_end)     else "").strip() or None
+                blr  = (exp_bullets[i] if i < len(exp_bullets) else "")
+                bl   = [b.strip() for b in (blr or "").split("\n") if b.strip()]
+                if role or comp or st or en or bl:
+                    experience.append({"role": role, "company": comp, "start": st, "end": en, "bullets": bl})
+            prof.experience = experience
 
             prof.updated_at = datetime.utcnow()
             db.session.commit()
             flash("Profile saved.", "success")
         except Exception:
-            db.session.rollback()
-            current_app.logger.exception("Failed saving profile")
-            flash("Could not save profile. Try again.", "error")
+            current_app.logger.exception("Failed saving structured profile fields")
+            try: db.session.rollback()
+            except Exception: pass
+            flash("Could not save profile. Please try again.", "error")
+
         return redirect(url_for("settings.profile"))
 
-    # GET: normalize and render (use ONLY normalized vars in template)
-    latest_resume = (
-        ResumeAsset.query.filter_by(user_id=current_user.id)
-        .order_by(ResumeAsset.created_at.desc())
-        .first()
-    )
+    # GET
+    try:
+        latest_resume = (ResumeAsset.query
+                         .filter_by(user_id=current_user.id)
+                         .order_by(ResumeAsset.created_at.desc())
+                         .first())
+    except Exception:
+        current_app.logger.exception("Failed fetching latest resume")
+        latest_resume = None
 
-    skills = _normalize_skills(prof.skills)
-    education = _normalize_education(prof.education)
-    certifications = _normalize_certs(prof.certifications)
-    links = _normalize_links(prof.links)
-    experience = _normalize_experience(prof.experience)
+    view = _build_view(prof)
 
+    # IMPORTANT: pass normalized variables expected by the template
     return render_template(
         "settings/profile.html",
         profile=prof,
         latest_resume=latest_resume,
-        skills=skills,
-        education=education,
-        certifications=certifications,
-        links=links,
-        experience=experience,
+        skills=view["skills"],
+        education=view["education"],
+        certifications=view["certifications"],
+        links=view["links"],
+        experience=view["experience"],
     )
 
 
 # ---------------------------
-# Credits
+# Credits (kept)
 # ---------------------------
 @settings_bp.route("/credits", endpoint="credits")
 @login_required
 def credits():
-    # kept for the settings menu
-    feature_keys = ["portfolio", "internships", "referral", "jobpack", "skillmapper"]
-    features = {k: get_feature_limits(k) for k in feature_keys}
+    # You can wire this to your limits module if you want; keeping simple here.
+    features = {}
     return render_template(
         "settings/credits.html",
-        coins_free=current_user.coins_free or 0,
-        coins_pro=current_user.coins_pro or 0,
-        subscription_status=(current_user.subscription_status or "free"),
+        coins_free=getattr(current_user, "coins_free", 0) or 0,
+        coins_pro=getattr(current_user, "coins_pro", 0) or 0,
+        subscription_status=(getattr(current_user, "subscription_status", "free") or "free"),
         features=features,
     )
