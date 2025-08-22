@@ -49,6 +49,7 @@
   <header class="sticky top-0 z-40">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
       <div class="glass-bar rounded-2xl px-4 py-3 flex items-center justify-between">
+        <!-- Brand -->
         <a href="{{ feature_paths.home }}" class="flex items-center gap-2">
           <div class="h-9 w-9 rounded-xl bg-brand-500/20 backdrop-blur border border-white/10 grid place-items-center shadow-glow">
             <span class="text-xl font-extrabold">C</span>
@@ -59,11 +60,8 @@
           {% endif %}
         </a>
 
+        <!-- Center nav (no Resume here) -->
         <nav class="hidden md:flex items-center gap-6 text-sm">
-          <a class="nav-link" href="{{ feature_paths.profile }}">Profile</a>
-          <a class="nav-link" href="{{ feature_paths.resume }}">
-            Resume{% if subscription_status|default('free') != 'pro' %} <span class="opacity-60">🔒</span>{% endif %}
-          </a>
           <a class="nav-link" href="{{ feature_paths.portfolio }}">Portfolio</a>
           <a class="nav-link" href="{{ feature_paths.internships }}">Internships</a>
           <a class="nav-link" href="{{ feature_paths.skillmapper }}">Skill Mapper</a>
@@ -72,12 +70,18 @@
           <a class="nav-link" href="{{ feature_paths.billing }}">Pricing</a>
         </nav>
 
+        <!-- Right cluster: coins + Resume button + Settings/Login -->
         <div class="flex items-center gap-3">
           <div class="coins-pill">
             <span class="coins-chip">🪙 {{ FREE }}</span>
             <span class="coins-sep">|</span>
             <span class="coins-chip">⭐ {{ PRO }}</span>
           </div>
+
+          <!-- Resume: always visible, Pro-locked by server when POSTing -->
+          <a class="btn-ghost hidden sm:inline" href="{{ feature_paths.resume }}">
+            Resume{% if subscription_status|default('free') != 'pro' %} <span class="opacity-60">🔒</span>{% endif %}
+          </a>
 
           {% if current_user.is_authenticated %}
             <a href="{{ feature_paths.settings }}" class="btn-ghost hidden sm:inline">Settings</a>

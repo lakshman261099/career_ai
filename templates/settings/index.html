@@ -1,36 +1,43 @@
 {% extends "base.html" %}
 {% block title %}Settings — CareerAI{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pt-12">
-  <div class="glass-panel rounded-2xl p-6">
-    <h1 class="text-xl font-bold mb-4">Profile</h1>
-    <form method="POST" action="{{ url_for('settings.index') }}">
-      <label class="block text-sm mb-1">Name</label>
-      <input name="name" value="{{ current_user.name }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      <div class="mt-4 flex items-center gap-2">
-        <button class="btn-primary">Save</button>
-        <a class="btn-ghost" href="{{ url_for('settings.profile') }}">Open Profile Portal</a>
+<section class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-10">
+  <div class="grid lg:grid-cols-[260px,1fr] gap-6">
+    {% include "settings/_sidebar.html" %}
+    <div class="space-y-6">
+      <div class="glass-panel rounded-2xl p-6">
+        <h1 class="text-xl font-bold mb-4">Account</h1>
+        <form method="POST" action="{{ url_for('settings.index') }}" class="space-y-3">
+          <div>
+            <label class="block text-sm mb-1">Name</label>
+            <input name="name" value="{{ current_user.name }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn-primary">Save</button>
+            <a class="btn-ghost" href="{{ url_for('settings.profile') }}">Open Profile Portal</a>
+          </div>
+        </form>
       </div>
-    </form>
-  </div>
 
-  <div class="glass-panel rounded-2xl p-6 mt-6">
-    <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold">Resume Hub</h2>
-      <a href="{{ feature_paths.resume }}" class="btn-ghost">Open</a>
-    </div>
-    {% if resumes and resumes|length %}
-      <div class="mt-3 text-sm text-white/70">
-        <div class="font-semibold mb-1">Recent uploads:</div>
-        <ul class="list-disc pl-5 space-y-1">
-          {% for r in resumes %}
-            <li>{{ r.filename or 'Text Paste' }} · {{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</li>
-          {% endfor %}
-        </ul>
+      <div class="glass-panel rounded-2xl p-6">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Resume Hub</h2>
+          <a href="{{ feature_paths.resume }}" class="btn-ghost">Open</a>
+        </div>
+        {% if resumes and resumes|length %}
+          <div class="mt-3 text-sm text-white/70">
+            <div class="font-semibold mb-1">Recent uploads:</div>
+            <ul class="list-disc pl-5 space-y-1">
+              {% for r in resumes %}
+                <li>{{ r.filename or 'Text Paste' }} · {{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% else %}
+          <p class="mt-3 text-sm text-white/60">No resume saved yet.</p>
+        {% endif %}
       </div>
-    {% else %}
-      <p class="mt-3 text-sm text-white/60">No resume saved yet.</p>
-    {% endif %}
+    </div>
   </div>
 </section>
 {% endblock %}
