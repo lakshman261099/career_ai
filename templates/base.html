@@ -42,6 +42,7 @@
     .coins-pill { @apply hidden sm:flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs; }
     .coins-chip { @apply font-semibold; }
     .coins-sep { @apply opacity-40; }
+    .pro-lock { @apply ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 border border-white/20; }
   </style>
 </head>
 <body class="h-full bg-ink-900 text-white">
@@ -50,6 +51,7 @@
   <header class="sticky top-0 z-40">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
       <div class="glass-bar rounded-2xl px-4 py-3 flex items-center justify-between">
+        <!-- Brand -->
         <a href="{{ feature_paths.home }}" class="flex items-center gap-2">
           <div class="h-9 w-9 rounded-xl bg-brand-500/20 backdrop-blur border border-white/10 grid place-items-center shadow-glow">
             <span class="text-xl font-extrabold">C</span>
@@ -60,15 +62,29 @@
           {% endif %}
         </a>
 
+        <!-- Feature Nav (no Profile/Resume here) -->
         <nav class="hidden md:flex items-center gap-6 text-sm">
-          <a class="nav-link {% if request.endpoint=='portfolio.index' %}nav-active{% endif %}" href="{{ feature_paths.portfolio }}">Portfolio</a>
-          <a class="nav-link {% if request.endpoint=='internships.index' %}nav-active{% endif %}" href="{{ feature_paths.internships }}">Internships</a>
-          <a class="nav-link {% if request.endpoint=='skillmapper.index' %}nav-active{% endif %}" href="{{ feature_paths.skillmapper }}">Skill Mapper</a>
-          <a class="nav-link {% if request.endpoint=='referral.index' %}nav-active{% endif %}" href="{{ feature_paths.referral }}">Referrals</a>
-          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('jobpack.') %}nav-active{% endif %}" href="{{ feature_paths.jobpack }}">Job Packs</a>
-          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('billing.') %}nav-active{% endif %}" href="{{ feature_paths.billing }}">Pricing</a>
+          <a class="nav-link {% if request.endpoint=='portfolio.index' %}nav-active{% endif %}" href="{{ feature_paths.portfolio }}">
+            Portfolio
+          </a>
+          <a class="nav-link {% if request.endpoint=='internships.index' %}nav-active{% endif %}" href="{{ feature_paths.internships }}">
+            Internships
+          </a>
+          <a class="nav-link {% if request.endpoint=='skillmapper.index' %}nav-active{% endif %}" href="{{ feature_paths.skillmapper }}">
+            Skill Mapper{% if subscription_status|default('free') != 'pro' %}<span class="pro-lock">🔒</span>{% endif %}
+          </a>
+          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('referral.') %}nav-active{% endif %}" href="{{ feature_paths.referral }}">
+            Referrals
+          </a>
+          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('jobpack.') %}nav-active{% endif %}" href="{{ feature_paths.jobpack }}">
+            Job Packs{% if subscription_status|default('free') != 'pro' %}<span class="pro-lock">🔒</span>{% endif %}
+          </a>
+          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('billing.') %}nav-active{% endif %}" href="{{ feature_paths.billing }}">
+            Pricing
+          </a>
         </nav>
 
+        <!-- Right cluster -->
         <div class="flex items-center gap-3">
           <div class="coins-pill">
             <span class="coins-chip">🪙 {{ FREE }}</span>
@@ -77,11 +93,18 @@
           </div>
 
           {% if current_user.is_authenticated %}
-            <!-- Quick action: unified Profile Portal -->
-            <a href="{{ feature_paths.profile }}" class="btn-ghost hidden sm:inline">
-              Profile Portal{% if subscription_status|default('free') != 'pro' %} <span class="opacity-60"> (Pro scan 🔒)</span>{% endif %}
+            <!-- Single quick action: Profile Portal (unified hub) -->
+            <a href="{{ feature_paths.profile }}"
+               class="btn-ghost hidden sm:inline {% if request.endpoint=='settings.profile' %}nav-active{% endif %}">
+              Profile Portal{% if subscription_status|default('free') != 'pro' %} <span class="opacity-60"> (auto‑scan 🔒)</span>{% endif %}
             </a>
-            <a href="{{ feature_paths.settings }}" class="btn-ghost hidden sm:inline {% if request.endpoint and request.endpoint.startswith('settings.') %}nav-active{% endif %}">Settings</a>
+
+            <!-- Settings -->
+            <a href="{{ feature_paths.settings }}"
+               class="btn-ghost hidden sm:inline {% if request.endpoint and request.endpoint.startswith('settings.') %}nav-active{% endif %}">
+              Settings
+            </a>
+
             <a href="{{ feature_paths.logout }}" class="btn-primary">Logout</a>
           {% else %}
             <a href="{{ feature_paths.signup }}" class="btn-ghost hidden sm:inline">Sign up</a>
@@ -92,6 +115,7 @@
     </div>
   </header>
 
+  <!-- Flash messages -->
   <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-4 space-y-2">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
