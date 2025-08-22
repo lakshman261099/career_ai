@@ -4,11 +4,12 @@ from flask import Flask, render_template, request, send_from_directory, url_for
 from flask_login import current_user
 from dotenv import load_dotenv
 from logtail import LogtailHandler
+
 from models import db, University
 from limits import init_limits
 
 # Blueprints
-from modules.auth.routes import auth_bp, login_manager  # provides login_manager
+from modules.auth.routes import auth_bp, login_manager
 from modules.billing.routes import billing_bp
 from modules.portfolio.routes import portfolio_bp
 from modules.internships.routes import internships_bp
@@ -17,16 +18,14 @@ from modules.jobpack.routes import jobpack_bp
 from modules.skillmapper.routes import skillmapper_bp
 from modules.settings.routes import settings_bp
 
-# Alembic (for auto-migrate on startup)
+# Alembic
 from alembic import command
 from alembic.config import Config
 
 load_dotenv()
 
 
-# ---------------------------------------------------------------------
-# Jinja helpers (available inside templates)
-# ---------------------------------------------------------------------
+# -------------------- Jinja helpers --------------------
 def free_coins():
     if getattr(current_user, "is_authenticated", False):
         try:
@@ -66,9 +65,7 @@ def register_template_globals(app: Flask):
     )
 
 
-# ---------------------------------------------------------------------
-# Auto-migration on startup (Render-friendly; no shell required)
-# ---------------------------------------------------------------------
+# -------------------- Auto Alembic ---------------------
 def run_auto_migrations(app: Flask) -> None:
     from sqlalchemy import create_engine, text, inspect
 
@@ -88,7 +85,6 @@ def run_auto_migrations(app: Flask) -> None:
         with app.app_context():
             command.upgrade(cfg, "head")
 
-    # 1) Straight upgrade
     try:
         _upgrade()
         app.logger.info("Alembic migrations applied (upgrade head).")
@@ -97,7 +93,6 @@ def run_auto_migrations(app: Flask) -> None:
         msg1 = (str(e1) or "")
         app.logger.error(f"Alembic upgrade failed (1st try): {msg1}")
 
-    # 2) Stale revision pointer
     if "Can't locate revision" in msg1 or "No such revision" in msg1:
         try:
             app.logger.warning("Dropping alembic_version to clear stale revision pointer...")
@@ -113,7 +108,6 @@ def run_auto_migrations(app: Flask) -> None:
         except Exception as e2:
             app.logger.error(f"Alembic upgrade failed after stamp base: {e2}")
 
-    # 3) Tables already exist → stamp head, autogenerate diff, upgrade
     if "already exists" in msg1 or "DuplicateTable" in msg1 or "relation" in msg1:
         try:
             engine = create_engine(url)
@@ -123,8 +117,8 @@ def run_auto_migrations(app: Flask) -> None:
             if core_seen:
                 with app.app_context():
                     command.stamp(cfg, "head")
-                    from datetime import datetime
-                    autogen_msg = f"autosync_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+                    from datetime import datetime as _dt
+                    autogen_msg = f"autosync_{_dt.utcnow().strftime('%Y%m%d%H%M%S')}"
                     command.revision(cfg, message=autogen_msg, autogenerate=True)
                     app.logger.warning("Alembic created an autogenerate 'autosync' migration (diff-only).")
                     command.upgrade(cfg, "head")
@@ -133,11 +127,10 @@ def run_auto_migrations(app: Flask) -> None:
         except Exception as e3:
             app.logger.error(f"Alembic autosync path failed: {e3}")
 
-    # 4) Fallback: autogenerate then upgrade
     try:
         with app.app_context():
-            from datetime import datetime
-            autogen_msg = f"autosync_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+            from datetime import datetime as _dt
+            autogen_msg = f"autosync_{_dt.utcnow().strftime('%Y%m%d%H%M%S')}"
             command.revision(cfg, message=autogen_msg, autogenerate=True)
             _upgrade()
             app.logger.info("Alembic migrations applied after autosync fallback.")
@@ -146,12 +139,10 @@ def run_auto_migrations(app: Flask) -> None:
         app.logger.error(f"Alembic autosync fallback failed: {e4}")
 
 
-# ---------------------------------------------------------------------
-# App factory
-# ---------------------------------------------------------------------
+# -------------------- App factory ----------------------
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
-    
+
     handlers = [logging.StreamHandler(sys.stdout)]
     token = os.getenv("LOGTAIL_TOKEN")
     if token:
@@ -160,7 +151,6 @@ def create_app():
     app.logger.handlers = handlers
     app.logger.setLevel(logging.INFO)
 
-    # ----- Config
     secret = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY") or "dev-secret-key"
     app.config["SECRET_KEY"] = secret
 
@@ -186,12 +176,12 @@ def create_app():
         except Exception:
             pass
 
-    # ----- Extensions
+    # Extensions
     db.init_app(app)
     login_manager.init_app(app)
     init_limits(app)
 
-    # ----- Blueprints
+    # Blueprints
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(billing_bp, url_prefix="/billing")
     app.register_blueprint(portfolio_bp, url_prefix="/portfolio")
@@ -201,10 +191,10 @@ def create_app():
     app.register_blueprint(skillmapper_bp, url_prefix="/skillmapper")
     app.register_blueprint(settings_bp, url_prefix="/settings")
 
-    # ----- Helpers in templates
+    # Helpers in templates
     register_template_globals(app)
 
-    # ----- Routes
+    # Routes
     @app.route("/", endpoint="landing")
     def landing():
         return render_template("landing.html")
@@ -213,14 +203,13 @@ def create_app():
     def dashboard():
         return render_template("dashboard.html")
 
-    # Favicon
     @app.route("/favicon.ico")
     def favicon():
         return send_from_directory(
             app.static_folder, "favicon.ico", mimetype="image/vnd.microsoft.icon"
         )
 
-    # ----- Context for all templates
+    # Context for all templates
     @app.context_processor
     def inject_globals():
         tenant_name = None
@@ -239,15 +228,14 @@ def create_app():
             except Exception:
                 return "#"
 
-        resume_url = safe_url("settings.resume")
-        if resume_url == "#":
-            resume_url = safe_url("settings.index")
+        # Single portal for both resume scan & manual edit
+        portal_url = safe_url("settings.profile")
 
         feature_paths = {
             "home":        safe_url("landing"),
             "dashboard":   safe_url("dashboard"),
-            "profile":     safe_url("settings.profile"),  # Profile Portal
-            "resume":      resume_url,                    # Resume Hub (Pro action)
+            "profile":     portal_url,          # unified Profile Portal
+            "resume":      portal_url,          # back-compat; points to portal
             "portfolio":   safe_url("portfolio.index"),
             "internships": safe_url("internships.index"),
             "referral":    safe_url("referral.index"),
@@ -273,39 +261,34 @@ def create_app():
             feature_paths=feature_paths,
         )
 
-    # ----- Error handlers
     @app.errorhandler(404)
     def not_found(e):
         return render_template("errors/404.html"), 404
 
     @app.errorhandler(500)
     def srv_error(e):
-        # Always log real trace to Render
-        app.logger.error("500 Internal Server Error", exc_info=True)
-
-        # Try rollback if DB messed
         try:
+            app.logger.exception("Unhandled 500 error")
             db.session.rollback()
         except Exception:
             pass
-
-        # Show a friendly page
         return render_template("errors/500.html"), 500
 
-    # ----- Local SQLite only: create tables for quick start
+    @app.teardown_request
+    def _teardown_request(exc):
+        if exc:
+            try: db.session.rollback()
+            except Exception: pass
+
+    # Dev sqlite quickstart
     with app.app_context():
         is_sqlite = str(app.config["SQLALCHEMY_DATABASE_URI"]).startswith("sqlite")
         is_prod = os.getenv("FLASK_ENV") == "production" or os.getenv("ENV") == "production"
         if is_sqlite and not is_prod:
             db.create_all()
 
-    # ----- Auto-run Alembic migrations on startup (Render/Postgres)
     run_auto_migrations(app)
-
     return app
 
 
-# ---------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------
 app = create_app()
