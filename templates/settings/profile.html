@@ -3,11 +3,11 @@
 {% block content %}
 <section class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-10 space-y-6">
 
-  <!-- Header / Status -->
+  <!-- Header -->
   <div class="glass-panel rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
     <div>
       <h1 class="text-2xl font-extrabold tracking-tight">Your Profile Portal</h1>
-      <p class="text-white/70 text-sm">Built for hiring managers. Everything here powers Job Packs, Skill Mapper, and Internships.</p>
+      <p class="text-white/70 text-sm">Built for hiring managers. Powers Job Packs, Skill Mapper, and Internships.</p>
     </div>
     <div class="flex items-center gap-3 text-sm">
       <span class="px-3 py-1 rounded-full bg-white/10 border border-white/20">
@@ -21,7 +21,8 @@
   </div>
 
   <div class="grid lg:grid-cols-2 gap-6">
-    <!-- Hiring Manager View -->
+
+    <!-- Hiring Manager Preview -->
     <section class="glass-panel rounded-2xl p-6">
       <header class="mb-4">
         <h2 class="text-xl font-bold">{{ profile.full_name or current_user.name }}</h2>
@@ -37,11 +38,14 @@
         <div>
           <h3 class="font-semibold text-sm uppercase tracking-wider text-white/60">Skills</h3>
           {% if profile.skills %}
-            <div class="mt-2 flex flex-wrap gap-2">
+            <ul class="mt-2 space-y-2">
               {% for s in profile.skills %}
-                <span class="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-xs">{{ s }}</span>
+                <li class="flex items-center gap-2">
+                  <span class="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-xs">{{ s.name }}</span>
+                  <span class="text-yellow-400">⭐ {{ s.level }}/5</span>
+                </li>
               {% endfor %}
-            </div>
+            </ul>
           {% else %}
             <p class="mt-1 text-white/60">No skills added.</p>
           {% endif %}
@@ -82,6 +86,19 @@
         </div>
 
         <div>
+          <h3 class="font-semibold text-sm uppercase tracking-wider text-white/60">Certifications</h3>
+          {% if profile.certifications %}
+            <ul class="mt-2 space-y-1">
+              {% for c in profile.certifications %}
+                <li>{{ c.name }} ({{ c.year }})</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="mt-1 text-white/60">No certifications added.</p>
+          {% endif %}
+        </div>
+
+        <div>
           <h3 class="font-semibold text-sm uppercase tracking-wider text-white/60">Links</h3>
           {% if profile.links %}
             <ul class="mt-2 space-y-1 text-sm">
@@ -93,7 +110,6 @@
             <p class="mt-1 text-white/60">No links added.</p>
           {% endif %}
         </div>
-
       </div>
     </section>
 
@@ -101,52 +117,65 @@
     <section class="glass-panel rounded-2xl p-6">
       <h3 class="text-lg font-semibold mb-3">Edit Profile</h3>
       <form method="post" class="space-y-4">
+
+        <input type="hidden" name="json_mode" value="structured">
+
         <div>
           <label class="block text-sm mb-1">Full Name</label>
           <input name="full_name" value="{{ profile.full_name or current_user.name or '' }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
         </div>
+
         <div>
           <label class="block text-sm mb-1">Headline</label>
           <input name="headline" value="{{ profile.headline or '' }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
         </div>
+
         <div>
           <label class="block text-sm mb-1">Summary</label>
-          <textarea name="summary" rows="5" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.summary or '' }}</textarea>
+          <textarea name="summary" rows="3" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.summary or '' }}</textarea>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-sm mb-1">Location</label>
-            <input name="location" value="{{ profile.location or '' }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+
+        <!-- Skills -->
+        <div>
+          <label class="block text-sm mb-1">Skills</label>
+          <div id="skills-container" class="space-y-2">
+            {% for s in profile.skills or [] %}
+              <div class="flex gap-2 items-center">
+                <input name="skills_names[]" value="{{ s.name }}" placeholder="Skill" class="flex-1 rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                <input type="number" min="1" max="5" name="skills_levels[]" value="{{ s.level }}" class="w-20 rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              </div>
+            {% endfor %}
           </div>
-          <div>
-            <label class="block text-sm mb-1">Phone</label>
-            <input name="phone" value="{{ profile.phone or '' }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          <button type="button" onclick="addSkill()" class="btn-ghost mt-2">+ Add Skill</button>
+        </div>
+
+        <!-- Education -->
+        <div>
+          <label class="block text-sm mb-1">Education</label>
+          <div id="education-container" class="space-y-2">
+            {% for ed in profile.education or [] %}
+              <div class="grid grid-cols-3 gap-2">
+                <input name="edu_degree[]" value="{{ ed.degree }}" placeholder="Degree" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                <input name="edu_school[]" value="{{ ed.school }}" placeholder="School" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                <input name="edu_year[]" value="{{ ed.year }}" placeholder="Year" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              </div>
+            {% endfor %}
           </div>
+          <button type="button" onclick="addEducation()" class="btn-ghost mt-2">+ Add Education</button>
         </div>
 
+        <!-- Certifications -->
         <div>
-          <label class="block text-sm mb-1">Skills (comma‑separated)</label>
-          <input name="skills_csv" value="{{ profile.skills|join(', ') if profile.skills else '' }}" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-        </div>
-
-        <div>
-          <label class="block text-sm mb-1">Links (JSON)</label>
-          <textarea name="links_json" rows="3" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.links|tojson if profile.links else '{}' }}</textarea>
-        </div>
-
-        <div>
-          <label class="block text-sm mb-1">Education (JSON)</label>
-          <textarea name="education_json" rows="4" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.education|tojson if profile.education else '[]' }}</textarea>
-        </div>
-
-        <div>
-          <label class="block text-sm mb-1">Experience (JSON)</label>
-          <textarea name="experience_json" rows="5" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.experience|tojson if profile.experience else '[]' }}</textarea>
-        </div>
-
-        <div>
-          <label class="block text-sm mb-1">Certifications (JSON)</label>
-          <textarea name="certifications_json" rows="3" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ profile.certifications|tojson if profile.certifications else '[]' }}</textarea>
+          <label class="block text-sm mb-1">Certifications</label>
+          <div id="cert-container" class="space-y-2">
+            {% for c in profile.certifications or [] %}
+              <div class="grid grid-cols-2 gap-2">
+                <input name="cert_name[]" value="{{ c.name }}" placeholder="Certification" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                <input name="cert_year[]" value="{{ c.year }}" placeholder="Year" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              </div>
+            {% endfor %}
+          </div>
+          <button type="button" onclick="addCert()" class="btn-ghost mt-2">+ Add Certification</button>
         </div>
 
         <div class="flex gap-2">
@@ -157,4 +186,30 @@
     </section>
   </div>
 </section>
+
+<script>
+function addSkill() {
+  const c = document.getElementById("skills-container");
+  c.insertAdjacentHTML("beforeend",
+    `<div class="flex gap-2 items-center">
+      <input name="skills_names[]" placeholder="Skill" class="flex-1 rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+      <input type="number" min="1" max="5" name="skills_levels[]" placeholder="1-5" class="w-20 rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+    </div>`);
+}
+function addEducation() {
+  document.getElementById("education-container").insertAdjacentHTML("beforeend",
+    `<div class="grid grid-cols-3 gap-2">
+      <input name="edu_degree[]" placeholder="Degree" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+      <input name="edu_school[]" placeholder="School" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+      <input name="edu_year[]" placeholder="Year" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+    </div>`);
+}
+function addCert() {
+  document.getElementById("cert-container").insertAdjacentHTML("beforeend",
+    `<div class="grid grid-cols-2 gap-2">
+      <input name="cert_name[]" placeholder="Certification" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+      <input name="cert_year[]" placeholder="Year" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+    </div>`);
+}
+</script>
 {% endblock %}
