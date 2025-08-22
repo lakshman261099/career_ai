@@ -1,5 +1,4 @@
 # modules/settings/routes.py
-
 import os, re, json
 from datetime import datetime
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
@@ -10,14 +9,14 @@ from models import db, ResumeAsset, UserProfile
 
 settings_bp = Blueprint("settings", __name__, template_folder="../../templates/settings")
 
-ALLOWED_RESUME_EXTS = {"pdf"}  # unified portal: PDF only (no paste)
+ALLOWED_RESUME_EXTS = {"pdf"}  # unified portal: PDF only
 
 def _allowed_file(fname: str) -> bool:
     return "." in fname and fname.rsplit(".", 1)[1].lower() in ALLOWED_RESUME_EXTS
 
 
 # ---------------------------
-# Data helpers (robust/forgiving)
+# Helpers
 # ---------------------------
 def _ensure_profile():
     """Return a UserProfile row for the current user, creating if missing."""
@@ -36,7 +35,6 @@ def _ensure_profile():
 
 
 def _normalize_skills(raw):
-    """Return list of {'name': str, 'level': int 1..5} from mixed input."""
     out = []
     if not raw:
         return out
@@ -60,9 +58,7 @@ def _normalize_skills(raw):
 
 def _normalize_education(raw):
     out = []
-    if not raw:
-        return out
-    for ed in raw:
+    for ed in (raw or []):
         if not isinstance(ed, dict):
             continue
         out.append({
@@ -75,9 +71,7 @@ def _normalize_education(raw):
 
 def _normalize_certs(raw):
     out = []
-    if not raw:
-        return out
-    for c in raw:
+    for c in (raw or []):
         if isinstance(c, dict):
             out.append({"name": (c.get("name") or "").strip(),
                         "year": (str(c.get("year") or "").strip()) or None})
@@ -87,7 +81,6 @@ def _normalize_certs(raw):
 
 
 def _normalize_links(raw):
-    """Return dict[str -> str]."""
     res = {}
     if isinstance(raw, dict):
         for k, v in raw.items():
@@ -100,9 +93,7 @@ def _normalize_links(raw):
 
 def _normalize_experience(raw):
     out = []
-    if not raw:
-        return out
-    for j in raw:
+    for j in (raw or []):
         if not isinstance(j, dict):
             continue
         bullets_raw = j.get("bullets")
@@ -124,17 +115,22 @@ def _normalize_experience(raw):
 
 def _build_view(prof: UserProfile):
     """Produce safe, template-friendly structures."""
+    links = _normalize_links(prof.links or {})
+    # split contact links vs custom links (avoid Jinja 'continue')
+    base_keys = {"email", "website", "linkedin", "github"}
+    custom = {k: v for k, v in links.items() if k not in base_keys}
     return dict(
         skills=_normalize_skills(prof.skills or []),
         education=_normalize_education(prof.education or []),
         certifications=_normalize_certs(prof.certifications or []),
-        links=_normalize_links(prof.links or {}),
+        links=links,
+        custom_links=custom,
         experience=_normalize_experience(prof.experience or []),
     )
 
 
 # ---------------------------
-# Settings index (unchanged)
+# Settings index (simple)
 # ---------------------------
 @settings_bp.route("/", methods=["GET", "POST"], endpoint="index")
 @login_required
@@ -170,7 +166,7 @@ def index():
 
 
 # ---------------------------
-# Unified Profile Portal (with optional PDF upload)
+# Unified Profile Portal
 # ---------------------------
 @settings_bp.route("/profile", methods=["GET", "POST"], endpoint="profile")
 @login_required
@@ -181,7 +177,7 @@ def profile():
         return redirect(url_for("settings.index"))
 
     if request.method == "POST":
-        # 1) Optional resume PDF
+        # Optional resume PDF upload
         file = request.files.get("resume_pdf")
         if file and file.filename:
             if not _allowed_file(file.filename):
@@ -189,7 +185,6 @@ def profile():
                 return redirect(url_for("settings.profile"))
             filename = secure_filename(file.filename)
             try:
-                # we store the file name and a marker; real parsing can be added later
                 asset = ResumeAsset(user_id=current_user.id, filename=filename, text=f"[PDF uploaded: {filename}]")
                 db.session.add(asset)
                 db.session.commit()
@@ -201,19 +196,36 @@ def profile():
                 flash("Could not save resume file.", "error")
                 return redirect(url_for("settings.profile"))
 
-        # 2) Basic fields
+        # Basic fields
         try:
             prof.full_name = (request.form.get("full_name") or "").strip() or prof.full_name
             prof.headline  = (request.form.get("headline") or "").strip() or None
             prof.summary   = (request.form.get("summary") or "").strip() or None
+            # Contact (also mirrored into links)
+            prof.location  = (request.form.get("location") or "").strip() or None
+            prof.phone     = (request.form.get("phone") or "").strip() or None
+
+            # Start from existing links then overwrite with explicit contact fields + custom pairs
+            links = _normalize_links(prof.links or {})
+            for key, form_name in {
+                "email": "contact_email",
+                "website": "contact_website",
+                "linkedin": "contact_linkedin",
+                "github": "contact_github",
+            }.items():
+                val = (request.form.get(form_name) or "").strip()
+                if val:
+                    links[key] = val
+                else:
+                    # if cleared, remove
+                    links.pop(key, None)
         except Exception:
-            current_app.logger.exception("Failed to set basic fields")
+            current_app.logger.exception("Failed to set basic/contact fields")
             try: db.session.rollback()
             except Exception: pass
             flash("Could not save profile basics.", "error")
             return redirect(url_for("settings.profile"))
 
-        # 3) Structured fields
         try:
             # Skills
             names  = request.form.getlist("skills_names[]")
@@ -258,10 +270,9 @@ def profile():
                     certs.append({"name": cn, "year": cy})
             prof.certifications = certs
 
-            # Links
+            # Custom Links (pairs)
             link_keys = request.form.getlist("link_keys[]")
             link_urls = request.form.getlist("link_urls[]")
-            links = {}
             n_l = max(len(link_keys), len(link_urls))
             for i in range(n_l):
                 k = (link_keys[i] if i < len(link_keys) else "").strip()
@@ -312,7 +323,6 @@ def profile():
 
     view = _build_view(prof)
 
-    # IMPORTANT: pass normalized variables expected by the template
     return render_template(
         "settings/profile.html",
         profile=prof,
@@ -321,17 +331,17 @@ def profile():
         education=view["education"],
         certifications=view["certifications"],
         links=view["links"],
+        custom_links=view["custom_links"],
         experience=view["experience"],
     )
 
 
 # ---------------------------
-# Credits (kept)
+# Credits (kept minimal)
 # ---------------------------
 @settings_bp.route("/credits", endpoint="credits")
 @login_required
 def credits():
-    # You can wire this to your limits module if you want; keeping simple here.
     features = {}
     return render_template(
         "settings/credits.html",

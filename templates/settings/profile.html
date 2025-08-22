@@ -86,9 +86,10 @@
 
         <div>
           <h3 class="font-semibold text-xs uppercase tracking-wider text-white/60">Links</h3>
-          {% if links and links|length %}
+          {% set all_links = links or {} %}
+          {% if all_links and all_links|length %}
             <ul class="mt-2 space-y-1">
-              {% for k, v in links.items() %}
+              {% for k, v in all_links.items() %}
                 <li><span class="text-white/60">{{ k|title }}:</span> <a class="underline" href="{{ v }}" target="_blank" rel="noopener">{{ v }}</a></li>
               {% endfor %}
             </ul>
@@ -127,15 +128,14 @@
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-lg font-semibold">Resume Upload</h3>
-            <p class="text-white/70 text-sm">Upload a PDF/TXT to auto‑fill fields below. Scanning uses ⭐ Pro credits.</p>
+            <p class="text-white/70 text-sm">Upload a PDF to auto‑fill fields below. Scanning may use ⭐ Pro credits.</p>
           </div>
           {% if not is_pro() %}
             <span class="text-xs px-2 py-1 rounded-full bg-white/10 border border-white/20">Pro 🔒</span>
           {% endif %}
         </div>
         <form method="post" enctype="multipart/form-data" class="mt-4">
-          <input type="hidden" name="action" value="upload">
-          <input type="file" name="file" accept=".pdf,.txt" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          <input type="file" name="resume_pdf" accept=".pdf" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
           <div class="mt-3">
             <button class="btn-primary" type="submit">Upload & Scan</button>
           </div>
@@ -146,7 +146,6 @@
       <div class="glass-panel rounded-2xl p-6">
         <h3 class="text-lg font-semibold mb-4">Edit Profile</h3>
         <form method="post" class="space-y-6">
-          <input type="hidden" name="action" value="save">
 
           <!-- Identity -->
           <div class="grid md:grid-cols-2 gap-3">
@@ -243,8 +242,7 @@
               <button type="button" onclick="addLink()" class="btn-ghost text-xs">+ Add Link</button>
             </div>
             <div id="links-container" class="mt-2 space-y-2">
-              {% for k, v in links.items() %}
-                {% if k in ['email','website','linkedin','github'] %}{% continue %}{% endif %}
+              {% for k, v in custom_links.items() %}
                 <div class="grid md:grid-cols-2 gap-2 items-start">
                   <input name="link_keys[]" value="{{ k }}" placeholder="Label (e.g., Behance)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
                   <div class="flex gap-2">
