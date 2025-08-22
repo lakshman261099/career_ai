@@ -16,6 +16,22 @@ STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLIC_KEY")
 STRIPE_PRICE_ID_PRO = os.getenv("STRIPE_PRICE_ID_PRO_MONTHLY_INR")  # subscription price
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
+INITIAL_PRO_COINS = 3000  # policy: Pro users must start with at least 3000 Gold
+
+
+def _grant_initial_pro_coins(user: User, minimum: int = INITIAL_PRO_COINS) -> None:
+    """
+    Ensure a Pro user has at least `minimum` gold coins.
+    - Does NOT reduce a higher existing balance.
+    - Safe to call repeatedly.
+    """
+    try:
+        current = int(user.coins_pro or 0)
+    except Exception:
+        current = 0
+    if current < minimum:
+        user.coins_pro = minimum
+
 
 # ------------------------------------------
 # Pricing / Index
@@ -30,10 +46,8 @@ def index():
         "pricing.html",
         stripe_public_key=STRIPE_PUBLISHABLE_KEY,
         price_id=STRIPE_PRICE_ID_PRO,
-        # DO NOT PASS 'is_pro' here; it shadows the template helper is_pro()
         subscription_status=getattr(current_user, "subscription_status", "free") if getattr(current_user, "is_authenticated", False) else "free",
     )
-
 
 
 # Back-compat: /pricing -> /billing/
@@ -96,8 +110,9 @@ def cancel():
 def webhook():
     """
     Handle Stripe events. We:
-      - On checkout.session.completed: link customer/subscription to user, set user.subscription_status='pro'
-      - On customer.subscription.updated/deleted: keep status in sync
+      - On checkout.session.completed: link customer/subscription to user, set user.subscription_status='pro', grant >=3000 Gold
+      - On customer.subscription.updated: keep status in sync (and if 'pro', ensure >=3000 Gold)
+      - On customer.subscription.deleted: set status 'canceled' (coins unchanged)
     """
     payload = request.get_data(as_text=True)
     sig_header = request.headers.get("Stripe-Signature")
@@ -123,31 +138,36 @@ def webhook():
             if user_id:
                 user = User.query.get(int(user_id))
             else:
-                # Fallback: try to discover by customer_email
                 customer_email = session_obj.get("customer_details", {}).get("email")
                 user = User.query.filter_by(email=(customer_email or "").lower()).first()
 
             if user:
+                # Link Stripe IDs
                 user.stripe_customer_id = user.stripe_customer_id or customer_id
                 user.stripe_subscription_id = subscription_id
+
+                # Activate Pro + grant >=3000 Gold
                 user.subscription_status = "pro"
                 user.pro_since = datetime.utcnow()
+                _grant_initial_pro_coins(user)
+
                 db.session.commit()
 
         elif event_type == "customer.subscription.updated":
             sub = event["data"]["object"]
             customer_id = sub.get("customer")
-            status = sub.get("status")  # active, past_due, canceled, unpaid, incomplete, incomplete_expired, trialing
+            status = sub.get("status")  # active, past_due, canceled, etc.
 
             user = User.query.filter_by(stripe_customer_id=customer_id).first()
             if user:
                 user.stripe_subscription_id = sub.get("id")
-                # Map Stripe status to our simple status field
                 if status in ("active", "trialing", "past_due"):
                     user.subscription_status = "pro"
                     user.pro_cancel_at = None
+                    _grant_initial_pro_coins(user)  # ensure >=3000 on (re)activation
                 elif status in ("canceled", "unpaid", "incomplete_expired"):
                     user.subscription_status = "canceled"
+                    user.pro_cancel_at = datetime.utcnow()
                 db.session.commit()
 
         elif event_type == "customer.subscription.deleted":
@@ -159,7 +179,7 @@ def webhook():
                 user.pro_cancel_at = datetime.utcnow()
                 db.session.commit()
 
-        # You can handle invoice.payment_succeeded/failed if you want finer states
+        # (optional) invoice.payment_succeeded/failed for granular states
 
     except Exception as e:
         current_app.logger.exception("Error handling Stripe webhook")
@@ -169,7 +189,7 @@ def webhook():
 
 
 # ------------------------------------------
-# Dev-only mock top-ups (kept)
+# Dev-only mock top-ups (kept, but aligned to policy)
 # ------------------------------------------
 @billing_bp.route("/mock-topup/free")
 @login_required
@@ -183,8 +203,10 @@ def mock_topup_free():
 @billing_bp.route("/mock-topup/pro")
 @login_required
 def mock_topup_pro():
-    current_user.coins_pro = (current_user.coins_pro or 0) + 10
+    # Mark Pro and ensure >=3000 Gold; then add 10 for testing
     current_user.subscription_status = "pro"
+    _grant_initial_pro_coins(current_user)
+    current_user.coins_pro = (current_user.coins_pro or 0) + 10
     db.session.commit()
-    flash("Added 10 pro coins (dev) and set status=pro.", "success")
+    flash("Set status=pro, ensured >=3000 Gold, and added +10 (dev).", "success")
     return redirect(url_for("billing.index"))

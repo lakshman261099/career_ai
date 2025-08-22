@@ -279,6 +279,16 @@ def create_app():
     @app.errorhandler(404)
     def not_found(e):
         return render_template("errors/404.html"), 404
+    
+    @app.errorhandler(500)
+    def srv_error(e):
+      try:
+         app.logger.exception("Unhandled 500 error", exc_info=e)
+         db.session.rollback()
+      except Exception:
+          pass
+      return render_template("errors/500.html"), 500
+
 
     @app.errorhandler(500)
     def srv_error(e):

@@ -1,77 +1,55 @@
-# limits.py
+# limits.py — coin-based credits (Free = 🪙, Pro = ⭐)
 
-from datetime import date
 from flask import current_app
-from sqlalchemy import and_
-from sqlalchemy.exc import IntegrityError
+from models import db, User
 
-from models import db, FreeUsage, User
+# ---------------------------------------------------------------------
+# Pricing policy (easy to tweak later)
+# - All Free features cost 1 Silver 🪙
+# - All Pro features cost 100 Gold ⭐
+# ---------------------------------------------------------------------
+FEATURE_COSTS = {
+    # Free-tier features (🪙)
+    "portfolio":   {"coins_free": 1},
+    "internships": {"coins_free": 1},
+    "referral":    {"coins_free": 1},
+    "skillmapper": {"coins_free": 1},
 
-# Feature matrix (KB-aligned):
-# - Resume upload/profile lives under Settings and is Pro-only.
-# - Free tier tracks daily usage via FreeUsage; Pro consumes Gold ⭐ (coins_pro).
-FEATURES = {
-    # Pro-only resume profile (no free quota)
-    "resume":      {"daily_free": 0, "pro_cost": 1},
-
-    # Core features
-    "portfolio":   {"daily_free": 2, "pro_cost": 1},
-    "internships": {"daily_free": 3, "pro_cost": 1},  # paste-only
-    "referral":    {"daily_free": 5, "pro_cost": 1},  # Free-only feature in KB UI; keep cost for future Pro
-    "jobpack":     {"daily_free": 2, "pro_cost": 2},
-    "skillmapper": {"daily_free": 2, "pro_cost": 1},
+    # Pro-only features (⭐)
+    "resume":      {"coins_pro": 100},
+    "jobpack":     {"coins_pro": 100},
 }
 
 
 def init_limits(app):
-    """Attach default limits to app config if not provided."""
-    app.config.setdefault("FEATURE_LIMITS", FEATURES)
+    """Attach default costs to app config if not provided."""
+    app.config.setdefault("FEATURE_COSTS", FEATURE_COSTS)
 
 
-def _get_limits(feature: str) -> dict:
-    limits = current_app.config.get("FEATURE_LIMITS", FEATURES)
-    return limits.get(feature, {"daily_free": 0, "pro_cost": 0})
-
-
-def _get_or_create_usage(user_id: int, feature: str) -> FreeUsage:
-    """Fetch today's usage row; create if missing (race-safe)."""
-    today = date.today()
-    usage = FreeUsage.query.filter(
-        and_(
-            FreeUsage.user_id == user_id,
-            FreeUsage.feature == feature,
-            FreeUsage.day == today,
-        )
-    ).first()
-    if usage:
-        return usage
-
-    usage = FreeUsage(user_id=user_id, feature=feature, day=today, count=0)
-    db.session.add(usage)
-    try:
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        # Row was created by another request; re-fetch
-        usage = FreeUsage.query.filter_by(user_id=user_id, feature=feature, day=today).first()
-    return usage
+def _cost(feature: str) -> dict:
+    costs = current_app.config.get("FEATURE_COSTS", FEATURE_COSTS)
+    return costs.get(feature, {})
 
 
 # ---------------------------
-# Free tier helpers (daily)
+# Free (Silver 🪙) helpers
 # ---------------------------
 def can_use_free(user: User, feature: str) -> bool:
-    lim = _get_limits(feature)
-    if lim["daily_free"] <= 0:
-        return False
-    usage = FreeUsage.query.filter_by(user_id=user.id, feature=feature, day=date.today()).first()
-    used = usage.count if usage else 0
-    return used < lim["daily_free"]
+    c = _cost(feature)
+    need = int(c.get("coins_free", 0) or 0)
+    return need > 0 and (user.coins_free or 0) >= need
 
 
 def consume_free(user: User, feature: str) -> None:
-    usage = _get_or_create_usage(user.id, feature)
-    usage.count += 1
+    c = _cost(feature)
+    need = int(c.get("coins_free", 0) or 0)
+    if need <= 0:
+        return
+    if (user.coins_free or 0) < need:
+        raise ValueError("Not enough Silver credits.")
+    user.coins_free -= need
+    if user.coins_free < 0:
+        user.coins_free = 0
     db.session.commit()
 
 
@@ -79,21 +57,21 @@ def consume_free(user: User, feature: str) -> None:
 # Pro (Gold ⭐) helpers
 # ---------------------------
 def can_use_pro(user: User, feature: str) -> bool:
-    lim = _get_limits(feature)
-    cost = max(int(lim.get("pro_cost", 0)), 0)
-    return (user.coins_pro or 0) >= cost
+    c = _cost(feature)
+    need = int(c.get("coins_pro", 0) or 0)
+    return (user.subscription_status or "free").lower() == "pro" and need > 0 and (user.coins_pro or 0) >= need
 
 
 def consume_pro(user: User, feature: str) -> None:
-    lim = _get_limits(feature)
-    cost = max(int(lim.get("pro_cost", 0)), 0)
-    if cost <= 0:
+    c = _cost(feature)
+    need = int(c.get("coins_pro", 0) or 0)
+    if need <= 0:
         return
-    if (user.coins_pro or 0) < cost:
-        raise ValueError("Not enough Gold credits for this action.")
-    user.coins_pro -= cost
+    if (user.coins_pro or 0) < need:
+        raise ValueError("Not enough Gold credits.")
+    user.coins_pro -= need
     if user.coins_pro < 0:
-        user.coins_pro = 0  # clamp (defensive)
+        user.coins_pro = 0
     db.session.commit()
 
 
@@ -102,33 +80,33 @@ def consume_pro(user: User, feature: str) -> None:
 # ---------------------------
 def authorize_and_consume(user: User, feature: str) -> bool:
     """
-    Preferred path:
-    - If free quota remains, consume free.
-    - Else if Pro has enough Gold ⭐, consume pro.
-    - Else deny.
-    Returns True if consumption succeeded, False otherwise.
+    Tries Silver first (if the feature is Free-tier), then Gold (if Pro-tier).
+    Returns True if a deduction succeeded.
     """
-    # Free first
-    if can_use_free(user, feature):
+    c = _cost(feature)
+
+    # Free (🪙) path
+    if "coins_free" in c and can_use_free(user, feature):
         consume_free(user, feature)
         return True
 
-    # Pro fallback
-    if can_use_pro(user, feature):
+    # Pro (⭐) path
+    if "coins_pro" in c and can_use_pro(user, feature):
         consume_pro(user, feature)
         return True
 
     return False
 
 
+# ---------------------------
 # Optional convenience (for UI labels)
+# ---------------------------
 def get_feature_limits(feature: str) -> dict:
     """
-    Returns {'daily_free': int, 'pro_cost': int} even if feature unknown.
-    Useful for showing limits/cost in templates.
+    Returns {'coins_free': int, 'coins_pro': int} for labeling.
     """
-    lim = _get_limits(feature)
+    c = _cost(feature)
     return {
-        "daily_free": int(lim.get("daily_free", 0) or 0),
-        "pro_cost": int(lim.get("pro_cost", 0) or 0),
+        "coins_free": int(c.get("coins_free", 0) or 0),
+        "coins_pro": int(c.get("coins_pro", 0) or 0),
     }
