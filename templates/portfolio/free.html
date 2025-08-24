@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Portfolio Suggestions — CareerAI{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pt-12 space-y-4">
+  <div class="glass-panel rounded-2xl p-6">
+    <h1 class="text-xl font-bold">Portfolio Suggestions (Free)</h1>
+    <p class="text-white/70 text-sm mt-1">Get a single, high‑impact project idea with guidance to improve your resume.</p>
+
+    <form method="POST" class="mt-4">
+      <button class="btn-primary" type="submit">Generate My Suggestion 🪙</button>
+    </form>
+  </div>
+
+  {% if suggestions %}
+    {% for s in suggestions %}
+      <div class="glass-panel rounded-2xl p-6 space-y-2">
+        <h2 class="text-lg font-semibold">{{ s.title }}</h2>
+        <p class="text-white/80"><span class="text-white/60">Why:</span> {{ s.why }}</p>
+        <div>
+          <div class="text-white/60 text-sm font-semibold mb-1">Steps</div>
+          <ul class="list-disc pl-5 space-y-1">
+            {% for step in s.steps %}<li>{{ step }}</li>{% endfor %}
+          </ul>
+        </div>
+        <div class="text-sm">
+          <span class="text-white/60">Recommended stack:</span> {{ s.tech|join(', ') }}
+        </div>
+        <div class="pt-2 text-xs text-white/60">Upgrade to Pro for 3 curated ideas, a full builder, and publishing.</div>
+      </div>
+    {% endfor %}
+  {% endif %}
+</section>
+{% endblock %}

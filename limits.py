@@ -5,19 +5,24 @@ from models import db, User
 
 # ---------------------------------------------------------------------
 # Pricing policy (easy to tweak later)
-# - All Free features cost 1 Silver 🪙
-# - All Pro features cost 100 Gold ⭐
+# - Free features cost Silver 🪙
+# - Pro-only features cost Gold ⭐
 # ---------------------------------------------------------------------
 FEATURE_COSTS = {
-    # Free-tier features (🪙)
-    "portfolio":   {"coins_free": 1},
-    "internships": {"coins_free": 1},
-    "referral":    {"coins_free": 1},
-    "skillmapper": {"coins_free": 1},
+    # Free/Pro (suggestion generation) — uses 🪙 for Free, ⭐ for Pro depending on plan
+    "portfolio":            {"coins_free": 1, "coins_pro": 1},
 
-    # Pro-only features (⭐)
-    "resume":      {"coins_pro": 100},
-    "jobpack":     {"coins_pro": 100},
+    # Other features (unchanged)
+    "internships":          {"coins_free": 1},
+    "referral":             {"coins_free": 1},
+    "skillmapper":          {"coins_free": 1},
+
+    # Pro-only features
+    "resume":               {"coins_pro": 100},
+    "jobpack":              {"coins_pro": 100},
+
+    # NEW: publishing a portfolio page is Pro-only and costs ⭐
+    "portfolio_publish":    {"coins_pro": 100},
 }
 
 
@@ -80,7 +85,7 @@ def consume_pro(user: User, feature: str) -> None:
 # ---------------------------
 def authorize_and_consume(user: User, feature: str) -> bool:
     """
-    Tries Silver first (if the feature is Free-tier), then Gold (if Pro-tier).
+    Tries Silver first (if the feature lists a Silver cost), then Gold (if it lists a Gold cost).
     Returns True if a deduction succeeded.
     """
     c = _cost(feature)

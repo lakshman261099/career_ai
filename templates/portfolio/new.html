@@ -3,15 +3,26 @@
 {% block content %}
 <section class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pt-12">
   <div class="glass-panel rounded-2xl p-6">
-    <h1 class="text-xl font-bold mb-3">New Draft</h1>
-    <form method="POST">
+    <div class="flex items-center justify-between">
+      <h1 class="text-xl font-bold">New Draft</h1>
+      <a href="{{ url_for('portfolio.index') }}" class="btn-ghost">Back</a>
+    </div>
+
+    <form method="POST" class="mt-4">
       <label class="block text-sm mb-1">Title</label>
       <input name="title" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20" placeholder="e.g., Data Science Portfolio">
+
       <label class="block text-sm mt-4 mb-1">Content (Markdown)</label>
-      <textarea name="content_md" rows="10" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"></textarea>
+      <textarea name="content_md" rows="12" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20" placeholder="# Heading
+Summary…
+## Skills
+Python, SQL
+## Projects
+- Project A: …">{{ prefilled or "" }}</textarea>
+
       <div class="mt-4 flex gap-2">
-        <button class="btn-primary" type="submit">Save Draft</button>
-        <a class="btn-ghost" href="{{ url_for('portfolio.index') }}">Cancel</a>
+        <button class="btn-primary" type="submit">Create Draft</button>
+        <a class="btn-ghost" href="{{ url_for('portfolio.new', preset='profile') }}">Import from Profile</a>
       </div>
     </form>
   </div>

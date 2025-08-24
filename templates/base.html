@@ -24,6 +24,7 @@
       }
     }
   </script>
+
   <style>
     body::before{
       content:"";
@@ -34,14 +35,7 @@
     .nav-link { opacity:.9 }
     .nav-link:hover { opacity:1; text-decoration: underline; }
     .nav-active { opacity:1; text-decoration: underline; text-underline-offset: 6px; }
-    .btn-primary { @apply inline-flex items-center px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-glow; }
-    .btn-ghost { @apply inline-flex items-center px-3 py-2 rounded-xl border border-white/20 hover:border-white/40 text-white/80; }
-    .glass-bar { @apply bg-white/5 backdrop-blur border border-white/10; }
-    .glass-card { @apply bg-white/5 backdrop-blur border border-white/10 rounded-xl; }
-    .glass-panel { @apply bg-white/5 backdrop-blur border border-white/10; }
-    .coins-pill { @apply hidden sm:flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs; }
-    .coins-chip { @apply font-semibold; }
-    .coins-sep { @apply opacity-40; }
+    /* Note: Tailwind CDN doesn't process @apply at runtime; keep utility classes inline in markup. */
   </style>
 </head>
 <body class="h-full bg-ink-900 text-white">
@@ -49,9 +43,9 @@
 
   <header class="sticky top-0 z-40">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
-      <div class="glass-bar rounded-2xl px-4 py-3 flex items-center justify-between">
+      <div class="rounded-2xl px-4 py-3 flex items-center justify-between bg-white/5 backdrop-blur border border-white/10">
         <a href="{{ feature_paths.home }}" class="flex items-center gap-2">
-          <div class="h-9 w-9 rounded-xl bg-brand-500/20 backdrop-blur border border-white/10 grid place-items-center shadow-glow">
+          <div class="h-9 w-9 rounded-xl bg-brand-500/20 backdrop-blur border border-white/10 grid place-items-center shadow-[0_8px_30px_rgba(249,115,22,.25)]">
             <span class="text-xl font-extrabold">C</span>
           </div>
           <span class="font-semibold tracking-wide">CareerAI</span>
@@ -61,37 +55,40 @@
         </a>
 
         <nav class="hidden md:flex items-center gap-6 text-sm">
-          <a class="nav-link {% if request.endpoint=='portfolio.index' %}nav-active{% endif %}" href="{{ feature_paths.portfolio }}">Portfolio</a>
-          <a class="nav-link {% if request.endpoint=='internships.index' %}nav-active{% endif %}" href="{{ feature_paths.internships }}">Internships</a>
-          <a class="nav-link {% if request.endpoint=='skillmapper.index' %}nav-active{% endif %}" href="{{ feature_paths.skillmapper }}">Skill Mapper</a>
-          <a class="nav-link {% if request.endpoint=='referral.index' %}nav-active{% endif %}" href="{{ feature_paths.referral }}">Referrals</a>
+          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('portfolio.') %}nav-active{% endif %}" href="{{ feature_paths.portfolio }}">Portfolio</a>
+          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('internships.') %}nav-active{% endif %}" href="{{ feature_paths.internships }}">Internships</a>
+          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('skillmapper.') %}nav-active{% endif %}" href="{{ feature_paths.skillmapper }}">Skill Mapper</a>
+          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('referral.') %}nav-active{% endif %}" href="{{ feature_paths.referral }}">Referrals</a>
           <a class="nav-link {% if request.endpoint and request.endpoint.startswith('jobpack.') %}nav-active{% endif %}" href="{{ feature_paths.jobpack }}">Job Packs</a>
           <a class="nav-link {% if request.endpoint and request.endpoint.startswith('billing.') %}nav-active{% endif %}" href="{{ feature_paths.billing }}">Pricing</a>
         </nav>
 
         <div class="flex items-center gap-3">
-          <div class="coins-pill">
-            <span class="coins-chip">🪙 {{ FREE }}</span>
-            <span class="coins-sep">|</span>
-            <span class="coins-chip">⭐ {{ PRO }}</span>
+          <div class="hidden sm:flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs">
+            <span class="font-semibold">🪙 {{ FREE }}</span>
+            <span class="opacity-40">|</span>
+            <span class="font-semibold">⭐ {{ PRO }}</span>
           </div>
 
           {% if current_user.is_authenticated %}
-            {# Quick action: *Pro-only* Profile Portal link — free users go to Pricing #}
             {% if subscription_status|default('free') == 'pro' %}
-              <a href="{{ feature_paths.profile }}" class="btn-ghost hidden sm:inline {% if request.endpoint=='settings.profile' %}nav-active{% endif %}">
+              <a href="{{ feature_paths.profile }}" class="hidden sm:inline inline-flex items-center px-3 py-2 rounded-xl border border-white/20 hover:border-white/40 text-white/80 {% if request.endpoint=='settings.profile' %}nav-active{% endif %}">
                 Profile Portal
               </a>
             {% else %}
-              <a href="{{ feature_paths.billing }}" class="btn-ghost hidden sm:inline">
+              <a href="{{ feature_paths.billing }}" class="hidden sm:inline inline-flex items-center px-3 py-2 rounded-xl border border-white/20 hover:border-white/40 text-white/80">
                 Profile Portal <span class="opacity-60">🔒</span>
               </a>
             {% endif %}
-            <a href="{{ feature_paths.settings }}" class="btn-ghost hidden sm:inline {% if request.endpoint and request.endpoint.startswith('settings.') %}nav-active{% endif %}">Settings</a>
-            <a href="{{ feature_paths.logout }}" class="btn-primary">Logout</a>
+            <a href="{{ feature_paths.settings }}" class="hidden sm:inline inline-flex items-center px-3 py-2 rounded-xl border border-white/20 hover:border-white/40 text-white/80 {% if request.endpoint and request.endpoint.startswith('settings.') %}nav-active{% endif %}">
+              Settings
+            </a>
+            <a href="{{ feature_paths.logout }}" class="inline-flex items-center px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-[0_8px_30px_rgba(249,115,22,.25)]">
+              Logout
+            </a>
           {% else %}
-            <a href="{{ feature_paths.signup }}" class="btn-ghost hidden sm:inline">Sign up</a>
-            <a href="{{ feature_paths.login }}" class="btn-primary">Login</a>
+            <a href="{{ feature_paths.signup }}" class="hidden sm:inline inline-flex items-center px-3 py-2 rounded-xl border border-white/20 hover:border-white/40 text-white/80">Sign up</a>
+            <a href="{{ feature_paths.login }}" class="inline-flex items-center px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-[0_8px_30px_rgba(249,115,22,.25)]">Login</a>
           {% endif %}
         </div>
       </div>
@@ -102,7 +99,7 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for cat, msg in messages %}
-          <div class="glass-card border-l-4 {% if cat in ['danger','error'] %}border-red-400{% elif cat == 'warning' %}border-yellow-400{% elif cat=='success' %}border-emerald-400{% else %}border-brand-500{% endif %} px-4 py-3">
+          <div class="rounded-xl bg-white/5 backdrop-blur border border-white/10 border-l-4 {% if cat in ['danger','error'] %}border-red-400{% elif cat == 'warning' %}border-yellow-400{% elif cat=='success' %}border-emerald-400{% else %}border-brand-500{% endif %} px-4 py-3">
             <p class="text-sm">{{ msg }}</p>
           </div>
         {% endfor %}
@@ -116,7 +113,7 @@
 
   <footer class="mt-16 mb-10">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="glass-bar rounded-2xl p-4 text-xs text-white/60 flex items-center justify-between">
+      <div class="rounded-2xl p-4 text-xs text-white/60 flex items-center justify-between bg-white/5 backdrop-blur border border-white/10">
         <span>© 2025 CareerAI</span>
         <span>Flask · SQLAlchemy · Glass UI</span>
       </div>

@@ -87,7 +87,7 @@ class User(UserMixin, db.Model):
 
 
 # ---------------------------------------------------------------------
-# NEW: Hiring‑Manager style editable Profile (1–1 with User)
+# Hiring‑Manager style editable Profile (1–1 with User)
 # ---------------------------------------------------------------------
 class UserProfile(db.Model):
     __tablename__ = "user_profile"
@@ -110,10 +110,10 @@ class UserProfile(db.Model):
 
     # Flexible structured fields
     links = db.Column(db.JSON, default=dict)           # {"linkedin": "...", "github": "...", ...}
-    skills = db.Column(db.JSON, default=list)          # ["Python", "SQL", ...]
+    skills = db.Column(db.JSON, default=list)          # e.g. [{"name":"Python","level":3}, ...] or ["Python", ...]
     education = db.Column(db.JSON, default=list)       # [{school, degree, year}, ...]
     experience = db.Column(db.JSON, default=list)      # [{company, role, start, end, bullets:[...]}]
-    certifications = db.Column(db.JSON, default=list)  # ["AWS CCP", ...]
+    certifications = db.Column(db.JSON, default=list)  # ["AWS CCP", ...] or [{"name":"AWS CCP","year":"2024"}]
 
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -165,6 +165,8 @@ class PortfolioPage(db.Model):
     content_md = db.Column(db.Text, nullable=True)
     is_public = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    # NEW: metadata for locking, tier, suggestion_count, timestamps, etc.
+    meta_json = db.Column(db.JSON, default=dict)
 
     user = db.relationship("User", backref=db.backref("portfolio_pages", lazy=True, cascade="all, delete-orphan"))
 
@@ -216,7 +218,7 @@ class InternshipRecord(db.Model):
 
 
 # ---------------------------------------------------------------------
-# Referral Trainer (Free-only in KB)
+# Referral Trainer (Free-only)
 # ---------------------------------------------------------------------
 class OutreachContact(db.Model):
     __tablename__ = "outreach_contact"
@@ -260,7 +262,7 @@ class SkillMapSnapshot(db.Model):
 
 
 # ---------------------------------------------------------------------
-# AI Agent (Coming Soon per KB) — keep table but do not expose feature
+# AI Agent (Coming Soon) — keep table but do not expose feature
 # ---------------------------------------------------------------------
 class AgentJob(db.Model):
     __tablename__ = "agent_job"
