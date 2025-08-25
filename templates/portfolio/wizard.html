@@ -1,157 +1,135 @@
 {% extends "base.html" %}
-{% block title %}Portfolio Builder — CareerAI{% endblock %}
+{% block title %}Portfolio Wizard — CareerAI{% endblock %}
 {% block content %}
 <section class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-10 space-y-6">
 
   <!-- Header -->
-  <div class="glass-panel rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-    <div>
-      <h1 class="text-2xl font-extrabold tracking-tight">Portfolio Builder</h1>
-      <p class="text-white/70 text-sm">Get tailored project ideas and publish a polished page. Import basics from your Profile Portal (Pro).</p>
-    </div>
-    <div class="flex items-center gap-3 text-sm">
-      <span class="px-3 py-1 rounded-full bg-white/10 border border-white/20">
-        Plan: {{ 'Pro ⭐' if subscription_status|lower == 'pro' else 'Free 🪙' }}
-      </span>
+  <div class="glass-panel rounded-2xl p-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-extrabold">Portfolio Wizard</h1>
+        <p class="text-white/70 text-sm">Give us context or import from your Profile. We’ll suggest projects.</p>
+      </div>
+      <div class="text-xs">
+        {% if is_pro() %}
+          <span class="px-2 py-1 rounded-full bg-white/10 border border-white/20">Pro ⭐</span>
+        {% else %}
+          <span class="px-2 py-1 rounded-full bg-white/10 border border-white/20">Free 🪙</span>
+        {% endif %}
+      </div>
     </div>
   </div>
 
   <div class="grid lg:grid-cols-3 gap-6">
-    <!-- Left: Inputs -->
-    <section class="glass-panel rounded-2xl p-6 lg:col-span-1 space-y-4">
-      <h3 class="text-lg font-semibold">Your Goals</h3>
+    <!-- Inputs -->
+    <section class="glass-panel rounded-2xl p-6 lg:col-span-2">
+      <form method="POST" id="inputs-form" class="space-y-4">
+        <input type="hidden" name="action" value="suggest" id="action-field">
 
-      <!-- Suggest form -->
-      <form method="post" class="space-y-4">
-        <input type="hidden" name="action" value="suggest">
-
-        <div>
-          <label class="block text-sm mb-1">Target Role</label>
-          <input name="target_role" value="{{ target_role }}" placeholder="e.g., Backend Engineer" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-        </div>
-
-        <div>
-          <label class="block text-sm mb-1">Industry</label>
-          <input name="industry" value="{{ industry }}" placeholder="e.g., Fintech / Healthcare" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+        <div class="grid md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm mb-1">Target Role</label>
+            <input name="target_role" value="{{ target_role }}" placeholder="e.g., Backend Engineer" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Industry</label>
+            <input name="industry" value="{{ industry }}" placeholder="e.g., Fintech" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          </div>
         </div>
 
         <div>
           <label class="block text-sm mb-1">Experience Level</label>
           <select name="experience_level" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
             <option value="" {% if not experience_level %}selected{% endif %}>Select…</option>
-            <option {% if experience_level=='student' %}selected{% endif %} value="student">Student</option>
-            <option {% if experience_level=='junior' %}selected{% endif %} value="junior">Junior</option>
-            <option {% if experience_level=='mid' %}selected{% endif %} value="mid">Mid</option>
-            <option {% if experience_level=='senior' %}selected{% endif %} value="senior">Senior</option>
+            <option value="student" {% if experience_level=='student' %}selected{% endif %}>Student</option>
+            <option value="junior" {% if experience_level=='junior' %}selected{% endif %}>Junior</option>
+            <option value="mid" {% if experience_level=='mid' %}selected{% endif %}>Mid</option>
+            <option value="senior" {% if experience_level=='senior' %}selected{% endif %}>Senior</option>
           </select>
         </div>
 
-        <div class="flex gap-2">
-          <button class="btn-primary" type="submit">Get Suggestions</button>
+        <div class="flex items-center gap-2">
+          <button type="button" class="btn-ghost" onclick="submitWithAction('import')">Import from Profile</button>
+          <button type="button" class="btn-primary" onclick="submitWithAction('suggest')">Get Suggestions</button>
         </div>
       </form>
-
-      <!-- Import form (separate form; NOT nested) -->
-      {% if subscription_status|lower == 'pro' %}
-      <form method="post">
-        <input type="hidden" name="action" value="import">
-        <input type="hidden" name="target_role" value="{{ target_role }}">
-        <input type="hidden" name="industry" value="{{ industry }}">
-        <input type="hidden" name="experience_level" value="{{ experience_level }}">
-        <button class="btn-ghost" type="submit">Import from Profile Portal</button>
-      </form>
-      {% else %}
-      <a class="btn-ghost" href="{{ feature_paths.billing }}">Import from Profile Portal 🔒</a>
-      {% endif %}
     </section>
 
-    <!-- Right: Suggestions + Publish -->
-    <section class="lg:col-span-2 space-y-6">
-      <div class="glass-panel rounded-2xl p-6">
-        <h3 class="text-lg font-semibold">Suggestions</h3>
-        {% if suggestions and suggestions|length %}
-          <p class="text-white/70 text-sm mb-3">
-            We generated {{ suggestions|length }} idea{{ 's' if suggestions|length>1 }} based on your inputs
-            {% if imported %}and your profile skills{% endif %}.
-          </p>
+    <!-- Imported snapshot -->
+    <aside class="glass-panel rounded-2xl p-6">
+      <h3 class="text-sm font-semibold">Profile Snapshot</h3>
+      {% if imported %}
+        <p class="text-xs text-emerald-400 mt-1">Imported ✓</p>
+      {% else %}
+        <p class="text-xs text-white/60 mt-1">Not imported yet</p>
+      {% endif %}
+      <div class="mt-3 text-sm space-y-2">
+        <div><span class="text-white/60">Name:</span> {{ student.name or '—' }}</div>
+        <div><span class="text-white/60">Headline:</span> {{ student.headline or '—' }}</div>
+        <div><span class="text-white/60">Email:</span> {{ contact.email or '—' }}</div>
+        <div><span class="text-white/60">LinkedIn:</span> {{ contact.linkedin or '—' }}</div>
+        <div><span class="text-white/60">GitHub:</span> {{ contact.github or '—' }}</div>
+      </div>
+      <a href="{{ feature_paths.profile }}" class="underline text-xs inline-block mt-3">Open Profile Portal →</a>
+    </aside>
+  </div>
 
-          <form method="post" class="space-y-4">
-            <input type="hidden" name="action" value="publish">
-            <input type="hidden" name="target_role" value="{{ target_role }}">
-            <input type="hidden" name="industry" value="{{ industry }}">
-            <input type="hidden" name="experience_level" value="{{ experience_level }}">
+  <!-- Suggestions -->
+  {% if suggestions and suggestions|length %}
+  <section class="glass-panel rounded-2xl p-6">
+    <h2 class="text-lg font-semibold mb-2">Suggested Projects</h2>
+    <p class="text-xs text-white/60">Choose one to publish a full portfolio page. Free users see one suggestion; Pro sees three and can publish.</p>
 
-            <div class="space-y-3">
-              {% for s in suggestions %}
-                <label class="block border border-white/10 rounded-xl p-4 cursor-pointer hover:bg-white/5">
-                  <div class="flex items-start gap-3">
-                    <input type="radio" name="selected_index" value="{{ loop.index0 }}" class="mt-1" required>
-                    <div>
-                      <div class="font-semibold">{{ s.title }}</div>
-                      <div class="text-white/70 text-sm mt-1">{{ s.why }}</div>
-                      {% if s.stack %}
-                        <div class="text-xs text-white/60 mt-1">Stack: {{ s.stack|join(', ') }}</div>
-                      {% endif %}
-                    </div>
-                  </div>
-                </label>
-              {% endfor %}
+    <form method="POST" id="publish-form" class="mt-4 space-y-3">
+      <input type="hidden" name="action" value="publish">
+      <input type="hidden" name="target_role" value="{{ target_role }}">
+      <input type="hidden" name="industry" value="{{ industry }}">
+      <input type="hidden" name="experience_level" value="{{ experience_level }}">
+      <input type="hidden" name="selected_index" id="selected_index">
+
+      <div class="space-y-3">
+        {% for s in suggestions %}
+          <label class="block border border-white/10 rounded-xl p-4 cursor-pointer hover:bg-white/5">
+            <div class="flex items-start gap-3">
+              <input type="radio" name="which" value="{{ loop.index0 }}" onchange="document.getElementById('selected_index').value=this.value">
+              <div class="flex-1">
+                <div class="font-semibold">{{ s.title }}</div>
+                <div class="text-white/70 text-sm mt-1">{{ s.why }}</div>
+                {% if s.stack %}
+                  <div class="text-xs text-white/60 mt-2">Stack: {{ s.stack | join(', ') }}</div>
+                {% endif %}
+              </div>
             </div>
+          </label>
+        {% endfor %}
+      </div>
 
-            {% if subscription_status|lower == 'pro' %}
-              <div class="mt-4">
-                <button class="btn-primary" type="submit" onclick="return confirm('Publishing will create your public page (non-editable). Continue?')">Publish ⭐</button>
-                <a class="btn-ghost" href="{{ url_for('portfolio.index') }}">Back</a>
-              </div>
-            {% else %}
-              <div class="mt-4">
-                <a class="btn-primary" href="{{ feature_paths.billing }}">Upgrade to Publish ⭐</a>
-                <a class="btn-ghost" href="{{ url_for('portfolio.index') }}">Back</a>
-              </div>
-            {% endif %}
-          </form>
+      <div class="mt-3">
+        {% if is_pro() %}
+          <button class="btn-primary" type="submit" onclick="return ensureSelection()">Publish Portfolio Page ⭐</button>
         {% else %}
-          <p class="text-white/60 text-sm">Enter your role and industry, then click <strong>Get Suggestions</strong>. Pro users can <em>Import</em> basics from the Profile Portal to tailor results further.</p>
+          <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
         {% endif %}
       </div>
-
-      {% if imported %}
-      <div class="glass-panel rounded-2xl p-6">
-        <h3 class="text-lg font-semibold mb-2">Imported Basics</h3>
-        <div class="grid md:grid-cols-2 gap-3 text-sm">
-          <div>
-            <div class="text-white/60">Name</div>
-            <div>{{ student.name }}</div>
-          </div>
-          {% if student.headline %}
-          <div>
-            <div class="text-white/60">Headline</div>
-            <div>{{ student.headline }}</div>
-          </div>
-          {% endif %}
-          {% if student.summary %}
-          <div class="md:col-span-2">
-            <div class="text-white/60">Summary</div>
-            <div>{{ student.summary }}</div>
-          </div>
-          {% endif %}
-          <div class="md:col-span-2">
-            <div class="text-white/60">Contact</div>
-            <ul class="list-disc pl-5 space-y-1">
-              {% if contact.email %}<li>Email: {{ contact.email }}</li>{% endif %}
-              {% if contact.website %}<li>Website: {{ contact.website }}</li>{% endif %}
-              {% if contact.linkedin %}<li>LinkedIn: {{ contact.linkedin }}</li>{% endif %}
-              {% if contact.github %}<li>GitHub: {{ contact.github }}</li>{% endif %}
-              {% for k,v in (contact.custom or {}).items() %}
-                <li>{{ k|title }}: {{ v }}</li>
-              {% endfor %}
-            </ul>
-          </div>
-        </div>
-        <p class="text-xs text-white/50 mt-3">Edit your details anytime in <a class="underline" href="{{ feature_paths.profile }}">Profile Portal</a>.</p>
-      </div>
-      {% endif %}
-    </section>
-  </div>
+    </form>
+  </section>
+  {% endif %}
 </section>
+
+<script>
+function submitWithAction(action) {
+  const f = document.getElementById('inputs-form');
+  document.getElementById('action-field').value = action;
+  f.submit();
+}
+function ensureSelection() {
+  const chosen = document.querySelector('input[name="which"]:checked');
+  if (!chosen) {
+    alert("Please select a project first.");
+    return false;
+  }
+  document.getElementById('selected_index').value = chosen.value;
+  return true;
+}
+</script>
 {% endblock %}

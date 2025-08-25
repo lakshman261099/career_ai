@@ -1,11 +1,12 @@
 # modules/portfolio/routes.py
 
+from datetime import datetime
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
 )
 from flask_login import login_required, current_user
+
 from models import db, PortfolioPage, UserProfile
-from datetime import datetime
 
 portfolio_bp = Blueprint("portfolio", __name__, template_folder="../../templates/portfolio")
 
@@ -26,6 +27,7 @@ def _get_profile_safe():
 
 
 def _safe_links_map(links):
+    """Normalize links into first-class fields + custom."""
     out = {
         "email":    (links or {}).get("email", ""),
         "website":  (links or {}).get("website", ""),
@@ -44,6 +46,10 @@ def _safe_links_map(links):
 
 
 def _suggest_projects(role, industry, exp_level, skills_list, is_pro_user):
+    """
+    Lightweight, deterministic suggestion generator using the student's inputs
+    and (optionally) profile skills. Pro gets 3 ideas; Free gets 1.
+    """
     role = (role or "").strip()
     industry = (industry or "").strip()
     exp_level = (exp_level or "").strip()
@@ -54,10 +60,10 @@ def _suggest_projects(role, industry, exp_level, skills_list, is_pro_user):
             "title": title,
             "why": why,
             "what": [
-                "Scope the problem and success criteria",
-                "Implement MVP with versioned milestones",
-                "Write tests and measure impact",
-                "Document decisions and trade-offs",
+                "Define scope and success metrics",
+                "Ship MVP in milestones with a changelog",
+                "Add tests, telemetry, and docs",
+                "Capture before/after impact",
             ],
             "resume_bullets": outcomes,
             "stack": stack,
@@ -67,32 +73,32 @@ def _suggest_projects(role, industry, exp_level, skills_list, is_pro_user):
     ideas = []
 
     ideas.append(mk(
-        f"{role or 'Portfolio'} Project for {industry or 'Industry'}",
-        f"Demonstrates direct alignment with {role or 'target role'} in the {industry or 'target'} domain.",
+        f"{role or 'Portfolio'} Project in {industry or 'your domain'}",
+        f"Directly aligns with {role or 'your target role'} within {industry or 'your chosen industry'}.",
         [
-            f"Designed and shipped a {industry or 'domain'}-focused {role or 'project'} aligned to hiring signals",
-            "Decomposed the scope into milestones; achieved measurable improvements",
-            "Wrote clean, testable code with CI and documentation",
+            f"Designed and shipped a {industry or 'domain'}‑focused {role or 'project'} aligned to hiring signals",
+            "Planned milestones and hit delivery dates",
+            "Built clean, testable components with CI",
         ],
         base_stack
     ))
     ideas.append(mk(
-        f"{industry or 'Industry'} Metrics & Insights Dashboard",
-        "Shows you can connect business questions to actionable metrics.",
+        f"{industry or 'Industry'} KPI & Insights Dashboard",
+        "Proves you can convert business questions into measurable metrics.",
         [
-            "Built an analytics pipeline and dashboard to track KPIs",
-            "Collaborated on defining metrics; automated refresh and alerts",
-            "Drove X% improvement in a key metric via insights",
+            "Implemented data pipeline + dashboard for KPIs",
+            "Automated refresh & alerting on thresholds",
+            "Drove X% improvement in a key KPI via insights",
         ],
-        list({*base_stack, "Dash/Streamlit", "Matplotlib"})
+        list({*base_stack, "Pandas", "Matplotlib", "Streamlit"})
     ))
     ideas.append(mk(
         f"{role or 'Engineer'} Systems Integration Mini‑Platform",
-        "Highlights architecture thinking and integration skills.",
+        "Highlights systems thinking and integration quality.",
         [
-            "Designed a modular system with clear contracts between services",
-            "Instrumented logging/metrics; validated reliability under load",
-            "Documented architecture and trade‑offs",
+            "Designed modular architecture with clear contracts",
+            "Instrumented telemetry; validated under load",
+            "Documented trade‑offs & rollback strategy",
         ],
         list({*base_stack, "Docker", "FastAPI"})
     ))
@@ -101,6 +107,7 @@ def _suggest_projects(role, industry, exp_level, skills_list, is_pro_user):
 
 
 def _render_page_md(student, contact, skills, education, experience, chosen):
+    """Builds the final markdown for the public portfolio page."""
     lines = []
     lines.append(f"# {student.get('name','Your Name')}")
     if student.get("headline"):
@@ -121,7 +128,7 @@ def _render_page_md(student, contact, skills, education, experience, chosen):
 
     if skills:
         lines.append("## Skills")
-        s = [f"{s['name']} ({s.get('level',3)}/5)" for s in skills if s.get("name")]
+        s = [f"{s['name']} ({int(s.get('level',3))}/5)" for s in skills if s.get("name")]
         if s:
             lines.append(", ".join(s))
             lines.append("")
@@ -182,6 +189,7 @@ def _render_page_md(student, contact, skills, education, experience, chosen):
 @portfolio_bp.route("/", endpoint="index")
 @login_required
 def index():
+    """List the user's portfolio pages (drafts + published)."""
     try:
         pages = (PortfolioPage.query
                  .filter_by(user_id=current_user.id)
@@ -200,6 +208,12 @@ def index():
 @portfolio_bp.route("/wizard", methods=["GET", "POST"], endpoint="wizard")
 @login_required
 def wizard():
+    """
+    Unified flow (Free & Pro):
+      1) Ask inputs OR import from Profile Portal.
+      2) Generate suggestions (1 for Free, 3 for Pro).
+      3) Pro can select and publish a full page (requires Profile Portal data).
+    """
     ctx = {
         "target_role": "",
         "industry": "",
@@ -218,9 +232,10 @@ def wizard():
         ctx["industry"] = (request.form.get("industry") or "").strip()
         ctx["experience_level"] = (request.form.get("experience_level") or "").strip()
 
+        # --- Import profile data into the form (no coins consumed) ---
         if action == "import":
             if not prof:
-                flash("No Profile found. Pro users can create one in Profile Portal.", "warning")
+                flash("No Profile found. Pro users can set up their Profile Portal first.", "warning")
                 return render_template("portfolio/wizard.html", **ctx)
 
             links_map = _safe_links_map(prof.links or {})
@@ -234,6 +249,7 @@ def wizard():
             flash("Imported from your Profile Portal.", "success")
             return render_template("portfolio/wizard.html", **ctx)
 
+        # --- Generate suggestions (based on inputs + profile skills if present) ---
         if action == "suggest":
             if not ctx["target_role"] or not ctx["industry"]:
                 flash("Please enter both Target Role and Industry.", "warning")
@@ -247,18 +263,18 @@ def wizard():
             flash("Here are your tailored project suggestions.", "success")
             return render_template("portfolio/wizard.html", **ctx)
 
+        # --- Publish (Pro only) ---
         if action == "publish":
             is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
             if not is_pro_user:
                 flash("Publishing is a Pro feature. Please upgrade to continue.", "warning")
                 return redirect(url_for("billing.index"))
 
-            # MUST have a profile for high-quality page
-            if not prof or not (prof.full_name or current_user.name):
-                flash("Your Profile Portal is incomplete. Please set your name in Profile Portal.", "warning")
+            # MUST have profile basics for a quality page
+            if not prof or not (prof.full_name or getattr(current_user, "name", "")):
+                flash("Your Profile Portal is incomplete. Please add your details in Profile Portal.", "warning")
                 return redirect(url_for("settings.profile"))
 
-            # selection
             selected_index_raw = (request.form.get("selected_index") or "").strip()
             if not selected_index_raw.isdigit():
                 flash("Please select a project suggestion.", "warning")
@@ -270,7 +286,7 @@ def wizard():
                 return render_template("portfolio/wizard.html", **ctx)
             sel = int(selected_index_raw)
 
-            # Rebuild suggestions (stateless server)
+            # Rebuild suggestions (stateless servers)
             skills_list = (prof.skills if prof else []) or []
             suggestions = _suggest_projects(
                 ctx["target_role"], ctx["industry"], ctx["experience_level"], skills_list, is_pro_user
@@ -281,7 +297,6 @@ def wizard():
                 return render_template("portfolio/wizard.html", **ctx)
             chosen = suggestions[sel]
 
-            # Build page
             student = {
                 "name": prof.full_name or (getattr(current_user, "name", "") or ""),
                 "headline": prof.headline or "",
@@ -306,8 +321,7 @@ def wizard():
                     created_at=datetime.utcnow(),
                 )
                 db.session.add(page)
-                # flush first to expose DB issues immediately (e.g., schema mismatch)
-                db.session.flush()
+                db.session.flush()  # catch schema issues early
                 db.session.commit()
                 flash("Portfolio page published! Share your link from the list below.", "success")
                 return redirect(url_for("portfolio.index"))
@@ -320,7 +334,7 @@ def wizard():
                 flash("Could not publish your page. Please try again.", "error")
                 return render_template("portfolio/wizard.html", **ctx)
 
-        # Fallback
+        # Fallback (unknown action)
         return render_template("portfolio/wizard.html", **ctx)
 
     # GET
@@ -329,6 +343,7 @@ def wizard():
 
 @portfolio_bp.route("/view/<int:page_id>", methods=["GET"], endpoint="view")
 def view(page_id):
+    """Public view for published pages."""
     try:
         page = PortfolioPage.query.get_or_404(page_id)
         if not page.is_public:
