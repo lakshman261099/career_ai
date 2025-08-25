@@ -1,226 +1,193 @@
 # modules/portfolio/routes.py
 
-import traceback
-from datetime import datetime
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
+from flask import (
+    Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
+)
 from flask_login import login_required, current_user
 from models import db, PortfolioPage, UserProfile
-from limits import authorize_and_consume, can_use_pro, consume_pro
+from datetime import datetime
 
 portfolio_bp = Blueprint("portfolio", __name__, template_folder="../../templates/portfolio")
+
 
 # ---------------------------
 # Helpers
 # ---------------------------
-def _get_profile() -> UserProfile | None:
+def _get_profile_safe():
     try:
         return UserProfile.query.filter_by(user_id=current_user.id).first()
     except Exception:
-        current_app.logger.exception("Load profile failed")
         try:
             db.session.rollback()
         except Exception:
             pass
+        current_app.logger.exception("Failed loading UserProfile")
         return None
 
 
-def _skills_list(profile: UserProfile) -> list[str]:
-    raw = (profile.skills or []) if profile else []
-    out = []
-    for item in raw:
-        if isinstance(item, dict):
-            nm = (item.get("name") or item.get("skill") or "").strip()
-            if nm:
-                lvl = item.get("level")
-                if isinstance(lvl, int):
-                    out.append(f"{nm} (Lv{max(1, min(5, lvl))})")
-                else:
-                    out.append(nm)
-        elif isinstance(item, str):
-            s = item.strip()
-            if s:
-                out.append(s)
-    return out[:12]
+def _safe_links_map(links):
+    out = {
+        "email":    (links or {}).get("email", ""),
+        "website":  (links or {}).get("website", ""),
+        "linkedin": (links or {}).get("linkedin", ""),
+        "github":   (links or {}).get("github", ""),
+    }
+    custom = {}
+    for k, v in (links or {}).items():
+        if k in out:
+            continue
+        k2, v2 = (k or "").strip(), (v or "").strip()
+        if k2 and v2:
+            custom[k2] = v2
+    out["custom"] = custom
+    return out
 
 
-def _compose_content_from_profile(profile: UserProfile) -> str:
-    """Generate a tasteful markdown scaffold from the profile; used for 'Import from Profile'."""
-    if not profile:
-        return "# Portfolio\n\n(Add your details…)"
+def _suggest_projects(role, industry, exp_level, skills_list, is_pro_user):
+    role = (role or "").strip()
+    industry = (industry or "").strip()
+    exp_level = (exp_level or "").strip()
+    skills = [s.get("name") for s in (skills_list or []) if (s.get("name") or "").strip()]
 
-    name = profile.full_name or ""
-    headline = profile.headline or ""
-    summary = profile.summary or ""
-    skills_md = ", ".join(_skills_list(profile)) or "—"
-    links = profile.links or {}
-
-    lines = []
-    lines.append(f"# {name}".strip() or "# Portfolio")
-    if headline:
-        lines.append(f"**{headline}**")
-    lines.append("")
-    if summary:
-        lines.append(summary)
-        lines.append("")
-    lines.append("## Skills")
-    lines.append(skills_md)
-    lines.append("")
-    if profile.education:
-        lines.append("## Education")
-        for ed in profile.education:
-            deg = (ed.get("degree") or "").strip()
-            sch = (ed.get("school") or "").strip()
-            yr = (str(ed.get("year") or "").strip())
-            bullet = " · ".join([x for x in [deg, sch, yr] if x])
-            if bullet:
-                lines.append(f"- {bullet}")
-        lines.append("")
-    if profile.experience:
-        lines.append("## Experience")
-        for job in profile.experience:
-            role = (job.get("role") or "").strip()
-            comp = (job.get("company") or "").strip()
-            st = (job.get("start") or "").strip()
-            en = (job.get("end") or "Present").strip()
-            head = " · ".join([x for x in [role, comp, f"{st}–{en}"] if x])
-            if head:
-                lines.append(f"- **{head}**")
-            bullets = job.get("bullets") or []
-            for b in bullets[:5]:
-                if b:
-                    lines.append(f"  - {b}")
-        lines.append("")
-    if links:
-        lines.append("## Links")
-        for k, v in links.items():
-            if v:
-                lines.append(f"- **{k.title()}**: {v}")
-        lines.append("")
-    lines.append("## Projects")
-    lines.append("- (Add selected project details below…)")
-
-    return "\n".join(lines)
-
-
-def _project_suggestions(profile: UserProfile | None, tier: str = "free") -> list[dict]:
-    """
-    Lightweight, deterministic suggestions (no API). Uses profile (if any) to tailor.
-    Free -> 1 suggestion, Pro -> 3.
-    """
-    base_role = (profile.headline or "").lower() if profile else ""
-    skills = [s.split(" ")[0] for s in _skills_list(profile)] if profile else []
-
-    def mk(title, why, steps, tech):
+    def mk(title, why, outcomes, stack):
         return {
             "title": title,
             "why": why,
-            "steps": steps,
-            "tech": tech,
+            "what": [
+                "Scope the problem and success criteria",
+                "Implement MVP with versioned milestones",
+                "Write tests and measure impact",
+                "Document decisions and trade-offs",
+            ],
+            "resume_bullets": outcomes,
+            "stack": stack,
         }
 
-    # Fallbacks
-    if "data" in base_role:
-        seed = [
-            mk("Student Hiring Trends Dashboard",
-               "Shows you can aggregate datasets and build clean insights.",
-               ["Scrape/collect 2–3 open datasets",
-                "Clean & join; compute 5 KPIs",
-                "Build interactive dashboard (filters, drilldowns)",
-                "Write a short findings report"],
-               ["Python", "Pandas", "SQLite", "Streamlit"]),
-            mk("Resume Keyword Miner",
-               "Demonstrates NLP feature extraction + simple ranking.",
-               ["Collect 100 job posts in your target role",
-                "Extract skills/keywords & frequencies",
-                "Build a small tool that scores a resume vs job"],
-               ["Python", "spaCy", "scikit-learn"]),
-            mk("Cohort Retention Simulator",
-               "Shows modeling and experiment thinking.",
-               ["Synthesize user cohort data",
-                "Model churn scenarios and interventions",
-                "Visualize retention curves and ROI"],
-               ["Python", "Matplotlib", "Jupyter"])
-        ]
-    elif "backend" in base_role or "api" in base_role:
-        seed = [
-            mk("CareerAI Notes API",
-               "Proves REST design, auth, and clean data modeling.",
-               ["Design schema (users, notes, tags)",
-                "Implement JWT auth, rate limit, pagination",
-                "Ship OpenAPI spec + Postman collection"],
-               ["Python", "Flask/FastAPI", "PostgreSQL", "OpenAPI"]),
-            mk("Job Pack Scraper",
-               "Demonstrates async I/O and resilient scraping.",
-               ["Pick 3 job boards",
-                "Write async scraper + dedupe",
-                "Export clean JSON and a small dashboard"],
-               ["Python", "httpx/asyncio", "SQLite"]),
-            mk("Resume PDF Text Service",
-               "Shows file processing, queuing, and observability.",
-               ["Parse PDFs, return JSON blocks",
-                "Queue long jobs; add retries",
-                "Add metrics and structured logs"],
-               ["Python", "Celery/RQ", "S3", "Grafana"])
-        ]
-    else:
-        seed = [
-            mk("Job Search Companion",
-               "A polished, real‑world helpful tool.",
-               ["Collect target roles & locations",
-                "Generate weekly plan + resources",
-                "Progress tracker and shareable profile card"],
-               ["Python/JS", "Flask", "Tailwind", "SQLite"]),
-            mk("Personal Portfolio v2",
-               "Refactor to modern design with crisp storytelling.",
-               ["Define narrative + hero metrics",
-                "Add projects with outcomes",
-                "Add blog and contact form"],
-               ["HTML", "Tailwind", "Netlify/Vercel"]),
-            mk("Internship Application Tracker",
-               "Practical CRUD; shows product thinking.",
-               ["Schema: applications, status, contacts",
-                "Kanban board; export to CSV",
-                "Email reminders"],
-               ["Flask", "SQLAlchemy", "HTMX/Tailwind"])
-        ]
+    base_stack = skills[:6] if skills else ["Python", "SQL", "Git"]
+    ideas = []
 
-    # Use skills to tweak tech stack ordering
+    ideas.append(mk(
+        f"{role or 'Portfolio'} Project for {industry or 'Industry'}",
+        f"Demonstrates direct alignment with {role or 'target role'} in the {industry or 'target'} domain.",
+        [
+            f"Designed and shipped a {industry or 'domain'}-focused {role or 'project'} aligned to hiring signals",
+            "Decomposed the scope into milestones; achieved measurable improvements",
+            "Wrote clean, testable code with CI and documentation",
+        ],
+        base_stack
+    ))
+    ideas.append(mk(
+        f"{industry or 'Industry'} Metrics & Insights Dashboard",
+        "Shows you can connect business questions to actionable metrics.",
+        [
+            "Built an analytics pipeline and dashboard to track KPIs",
+            "Collaborated on defining metrics; automated refresh and alerts",
+            "Drove X% improvement in a key metric via insights",
+        ],
+        list({*base_stack, "Dash/Streamlit", "Matplotlib"})
+    ))
+    ideas.append(mk(
+        f"{role or 'Engineer'} Systems Integration Mini‑Platform",
+        "Highlights architecture thinking and integration skills.",
+        [
+            "Designed a modular system with clear contracts between services",
+            "Instrumented logging/metrics; validated reliability under load",
+            "Documented architecture and trade‑offs",
+        ],
+        list({*base_stack, "Docker", "FastAPI"})
+    ))
+
+    return ideas[:3] if is_pro_user else ideas[:1]
+
+
+def _render_page_md(student, contact, skills, education, experience, chosen):
+    lines = []
+    lines.append(f"# {student.get('name','Your Name')}")
+    if student.get("headline"):
+        lines.append(f"**{student['headline']}**")
+    lines.append("")
+    if student.get("summary"):
+        lines.append(student["summary"])
+        lines.append("")
+
+    lines.append("## Contact")
+    if contact.get("email"):    lines.append(f"- Email: {contact['email']}")
+    if contact.get("website"):  lines.append(f"- Website: {contact['website']}")
+    if contact.get("linkedin"): lines.append(f"- LinkedIn: {contact['linkedin']}")
+    if contact.get("github"):   lines.append(f"- GitHub: {contact['github']}")
+    for k, v in (contact.get("custom") or {}).items():
+        lines.append(f"- {k.title()}: {v}")
+    lines.append("")
+
     if skills:
-        for s in seed:
-            s["tech"] = list(dict.fromkeys(skills + s["tech"]))  # pref skills first
+        lines.append("## Skills")
+        s = [f"{s['name']} ({s.get('level',3)}/5)" for s in skills if s.get("name")]
+        if s:
+            lines.append(", ".join(s))
+            lines.append("")
 
-    return seed[:1] if tier == "free" else seed[:3]
+    if education:
+        lines.append("## Education")
+        for ed in education:
+            deg = ed.get("degree") or ""
+            sch = ed.get("school") or ""
+            yr  = ed.get("year") or ""
+            comp = " — ".join([p for p in [deg, sch] if p])
+            comp = f"{comp} ({yr})" if yr else comp
+            if comp.strip():
+                lines.append(f"- {comp}")
+        lines.append("")
+
+    if experience:
+        lines.append("## Experience")
+        for ex in experience:
+            role = ex.get("role") or ""
+            comp = ex.get("company") or ""
+            st   = ex.get("start") or ""
+            en   = ex.get("end") or "Present"
+            header = " · ".join([p for p in [comp, f"{st} – {en}"] if p])
+            if role:
+                lines.append(f"### {role}")
+            if header:
+                lines.append(header)
+            for b in (ex.get("bullets") or []):
+                lines.append(f"- {b}")
+            lines.append("")
+    lines.append("")
+
+    if chosen:
+        lines.append("## Highlight Project")
+        lines.append(f"### {chosen.get('title','Selected Project')}")
+        if chosen.get("why"):
+            lines.append(f"*Why this matters:* {chosen['why']}")
+        if chosen.get("stack"):
+            lines.append(f"*Stack:* {', '.join(chosen['stack'])}")
+        lines.append("")
+        lines.append("**What you’ll build:**")
+        for w in (chosen.get("what") or []):
+            lines.append(f"- {w}")
+        lines.append("")
+        lines.append("**Resume bullets you can claim:**")
+        for r in (chosen.get("resume_bullets") or []):
+            lines.append(f"- {r}")
+        lines.append("")
+
+    return "\n".join(lines).strip()
 
 
 # ---------------------------
-# Landing: Free vs Pro
+# Routes
 # ---------------------------
-@portfolio_bp.route("/", methods=["GET", "POST"], endpoint="index")
+
+@portfolio_bp.route("/", endpoint="index")
 @login_required
 def index():
-    is_pro = (current_user.subscription_status or "free").lower() == "pro"
-
-    # FREE: render single-suggestion generator
-    if not is_pro:
-        if request.method == "POST":
-            # consume free credit for suggestion generation
-            if not authorize_and_consume(current_user, "portfolio"):
-                flash("You’ve reached today’s free limit. Upgrade to Pro to continue.", "warning")
-                return redirect(url_for("billing.index"))
-            profile = _get_profile()  # may be None (Profile Portal is Pro; this can still be None)
-            suggestions = _project_suggestions(profile, tier="free")
-            return render_template("portfolio/free.html", suggestions=suggestions)
-        # GET free landing
-        return render_template("portfolio/free.html", suggestions=None)
-
-    # PRO: list pages + actions
     try:
         pages = (PortfolioPage.query
                  .filter_by(user_id=current_user.id)
                  .order_by(PortfolioPage.created_at.desc())
                  .all())
-    except Exception as e:
-        current_app.logger.exception("Portfolio index error: %s", e)
+    except Exception:
         try:
             db.session.rollback()
         except Exception:
@@ -230,170 +197,136 @@ def index():
     return render_template("portfolio/index.html", pages=pages)
 
 
-# ---------------------------
-# Create new draft (Pro)
-# ---------------------------
-@portfolio_bp.route("/new", methods=["GET", "POST"], endpoint="new")
+@portfolio_bp.route("/wizard", methods=["GET", "POST"], endpoint="wizard")
 @login_required
-def new():
-    # gate to Pro
-    if (current_user.subscription_status or "free").lower() != "pro":
-        flash("Portfolio builder is a Pro feature. Upgrade to get 3 tailored projects and publish.", "warning")
-        return redirect(url_for("billing.index"))
+def wizard():
+    ctx = {
+        "target_role": "",
+        "industry": "",
+        "experience_level": "",
+        "imported": False,
+        "suggestions": [],
+        "contact": {"email": "", "website": "", "linkedin": "", "github": "", "custom": {}},
+        "student": {"name": "", "headline": "", "summary": ""},
+    }
 
-    preset = (request.args.get("preset") or "").lower()
+    prof = _get_profile_safe()
 
     if request.method == "POST":
-        title = (request.form.get("title") or "").strip() or "Untitled"
-        content_md = request.form.get("content_md") or ""
-        try:
-            # Creating a draft uses free portfolio cost (🪙) to throttle churn or treat as no‑cost.
-            # If you prefer no cost here, comment the next 3 lines.
-            if not authorize_and_consume(current_user, "portfolio"):
-                flash("Limit reached. Try later or top up credits.", "warning")
-                return redirect(url_for("billing.index"))
+        action = (request.form.get("action") or "").strip()
+        ctx["target_role"] = (request.form.get("target_role") or "").strip()
+        ctx["industry"] = (request.form.get("industry") or "").strip()
+        ctx["experience_level"] = (request.form.get("experience_level") or "").strip()
 
-            page = PortfolioPage(
-                user_id=current_user.id,
-                title=title,
-                content_md=content_md,
-                is_public=False,
-                meta_json={"tier": "pro", "created_at": datetime.utcnow().isoformat()}
+        if action == "import":
+            if not prof:
+                flash("No Profile found. Pro users can create one in Profile Portal.", "warning")
+                return render_template("portfolio/wizard.html", **ctx)
+
+            links_map = _safe_links_map(prof.links or {})
+            ctx["student"] = {
+                "name": prof.full_name or (getattr(current_user, "name", "") or ""),
+                "headline": prof.headline or "",
+                "summary": prof.summary or "",
+            }
+            ctx["contact"] = links_map
+            ctx["imported"] = True
+            flash("Imported from your Profile Portal.", "success")
+            return render_template("portfolio/wizard.html", **ctx)
+
+        if action == "suggest":
+            if not ctx["target_role"] or not ctx["industry"]:
+                flash("Please enter both Target Role and Industry.", "warning")
+                return render_template("portfolio/wizard.html", **ctx)
+
+            is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
+            skills_list = (prof.skills if prof else []) or []
+            ctx["suggestions"] = _suggest_projects(
+                ctx["target_role"], ctx["industry"], ctx["experience_level"], skills_list, is_pro_user
             )
-            db.session.add(page)
-            db.session.commit()
+            flash("Here are your tailored project suggestions.", "success")
+            return render_template("portfolio/wizard.html", **ctx)
 
-            flash("Draft created.", "success")
-            return redirect(url_for("portfolio.edit", page_id=page.id))
-
-        except Exception as e:
-            current_app.logger.exception("Portfolio new error: %s", e)
-            try:
-                db.session.rollback()
-            except Exception:
-                pass
-            flash("Couldn’t create the draft. Please try again.", "danger")
-
-    # GET — optional preset from profile
-    profile = _get_profile()
-    prefilled = _compose_content_from_profile(profile) if preset == "profile" else ""
-    return render_template("portfolio/new.html", prefilled=prefilled)
-
-
-# ---------------------------
-# Edit draft (Pro)
-# ---------------------------
-@portfolio_bp.route("/<int:page_id>/edit", methods=["GET", "POST"], endpoint="edit")
-@login_required
-def edit(page_id):
-    # gate to Pro
-    if (current_user.subscription_status or "free").lower() != "pro":
-        flash("Portfolio builder is a Pro feature. Upgrade to continue.", "warning")
-        return redirect(url_for("billing.index"))
-
-    try:
-        page = PortfolioPage.query.filter_by(id=page_id, user_id=current_user.id).first_or_404()
-    except Exception as e:
-        current_app.logger.exception("Portfolio load error: %s", e)
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        abort(404)
-
-    if request.method == "POST":
-        title = (request.form.get("title") or "").strip() or page.title
-        content_md = request.form.get("content_md") or page.content_md
-        try:
-            # Editing a draft can be free; if you want to throttle, keep this check.
-            if not authorize_and_consume(current_user, "portfolio"):
-                flash("Daily limit reached. Try again tomorrow or top up.", "warning")
+        if action == "publish":
+            is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
+            if not is_pro_user:
+                flash("Publishing is a Pro feature. Please upgrade to continue.", "warning")
                 return redirect(url_for("billing.index"))
 
-            page.title = title
-            page.content_md = content_md
-            db.session.commit()
-            flash("Draft updated.", "success")
-            return redirect(url_for("portfolio.edit", page_id=page.id))
+            # MUST have a profile for high-quality page
+            if not prof or not (prof.full_name or current_user.name):
+                flash("Your Profile Portal is incomplete. Please set your name in Profile Portal.", "warning")
+                return redirect(url_for("settings.profile"))
 
-        except Exception as e:
-            current_app.logger.exception("Portfolio edit error: %s", e)
+            # selection
+            selected_index_raw = (request.form.get("selected_index") or "").strip()
+            if not selected_index_raw.isdigit():
+                flash("Please select a project suggestion.", "warning")
+                # Rebuild suggestions for display
+                skills_list = (prof.skills if prof else []) or []
+                ctx["suggestions"] = _suggest_projects(
+                    ctx["target_role"], ctx["industry"], ctx["experience_level"], skills_list, is_pro_user
+                )
+                return render_template("portfolio/wizard.html", **ctx)
+            sel = int(selected_index_raw)
+
+            # Rebuild suggestions (stateless server)
+            skills_list = (prof.skills if prof else []) or []
+            suggestions = _suggest_projects(
+                ctx["target_role"], ctx["industry"], ctx["experience_level"], skills_list, is_pro_user
+            )
+            if sel < 0 or sel >= len(suggestions):
+                flash("Invalid selection. Please choose one of the suggestions.", "warning")
+                ctx["suggestions"] = suggestions
+                return render_template("portfolio/wizard.html", **ctx)
+            chosen = suggestions[sel]
+
+            # Build page
+            student = {
+                "name": prof.full_name or (getattr(current_user, "name", "") or ""),
+                "headline": prof.headline or "",
+                "summary": prof.summary or "",
+            }
+            contact = _safe_links_map(prof.links or {})
+            page_md = _render_page_md(
+                student=student,
+                contact=contact,
+                skills=(prof.skills or []),
+                education=(prof.education or []),
+                experience=(prof.experience or []),
+                chosen=chosen
+            )
+
             try:
-                db.session.rollback()
-            except Exception:
-                pass
-            flash("Couldn’t update the draft. Please try again.", "danger")
+                page = PortfolioPage(
+                    user_id=current_user.id,
+                    title=f"{student['name']} — Portfolio",
+                    content_md=page_md,
+                    is_public=True,
+                    created_at=datetime.utcnow(),
+                )
+                db.session.add(page)
+                # flush first to expose DB issues immediately (e.g., schema mismatch)
+                db.session.flush()
+                db.session.commit()
+                flash("Portfolio page published! Share your link from the list below.", "success")
+                return redirect(url_for("portfolio.index"))
+            except Exception as e:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                current_app.logger.exception("Failed to publish PortfolioPage: %s", e)
+                flash("Could not publish your page. Please try again.", "error")
+                return render_template("portfolio/wizard.html", **ctx)
 
-    # Tailored suggestions (3) to help fill content
-    profile = _get_profile()
-    suggestions = _project_suggestions(profile, tier="pro")
-    return render_template("portfolio/edit.html", page=page, suggestions=suggestions)
+        # Fallback
+        return render_template("portfolio/wizard.html", **ctx)
 
-
-# ---------------------------
-# Publish (Pro ⭐ credit)
-# ---------------------------
-@portfolio_bp.route("/<int:page_id>/publish", methods=["POST"], endpoint="publish")
-@login_required
-def publish(page_id):
-    # gate to Pro coins
-    if not can_use_pro(current_user, "portfolio"):
-        flash("Publishing requires Pro ⭐ credits. Please top up or upgrade.", "warning")
-        return redirect(url_for("billing.index"))
-
-    try:
-        page = PortfolioPage.query.filter_by(id=page_id, user_id=current_user.id).first_or_404()
-        confirm = (request.form.get("confirm_publish") or "").lower() == "yes"
-        if not confirm:
-            flash("Please confirm the publish checkbox before continuing.", "warning")
-            return redirect(url_for("portfolio.edit", page_id=page.id))
-
-        page.is_public = True
-        meta = dict(page.meta_json or {})
-        meta["published_at"] = datetime.utcnow().isoformat()
-        meta["lock"] = True
-        page.meta_json = meta
-        db.session.commit()
-
-        # consume ⭐ after successful publish
-        consume_pro(current_user, "portfolio")
-
-        flash("Portfolio page published! Share your link.", "success")
-    except Exception as e:
-        current_app.logger.exception("Portfolio publish error: %s", e)
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        flash("Couldn’t publish the page. Please try again.", "danger")
-    return redirect(url_for("portfolio.index"))
+    # GET
+    return render_template("portfolio/wizard.html", **ctx)
 
 
-@portfolio_bp.route("/<int:page_id>/unpublish", methods=["POST"], endpoint="unpublish")
-@login_required
-def unpublish(page_id):
-    # Optional: keep unpublish Pro-gated or free. We'll allow unpublish without cost.
-    try:
-        page = PortfolioPage.query.filter_by(id=page_id, user_id=current_user.id).first_or_404()
-        page.is_public = False
-        meta = dict(page.meta_json or {})
-        meta["unpublished_at"] = datetime.utcnow().isoformat()
-        page.meta_json = meta
-        db.session.commit()
-        flash("Unpublished.", "info")
-    except Exception as e:
-        current_app.logger.exception("Portfolio unpublish error: %s", e)
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        flash("Couldn’t unpublish the page. Please try again.", "danger")
-    return redirect(url_for("portfolio.index"))
-
-
-# ---------------------------
-# Public view
-# ---------------------------
 @portfolio_bp.route("/view/<int:page_id>", methods=["GET"], endpoint="view")
 def view(page_id):
     try:
@@ -401,8 +334,7 @@ def view(page_id):
         if not page.is_public:
             abort(404)
         return render_template("portfolio/view.html", page=page)
-    except Exception as e:
-        current_app.logger.exception("Portfolio public view error: %s", e)
+    except Exception:
         try:
             db.session.rollback()
         except Exception:
