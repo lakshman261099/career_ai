@@ -8,7 +8,7 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-extrabold">Portfolio Wizard</h1>
-        <p class="text-white/70 text-sm">Give us context or import from your Profile. We’ll suggest projects.</p>
+        <p class="text-white/70 text-sm">Give us context or import from your Profile for suggestions. You can publish directly from your Profile + Projects.</p>
       </div>
       <div class="text-xs">
         {% if is_pro() %}
@@ -17,6 +17,20 @@
           <span class="px-2 py-1 rounded-full bg-white/10 border border-white/20">Free 🪙</span>
         {% endif %}
       </div>
+    </div>
+
+    <!-- NEW: quick publish row -->
+    <div class="mt-4 flex flex-wrap items-center gap-2">
+      <form method="POST" class="inline">
+        <input type="hidden" name="action" value="publish">
+        {% if is_pro() %}
+          <button class="btn-primary" type="submit">Publish Now (from Profile + Projects)</button>
+        {% else %}
+          <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
+        {% endif %}
+      </form>
+      <a class="underline text-xs text-white/70" href="{{ feature_paths.profile }}">Open Profile Portal →</a>
+      <span class="text-xs text-white/50">Requires: full name, headline, and at least one Project.</span>
     </div>
   </div>
 
@@ -74,24 +88,20 @@
     </aside>
   </div>
 
-  <!-- Suggestions -->
+  <!-- Suggestions (optional) -->
   {% if suggestions and suggestions|length %}
   <section class="glass-panel rounded-2xl p-6">
     <h2 class="text-lg font-semibold mb-2">Suggested Projects</h2>
-    <p class="text-xs text-white/60">Choose one to publish a full portfolio page. Free users see one suggestion; Pro sees three and can publish.</p>
+    <p class="text-xs text-white/60">Use these for ideas. Publishing uses your Profile + saved Projects.</p>
 
-    <form method="POST" id="publish-form" class="mt-4 space-y-3">
+    <!-- Kept for continuity; selection not required for Publish -->
+    <form method="POST" class="mt-4 space-y-3">
       <input type="hidden" name="action" value="publish">
-      <input type="hidden" name="target_role" value="{{ target_role }}">
-      <input type="hidden" name="industry" value="{{ industry }}">
-      <input type="hidden" name="experience_level" value="{{ experience_level }}">
-      <input type="hidden" name="selected_index" id="selected_index">
-
       <div class="space-y-3">
         {% for s in suggestions %}
           <label class="block border border-white/10 rounded-xl p-4 cursor-pointer hover:bg-white/5">
             <div class="flex items-start gap-3">
-              <input type="radio" name="which" value="{{ loop.index0 }}" onchange="document.getElementById('selected_index').value=this.value">
+              <input type="radio" name="which" value="{{ loop.index0 }}">
               <div class="flex-1">
                 <div class="font-semibold">{{ s.title }}</div>
                 <div class="text-white/70 text-sm mt-1">{{ s.why }}</div>
@@ -106,7 +116,7 @@
 
       <div class="mt-3">
         {% if is_pro() %}
-          <button class="btn-primary" type="submit" onclick="return ensureSelection()">Publish Portfolio Page ⭐</button>
+          <button class="btn-primary" type="submit">Publish Portfolio Page ⭐</button>
         {% else %}
           <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
         {% endif %}
@@ -121,15 +131,6 @@ function submitWithAction(action) {
   const f = document.getElementById('inputs-form');
   document.getElementById('action-field').value = action;
   f.submit();
-}
-function ensureSelection() {
-  const chosen = document.querySelector('input[name="which"]:checked');
-  if (!chosen) {
-    alert("Please select a project first.");
-    return false;
-  }
-  document.getElementById('selected_index').value = chosen.value;
-  return true;
 }
 </script>
 {% endblock %}

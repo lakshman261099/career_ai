@@ -7,7 +7,7 @@
   <div class="glass-panel rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
     <div>
       <h1 class="text-2xl font-extrabold tracking-tight">Your Profile Portal</h1>
-      <p class="text-white/70 text-sm">Upload your resume to auto‑fill, or edit manually. This powers Portfolio, Job Packs, Skill Mapper, and Internships.</p>
+      <p class="text-white/70 text-sm">Upload your resume to auto-fill, or edit manually. This powers Portfolio, Job Packs, Skill Mapper, and Internships.</p>
     </div>
     <div class="flex items-center gap-3 text-sm">
       <span class="px-3 py-1 rounded-full bg-white/10 border border-white/20">Plan: {{ 'Pro ⭐' if is_pro() else 'Free 🪙' }}</span>
@@ -121,14 +121,14 @@
       </div>
     </section>
 
-    <!-- Right: Upload + Edit (Pro-only page by routing) -->
+    <!-- Right: Upload + Edit + Projects (Pro-only page by routing) -->
     <section class="lg:col-span-2 space-y-6">
       <!-- Upload Card -->
       <div class="glass-panel rounded-2xl p-6">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-lg font-semibold">Resume Upload</h3>
-            <p class="text-white/70 text-sm">Upload a PDF to auto‑fill fields below. Scanning uses ⭐ Pro credits.</p>
+            <p class="text-white/70 text-sm">Upload a PDF to auto-fill fields below. Scanning uses ⭐ Pro credits.</p>
           </div>
         </div>
         <form method="post" enctype="multipart/form-data" class="mt-4">
@@ -288,6 +288,116 @@
           </div>
         </form>
       </div>
+
+      <!-- Projects (NEW) -->
+      <div class="glass-panel rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold">Projects</h3>
+          <span class="text-xs text-white/60">These appear on your published Portfolio page.</span>
+        </div>
+
+        <!-- Create -->
+        <details class="mb-4 border border-white/10 rounded-xl">
+          <summary class="cursor-pointer px-4 py-3 text-sm font-semibold">+ Add Project</summary>
+          <div class="p-4 space-y-3">
+            <form method="post">
+              <input type="hidden" name="action" value="project_new">
+              <div class="grid md:grid-cols-2 gap-3">
+                <input name="proj_title" placeholder="Title *" required class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                <input name="proj_role" placeholder="Your role (optional)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              </div>
+              <textarea name="proj_short_desc" rows="2" placeholder="Short description" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"></textarea>
+              <div class="grid md:grid-cols-2 gap-3">
+                <input name="proj_start_date" placeholder="Start (YYYY-MM or YYYY-MM-DD)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                <input name="proj_end_date" placeholder="End (YYYY-MM or YYYY-MM-DD)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              </div>
+              <input name="proj_stack" placeholder="Tech stack (comma separated)" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              <textarea name="proj_bullets" rows="3" placeholder="Impact bullets (one per line)" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"></textarea>
+
+              <div id="new-links" class="space-y-2">
+                <div class="grid md:grid-cols-2 gap-2">
+                  <input name="proj_link_labels" placeholder="Link label (e.g., GitHub)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                  <input name="proj_link_urls" placeholder="URL" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                </div>
+              </div>
+              <button type="button" class="btn-ghost text-xs mt-1" onclick="addLinkRow('new-links')">+ Add another link</button>
+
+              <div class="mt-3">
+                <button class="btn-primary" type="submit">Add Project</button>
+              </div>
+            </form>
+          </div>
+        </details>
+
+        <!-- List / Edit -->
+        {% if projects and projects|length %}
+          <ul class="space-y-3">
+            {% for p in projects %}
+            <li class="border border-white/10 rounded-xl">
+              <div class="p-4 flex items-start justify-between gap-3">
+                <div>
+                  <div class="font-semibold">{{ p.title }}</div>
+                  {% if p.short_desc %}<div class="text-white/70 text-sm">{{ p.short_desc }}</div>{% endif %}
+                  <div class="text-xs text-white/60 mt-1">
+                    {% if p.role %}<span class="mr-2">{{ p.role }}</span>{% endif %}
+                    {% if p.start_date or p.end_date %}
+                      <span>{{ p.start_date or '' }} – {{ p.end_date or 'Present' }}</span>
+                    {% endif %}
+                  </div>
+                </div>
+                <details>
+                  <summary class="btn-ghost text-xs cursor-pointer">Edit</summary>
+                  <div class="mt-3">
+                    <form method="post" class="space-y-3 px-1 pb-3">
+                      <input type="hidden" name="action" value="project_update">
+                      <input type="hidden" name="project_id" value="{{ p.id }}">
+                      <div class="grid md:grid-cols-2 gap-3">
+                        <input name="proj_title" value="{{ p.title }}" placeholder="Title *" required class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                        <input name="proj_role" value="{{ p.role or '' }}" placeholder="Your role" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                      </div>
+                      <textarea name="proj_short_desc" rows="2" placeholder="Short description" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ p.short_desc or '' }}</textarea>
+                      <div class="grid md:grid-cols-2 gap-3">
+                        <input name="proj_start_date" value="{{ p.start_date or '' }}" placeholder="Start (YYYY-MM or YYYY-MM-DD)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                        <input name="proj_end_date" value="{{ p.end_date or '' }}" placeholder="End (YYYY-MM or YYYY-MM-DD)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                      </div>
+                      <input name="proj_stack" value="{{ (p.tech_stack or []) | join(', ') }}" placeholder="Tech stack (comma separated)" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                      <textarea name="proj_bullets" rows="3" placeholder="Impact bullets (one per line)" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">{{ (p.bullets or []) | join('\n') }}</textarea>
+
+                      <div id="links-{{ p.id }}" class="space-y-2">
+                        {% for l in (p.links or []) %}
+                        <div class="grid md:grid-cols-2 gap-2">
+                          <input name="proj_link_labels" value="{{ l.label or 'Link' }}" placeholder="Link label" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                          <input name="proj_link_urls" value="{{ l.url or '' }}" placeholder="URL" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                        </div>
+                        {% endfor %}
+                        {% if not p.links or not p.links|length %}
+                        <div class="grid md:grid-cols-2 gap-2">
+                          <input name="proj_link_labels" placeholder="Link label (e.g., GitHub)" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                          <input name="proj_link_urls" placeholder="URL" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+                        </div>
+                        {% endif %}
+                      </div>
+                      <button type="button" class="btn-ghost text-xs mt-1" onclick="addLinkRow('links-{{ p.id }}')">+ Add another link</button>
+
+                      <div class="flex items-center gap-2 pt-1">
+                        <button class="btn-primary" type="submit">Save Changes</button>
+                        <form method="post" onsubmit="return confirm('Delete this project?')">
+                          <input type="hidden" name="action" value="project_delete">
+                          <input type="hidden" name="project_id" value="{{ p.id }}">
+                          <button class="btn-danger" type="submit">Delete</button>
+                        </form>
+                      </div>
+                    </form>
+                  </div>
+                </details>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-white/60 text-sm">No projects yet. Add your first project above.</p>
+        {% endif %}
+      </div>
     </section>
   </div>
 </section>
@@ -350,6 +460,14 @@ function addExperience() {
       <div class="text-right">
         <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeCard(this)">✖ Remove</button>
       </div>
+    </div>`);
+}
+function addLinkRow(containerId){
+  const el = document.getElementById(containerId);
+  el.insertAdjacentHTML('beforeend', `
+    <div class="grid md:grid-cols-2 gap-2">
+      <input name="proj_link_labels" placeholder="Link label" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+      <input name="proj_link_urls" placeholder="URL" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
     </div>`);
 }
 </script>

@@ -1,10 +1,12 @@
 # modules/portfolio/routes.py
 
 from datetime import datetime
+import uuid
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
 )
 from flask_login import login_required, current_user
+from sqlalchemy import case, inspect, text
 
 from models import db, PortfolioPage, UserProfile, Project
 
@@ -27,7 +29,6 @@ def _get_profile_safe():
 
 
 def _safe_links_map(links):
-    """Normalize links into first-class fields + custom."""
     out = {
         "email":    (links or {}).get("email", ""),
         "website":  (links or {}).get("website", ""),
@@ -45,8 +46,44 @@ def _safe_links_map(links):
     return out
 
 
+def _coerce_list(val):
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return [x for x in val if str(x).strip()]
+    if isinstance(val, str):
+        parts_nl = [p.strip() for p in val.split("\n") if p.strip()]
+        if len(parts_nl) > 1:
+            return parts_nl
+        parts_comma = [p.strip() for p in val.split(",") if p.strip()]
+        return parts_comma
+    return [str(val)]
+
+
+def _coerce_links(val):
+    out = []
+    if not val:
+        return out
+    if isinstance(val, list):
+        for item in val:
+            if isinstance(item, dict):
+                label = (item.get("label") or "Link").strip()
+                url = (item.get("url") or "").strip()
+                if url:
+                    out.append({"label": label, "url": url})
+            else:
+                s = str(item).strip()
+                if s:
+                    out.append({"label": "Link", "url": s})
+        return out
+    if isinstance(val, str):
+        s = val.strip()
+        if s:
+            out.append({"label": "Link", "url": s})
+    return out
+
+
 def _suggest_projects(role, industry, exp_level, skills_list, is_pro_user):
-    """Deterministic suggestion generator. Pro=3 ideas; Free=1."""
     role = (role or "").strip()
     industry = (industry or "").strip()
     skills = []
@@ -107,7 +144,6 @@ def _suggest_projects(role, industry, exp_level, skills_list, is_pro_user):
 
 
 def _render_full_portfolio_md(prof: UserProfile, projects: list):
-    """Render portfolio page from Profile Portal + Projects."""
     student = {
         "name": prof.full_name or (getattr(current_user, "name", "") or "Your Name"),
         "headline": prof.headline or "",
@@ -120,7 +156,6 @@ def _render_full_portfolio_md(prof: UserProfile, projects: list):
     certs = prof.certifications or []
 
     lines = []
-    # Header
     lines.append(f"# {student['name']}")
     if student["headline"]:
         lines.append(f"**{student['headline']}**")
@@ -129,7 +164,6 @@ def _render_full_portfolio_md(prof: UserProfile, projects: list):
         lines.append(student["summary"])
         lines.append("")
 
-    # Contact
     lines.append("## Contact")
     if contact.get("email"):    lines.append(f"- Email: {contact['email']}")
     if contact.get("website"):  lines.append(f"- Website: {contact['website']}")
@@ -139,7 +173,6 @@ def _render_full_portfolio_md(prof: UserProfile, projects: list):
         lines.append(f"- {k.title()}: {v}")
     lines.append("")
 
-    # Skills
     if skills:
         lines.append("## Skills")
         formatted = []
@@ -153,7 +186,6 @@ def _render_full_portfolio_md(prof: UserProfile, projects: list):
             lines.append(", ".join(formatted))
             lines.append("")
 
-    # Projects
     if projects:
         lines.append("## Projects")
         for p in projects:
@@ -168,23 +200,18 @@ def _render_full_portfolio_md(prof: UserProfile, projects: list):
                 meta_bits.append(f"{st} – {en}".strip(" –"))
             if meta_bits:
                 lines.append("*" + " · ".join(meta_bits) + "*")
-            if p.tech_stack:
-                try:
-                    lines.append(f"*Stack:* {', '.join(p.tech_stack)}")
-                except Exception:
-                    pass
-            if p.bullets:
-                for b in p.bullets:
-                    lines.append(f"- {b}")
-            if p.links:
-                for l in p.links:
-                    label = (l.get("label") or "Link") if isinstance(l, dict) else "Link"
-                    url = (l.get("url") or "") if isinstance(l, dict) else (l or "")
-                    if url:
-                        lines.append(f"- [{label}]({url})")
+            stack = _coerce_list(p.tech_stack)
+            bullets = _coerce_list(p.bullets)
+            links = _coerce_links(p.links)
+            if stack:
+                lines.append(f"*Stack:* {', '.join(stack)}")
+            for b in bullets:
+                lines.append(f"- {b}")
+            for l in links:
+                if l.get("url"):
+                    lines.append(f"- [{l.get('label') or 'Link'}]({l['url']})")
             lines.append("")
 
-    # Experience
     if experience:
         lines.append("## Experience")
         for ex in experience:
@@ -199,7 +226,6 @@ def _render_full_portfolio_md(prof: UserProfile, projects: list):
                 lines.append(f"- {b}")
             lines.append("")
 
-    # Education
     if education:
         lines.append("## Education")
         for ed in education:
@@ -212,7 +238,6 @@ def _render_full_portfolio_md(prof: UserProfile, projects: list):
                 lines.append(f"- {comp}")
         lines.append("")
 
-    # Certifications
     if certs:
         lines.append("## Certifications")
         for c in certs:
@@ -227,6 +252,43 @@ def _render_full_portfolio_md(prof: UserProfile, projects: list):
     return "\n".join(lines).strip()
 
 
+def _sqlite_safe_projects_query():
+    nulls_last = case((Project.start_date.is_(None), 1), else_=0)
+    return (Project.query
+            .filter_by(user_id=current_user.id)
+            .order_by(nulls_last, Project.start_date.desc(), Project.id.desc()))
+
+
+def _preflight_portfolio_schema():
+    """
+    Verify required tables/columns exist before we try to insert.
+    If something is missing, return a user-readable message.
+    """
+    try:
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        missing = []
+        if "portfolio_page" not in tables:
+            return "Schema error: table 'portfolio_page' is missing. Run migrations."
+        if "project" not in tables:
+            return "Schema error: table 'project' is missing. Run migrations."
+
+        # columns check (tolerant to SQLite typing)
+        pp_cols = {c["name"] for c in insp.get_columns("portfolio_page")}
+        required = {"id", "user_id", "title", "content_md", "is_public", "created_at", "meta_json"}
+        still_needed = required - pp_cols
+        if still_needed:
+            return f"Schema error: 'portfolio_page' missing columns: {', '.join(sorted(still_needed))}. Run migrations."
+
+        # dumb write test (no commit): does INSERT work syntactically?
+        with db.engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return None
+    except Exception as e:
+        current_app.logger.exception("Preflight schema check failed: %s", e)
+        return "Schema preflight failed. See server logs."
+
+
 # ---------------------------
 # Routes
 # ---------------------------
@@ -234,7 +296,6 @@ def _render_full_portfolio_md(prof: UserProfile, projects: list):
 @portfolio_bp.route("/", endpoint="index")
 @login_required
 def index():
-    """List the user's portfolio pages (drafts + published)."""
     try:
         pages = (PortfolioPage.query
                  .filter_by(user_id=current_user.id)
@@ -253,12 +314,8 @@ def index():
 @portfolio_bp.route("/wizard", methods=["GET", "POST"], endpoint="wizard")
 @login_required
 def wizard():
-    """
-    Keep Import/Suggest for UI; Publish compiles from Profile + Projects.
-    """
     prof = _get_profile_safe()
 
-    # Default ctx expected by template
     ctx = {
         "target_role": "",
         "industry": "",
@@ -275,7 +332,6 @@ def wizard():
         ctx["industry"] = (request.form.get("industry") or "").strip()
         ctx["experience_level"] = (request.form.get("experience_level") or "").strip()
 
-        # --- Import snapshot (no coins) ---
         if action == "import":
             if not prof:
                 flash("No Profile found. Pro users can set up their Profile Portal first.", "warning")
@@ -291,59 +347,71 @@ def wizard():
             flash("Imported from your Profile Portal.", "success")
             return render_template("portfolio/wizard.html", **ctx)
 
-        # --- Suggest projects (free:1, pro:3) ---
         if action == "suggest":
-            if not ctx["target_role"] or not ctx["industry"]:
-                flash("Please enter both Target Role and Industry.", "warning")
+            try:
+                if not ctx["target_role"] or not ctx["industry"]:
+                    flash("Please enter both Target Role and Industry.", "warning")
+                    return render_template("portfolio/wizard.html", **ctx)
+                is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
+                skills_list = (prof.skills if prof else []) or []
+                ctx["suggestions"] = _suggest_projects(
+                    ctx["target_role"], ctx["industry"], ctx["experience_level"], skills_list, is_pro_user
+                )
+                flash("Here are your tailored project suggestions.", "success")
                 return render_template("portfolio/wizard.html", **ctx)
-            is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
-            skills_list = (prof.skills if prof else []) or []
-            ctx["suggestions"] = _suggest_projects(
-                ctx["target_role"], ctx["industry"], ctx["experience_level"], skills_list, is_pro_user
-            )
-            flash("Here are your tailored project suggestions.", "success")
-            return render_template("portfolio/wizard.html", **ctx)
+            except Exception as e:
+                err_id = uuid.uuid4().hex[:8]
+                current_app.logger.exception("Suggest failed [%s]: %s", err_id, e)
+                flash(f"Something went wrong generating suggestions (sg-{err_id}). Try again.", "error")
+                return render_template("portfolio/wizard.html", **ctx)
 
-        # --- Publish (Pro only) — compile from Profile + Projects ---
         if action == "publish":
             is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
             if not is_pro_user:
                 flash("Publishing is a Pro feature. Please upgrade to continue.", "warning")
                 return redirect(url_for("billing.index"))
 
-            if not prof or not (prof.full_name or getattr(current_user, "name", "")):
-                flash("Your Profile Portal is incomplete. Please add your details in Profile Portal.", "warning")
+            # Preflight schema
+            schema_msg = _preflight_portfolio_schema()
+            if schema_msg:
+                flash(schema_msg, "error")
+                return render_template("portfolio/wizard.html", **ctx)
+
+            if not prof:
+                flash("Your Profile Portal is empty. Please add your details first.", "warning")
                 return redirect(url_for("settings.profile"))
 
-            # Load Projects
-            try:
-                projects = (Project.query
-                            .filter_by(user_id=current_user.id)
-                            .order_by(Project.start_date.desc().nullslast(), Project.id.desc())
-                            .all())
-            except Exception:
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
-                current_app.logger.exception("Failed loading Projects for publish")
-                projects = []
-
             missing = []
-            if not prof.headline:
+            if not (prof.full_name or getattr(current_user, "name", "")):
+                missing.append("full name")
+            if not (prof.headline or "").strip():
                 missing.append("headline")
+
+            try:
+                projects = _sqlite_safe_projects_query().all()
+            except Exception:
+                try: db.session.rollback()
+                except Exception: pass
+                current_app.logger.exception("Query projects failed during publish")
+                flash("Publish failed: couldn’t load your Projects. Please try again.", "error")
+                return render_template("portfolio/wizard.html", **ctx)
+
             if not projects:
                 missing.append("at least one Project in Profile Portal")
 
             if missing:
-                flash(
-                    f"Please complete your Profile Portal before publishing: {', '.join(missing)}.",
-                    "warning"
-                )
+                flash(f"Please complete your Profile Portal before publishing: {', '.join(missing)}.", "warning")
                 return redirect(url_for("settings.profile"))
 
-            page_md = _render_full_portfolio_md(prof, projects)
+            try:
+                page_md = _render_full_portfolio_md(prof, projects)
+            except Exception as re:
+                err_id = uuid.uuid4().hex[:8]
+                current_app.logger.exception("Render portfolio markdown failed [%s]: %s", err_id, re)
+                flash(f"Publish failed (render-{err_id}). Please check your project fields.", "error")
+                return render_template("portfolio/wizard.html", **ctx)
 
+            # ---- DB write with visible error message ----
             try:
                 page = PortfolioPage(
                     user_id=current_user.id,
@@ -358,24 +426,25 @@ def wizard():
                 flash("Portfolio page published! Share your link from the list below.", "success")
                 return redirect(url_for("portfolio.index"))
             except Exception as e:
+                err_id = uuid.uuid4().hex[:8]
                 try:
                     db.session.rollback()
                 except Exception:
                     pass
-                current_app.logger.exception("Publish failed: %s", e)
-                flash("Publish failed. Check Profile Portal fields & Projects, then try again.", "error")
+                # Extract DB error detail (always show for now so we can fix fast)
+                db_msg = getattr(getattr(e, "orig", None), "args", None)
+                db_msg = db_msg[0] if (isinstance(db_msg, (list, tuple)) and db_msg) else str(e)
+                current_app.logger.exception("Publish failed [%s]: %s", err_id, e)
+                flash(f"Publish failed (db-{err_id}). Details: {db_msg}", "error")
                 return render_template("portfolio/wizard.html", **ctx)
 
-        # Unknown action -> render
         return render_template("portfolio/wizard.html", **ctx)
 
-    # GET
     return render_template("portfolio/wizard.html", **ctx)
 
 
 @portfolio_bp.route("/view/<int:page_id>", methods=["GET"], endpoint="view")
 def view(page_id):
-    """Public view for published pages."""
     try:
         page = PortfolioPage.query.get_or_404(page_id)
         if not page.is_public:
