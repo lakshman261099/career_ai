@@ -1,0 +1,16 @@
+{% extends "public_base.html" %}
+{% block title %}{{ page.title }} — Portfolio{% endblock %}
+{% block ogt %}{{ page.title }} — Portfolio{% endblock %}
+{% block og_description %}Public portfolio page{% endblock %}
+{% block meta_description %}{{ (page.title or 'Portfolio') ~ ' — public portfolio page' }}{% endblock %}
+
+{% block content %}
+  <section class="hero-card">
+    <div class="title">{{ page.title }}</div>
+    <div class="subtitle">Public portfolio page</div>
+  </section>
+
+  <article class="content-card">
+    <div class="prose whitespace-pre-wrap">{{ page.content_md }}</div>
+  </article>
+{% endblock %}

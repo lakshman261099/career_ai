@@ -260,27 +260,20 @@ def _sqlite_safe_projects_query():
 
 
 def _preflight_portfolio_schema():
-    """
-    Verify required tables/columns exist before we try to insert.
-    If something is missing, return a user-readable message.
-    """
     try:
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
-        missing = []
         if "portfolio_page" not in tables:
             return "Schema error: table 'portfolio_page' is missing. Run migrations."
         if "project" not in tables:
             return "Schema error: table 'project' is missing. Run migrations."
 
-        # columns check (tolerant to SQLite typing)
         pp_cols = {c["name"] for c in insp.get_columns("portfolio_page")}
         required = {"id", "user_id", "title", "content_md", "is_public", "created_at", "meta_json"}
         still_needed = required - pp_cols
         if still_needed:
             return f"Schema error: 'portfolio_page' missing columns: {', '.join(sorted(still_needed))}. Run migrations."
 
-        # dumb write test (no commit): does INSERT work syntactically?
         with db.engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return None
@@ -371,7 +364,6 @@ def wizard():
                 flash("Publishing is a Pro feature. Please upgrade to continue.", "warning")
                 return redirect(url_for("billing.index"))
 
-            # Preflight schema
             schema_msg = _preflight_portfolio_schema()
             if schema_msg:
                 flash(schema_msg, "error")
@@ -411,7 +403,6 @@ def wizard():
                 flash(f"Publish failed (render-{err_id}). Please check your project fields.", "error")
                 return render_template("portfolio/wizard.html", **ctx)
 
-            # ---- DB write with visible error message ----
             try:
                 page = PortfolioPage(
                     user_id=current_user.id,
@@ -431,7 +422,6 @@ def wizard():
                     db.session.rollback()
                 except Exception:
                     pass
-                # Extract DB error detail (always show for now so we can fix fast)
                 db_msg = getattr(getattr(e, "orig", None), "args", None)
                 db_msg = db_msg[0] if (isinstance(db_msg, (list, tuple)) and db_msg) else str(e)
                 current_app.logger.exception("Publish failed [%s]: %s", err_id, e)
@@ -445,14 +435,16 @@ def wizard():
 
 @portfolio_bp.route("/view/<int:page_id>", methods=["GET"], endpoint="view")
 def view(page_id):
-    try:
-        page = PortfolioPage.query.get_or_404(page_id)
-        if not page.is_public:
-            abort(404)
-        return render_template("portfolio/view.html", page=page)
-    except Exception:
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
+    """Public view for published pages (minimal public chrome)."""
+    page = PortfolioPage.query.get_or_404(page_id)
+    if not page.is_public:
         abort(404)
+
+    # IMPORTANT: blueprint template_folder already points to templates/portfolio,
+    # so render_template MUST USE the filename only, NOT "portfolio/...".
+    try:
+        return render_template("public_view.html", page=page)
+    except Exception as e:
+        current_app.logger.exception("Public portfolio render failed: %s", e)
+        # Fallback to the legacy template in the same folder (still no 'portfolio/' prefix)
+        return render_template("view.html", page=page)
