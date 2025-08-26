@@ -3,7 +3,7 @@
 from datetime import datetime
 import uuid
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
+    Blueprint, render_template, request, redirect, url_for, flash, abort, current_app, render_template_string
 )
 from flask_login import login_required, current_user
 from sqlalchemy import case, inspect, text
@@ -282,6 +282,41 @@ def _preflight_portfolio_schema():
         return "Schema preflight failed. See server logs."
 
 
+def _md_to_html(md_text: str) -> str:
+    """Render Markdown to HTML, sanitize, and make links safe."""
+    text = md_text or ""
+    html = text
+    try:
+        import markdown  # python-markdown
+        html = markdown.markdown(
+            text,
+            extensions=["extra", "sane_lists", "smarty", "tables", "toc"]
+        )
+    except Exception:
+        # Fallback: escape + keep line breaks
+        html = (text.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace("\n", "<br>"))
+
+    # Sanitize (if bleach available)
+    try:
+        import bleach
+        allowed_tags = set(bleach.sanitizer.ALLOWED_TAGS) | {
+            "p", "pre", "code", "h1", "h2", "h3", "h4",
+            "ul", "ol", "li", "hr", "br", "blockquote", "strong", "em", "table",
+            "thead", "tbody", "tr", "th", "td", "a"
+        }
+        allowed_attrs = {"a": ["href", "title", "rel", "target"]}
+        html = bleach.clean(html, tags=allowed_tags, attributes=allowed_attrs, strip=True)
+        # Ensure links open in new tab + safe rel
+        html = html.replace("<a ", '<a target="_blank" rel="noopener nofollow" ')
+    except Exception:
+        pass
+
+    return html
+
+
 # ---------------------------
 # Routes
 # ---------------------------
@@ -435,16 +470,17 @@ def wizard():
 
 @portfolio_bp.route("/view/<int:page_id>", methods=["GET"], endpoint="view")
 def view(page_id):
-    """Public view for published pages (minimal public chrome)."""
+    """Public view for published pages (minimal public chrome, Markdown rendered)."""
     page = PortfolioPage.query.get_or_404(page_id)
     if not page.is_public:
         abort(404)
 
-    # IMPORTANT: blueprint template_folder already points to templates/portfolio,
-    # so render_template MUST USE the filename only, NOT "portfolio/...".
     try:
-        return render_template("public_view.html", page=page)
+        rendered = _md_to_html(page.content_md)
+        # IMPORTANT: blueprint uses templates/portfolio as base, so filename only:
+        return render_template("public_view.html", page=page, page_html=rendered)
     except Exception as e:
         current_app.logger.exception("Public portfolio render failed: %s", e)
-        # Fallback to the legacy template in the same folder (still no 'portfolio/' prefix)
-        return render_template("view.html", page=page)
+        # fallback to legacy template, still with rendered HTML
+        rendered = _md_to_html(page.content_md)
+        return render_template("view.html", page=page, page_html=rendered)

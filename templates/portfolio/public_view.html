@@ -11,6 +11,6 @@
   </section>
 
   <article class="content-card">
-    <div class="prose whitespace-pre-wrap">{{ page.content_md }}</div>
+    <div class="prose">{{ page_html | safe }}</div>
   </article>
 {% endblock %}
