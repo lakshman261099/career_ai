@@ -87,7 +87,7 @@ class User(UserMixin, db.Model):
 
 
 # ---------------------------------------------------------------------
-# Hiring‑Manager style editable Profile (1–1 with User)
+# Hiring-Manager style editable Profile (1–1 with User)
 # ---------------------------------------------------------------------
 class UserProfile(db.Model):
     __tablename__ = "user_profile"
@@ -124,6 +124,38 @@ class UserProfile(db.Model):
 
     def __repr__(self):
         return f"<UserProfile {self.id} u={self.user_id}>"
+
+
+# ---------------------------------------------------------------------
+# NEW: Projects (stored in Profile Portal; used by Portfolio Publish)
+# ---------------------------------------------------------------------
+class Project(db.Model):
+    __tablename__ = "project"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True, nullable=False
+    )
+
+    # Core project fields
+    title = db.Column(db.String(200), nullable=False)
+    short_desc = db.Column(db.String(500), nullable=True)
+    bullets = db.Column(db.JSON, default=list)       # ["Did X", "Improved Y by Z%"]
+    tech_stack = db.Column(db.JSON, default=list)     # ["Flask","Postgres","Docker"]
+    role = db.Column(db.String(120), nullable=True)
+    start_date = db.Column(db.Date, nullable=True)
+    end_date = db.Column(db.Date, nullable=True)
+    links = db.Column(db.JSON, default=list)          # [{"label":"GitHub","url":"..."}]
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = db.relationship("User", backref=db.backref("projects", lazy=True, cascade="all, delete-orphan"))
+
+    def __repr__(self):
+        return f"<Project {self.id} u={self.user_id} {self.title[:30]}>"
 
 
 # ---------------------------------------------------------------------

@@ -1,10 +1,14 @@
+# modules/settings/routes.py
+
 import os, re, json
-from datetime import datetime
+from datetime import datetime, date
+from datetime import datetime as dt
+from datetime import date as ddate
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
-from models import db, ResumeAsset, UserProfile
+from models import db, ResumeAsset, UserProfile, Project
 
 settings_bp = Blueprint("settings", __name__, template_folder="../../templates/settings")
 
@@ -85,13 +89,14 @@ def _normalize_experience(raw):
     return out
 
 
-def _build_view(prof: UserProfile):
+def _build_view(prof: UserProfile, projects: list):
     return dict(
         skills=_normalize_skills(prof.skills or []),
         education=_normalize_education(prof.education or []),
         certifications=_normalize_certs(prof.certifications or []),
         links=_normalize_links(prof.links or {}),
         experience=_normalize_experience(prof.experience or []),
+        projects=projects,
     )
 
 
@@ -107,6 +112,80 @@ def _ensure_profile():
         current_app.logger.exception("ensure_profile failed")
         db.session.rollback()
         return None
+
+
+def _try_parse_date(val: str):
+    """Accept YYYY-MM-DD or YYYY-MM; return date or None."""
+    if not val:
+        return None
+    s = val.strip()
+    for fmt in ("%Y-%m-%d", "%Y-%m"):
+        try:
+            if fmt == "%Y-%m":
+                return ddate.fromisoformat(s + "-01")
+            return ddate.fromisoformat(s)
+        except Exception:
+            try:
+                return dt.strptime(s, fmt).date()
+            except Exception:
+                continue
+    return None
+
+
+def _parse_project_payload(data):
+    """Parse form or JSON payload into Project fields dict."""
+    title = (data.get("title") or data.get("proj_title") or "").strip()
+    if not title:
+        return None, "Project title is required."
+
+    short_desc = (data.get("short_desc") or data.get("proj_short_desc") or "").strip() or None
+    role = (data.get("role") or data.get("proj_role") or "").strip() or None
+
+    start_raw = (data.get("start_date") or data.get("proj_start_date") or "").strip()
+    end_raw   = (data.get("end_date") or data.get("proj_end_date") or "").strip()
+    start_date = _try_parse_date(start_raw)
+    end_date   = _try_parse_date(end_raw)
+
+    # tech_stack: comma-separated or list
+    ts = data.get("tech_stack") or data.get("proj_stack")
+    if isinstance(ts, str):
+        tech_stack = [t.strip() for t in ts.split(",") if t.strip()]
+    elif isinstance(ts, list):
+        tech_stack = [str(t).strip() for t in ts if str(t).strip()]
+    else:
+        tech_stack = []
+
+    # bullets: newline or list
+    br = data.get("bullets") or data.get("proj_bullets")
+    if isinstance(br, str):
+        bullets = [b.strip() for b in br.split("\n") if b.strip()]
+    elif isinstance(br, list):
+        bullets = [str(b).strip() for b in br if str(b).strip()]
+    else:
+        bullets = []
+
+    # links: pairs (label,url)
+    links = []
+    labels = data.get("link_labels") or data.get("proj_link_labels") or []
+    urls   = data.get("link_urls")   or data.get("proj_link_urls")   or []
+    if isinstance(labels, str): labels = [labels]
+    if isinstance(urls, str): urls = [urls]
+    for i in range(max(len(labels), len(urls))):
+        lab = (labels[i] if i < len(labels) else "").strip() or "Link"
+        url = (urls[i] if i < len(urls) else "").strip()
+        if url:
+            links.append({"label": lab, "url": url})
+
+    return {
+        "title": title,
+        "short_desc": short_desc,
+        "role": role,
+        "start_date": start_date,
+        "end_date": end_date,
+        "tech_stack": tech_stack,
+        "bullets": bullets,
+        "links": links,
+    }, None
 
 
 # ---------------------------
@@ -145,12 +224,12 @@ def index():
 
 
 # ---------------------------
-# Profile Portal (Pro only)
+# Profile Portal (Pro only) + Projects CRUD
 # ---------------------------
 @settings_bp.route("/profile", methods=["GET", "POST"], endpoint="profile")
 @login_required
 def profile():
-    # ✅ HARD GATE: Free → Pricing
+    # ✅ HARD GATE: Pro only (per your existing rule)
     if getattr(current_user, "subscription_status", "free") != "pro":
         flash("Profile Portal is a Pro feature. Upgrade to unlock auto-scan and editing.", "warning")
         return redirect(url_for("billing.index"))
@@ -160,10 +239,20 @@ def profile():
         flash("Could not load your profile. Please reload.", "error")
         return redirect(url_for("billing.index"))
 
+    # Projects list for this user
+    try:
+        projects = (Project.query
+                    .filter_by(user_id=current_user.id)
+                    .order_by(Project.start_date.desc().nullslast(), Project.id.desc())
+                    .all())
+    except Exception:
+        current_app.logger.exception("Failed loading projects")
+        projects = []
+
     if request.method == "POST":
         action = (request.form.get("action") or "").lower()
 
-        # Upload resume
+        # Upload resume (Pro resume upload stays as-is)
         if action == "upload":
             file = request.files.get("file")
             if not file or not file.filename:
@@ -185,7 +274,7 @@ def profile():
                 db.session.rollback()
                 flash("Could not save resume file.", "error")
 
-        # Save profile edits
+        # Save profile edits (identity + links + skills + education + certs + experience)
         if action == "save":
             try:
                 prof.full_name = (request.form.get("full_name") or "").strip() or prof.full_name
@@ -269,6 +358,63 @@ def profile():
                 db.session.rollback()
                 flash("Could not save profile. Please try again.", "error")
 
+        # Create a new Project
+        if action == "project_new":
+            payload = request.get_json(silent=True) or request.form
+            data, err = _parse_project_payload(payload)
+            if err:
+                flash(err, "error")
+                return redirect(url_for("settings.profile"))
+            try:
+                p = Project(user_id=current_user.id, **data)
+                db.session.add(p)
+                db.session.commit()
+                flash("Project added.", "success")
+            except Exception:
+                current_app.logger.exception("Failed creating project")
+                db.session.rollback()
+                flash("Could not add project.", "error")
+
+        # Update an existing Project
+        if action == "project_update":
+            pid_raw = (request.form.get("project_id") or (request.get_json(silent=True) or {}).get("project_id") or "").strip()
+            if not pid_raw.isdigit():
+                flash("Invalid project id.", "error")
+                return redirect(url_for("settings.profile"))
+            pid = int(pid_raw)
+            payload = request.get_json(silent=True) or request.form
+            data, err = _parse_project_payload(payload)
+            if err:
+                flash(err, "error")
+                return redirect(url_for("settings.profile"))
+            try:
+                p = Project.query.filter_by(id=pid, user_id=current_user.id).first_or_404()
+                for k, v in data.items():
+                    setattr(p, k, v)
+                db.session.commit()
+                flash("Project updated.", "success")
+            except Exception:
+                current_app.logger.exception("Failed updating project")
+                db.session.rollback()
+                flash("Could not update project.", "error")
+
+        # Delete a Project
+        if action == "project_delete":
+            pid_raw = (request.form.get("project_id") or "").strip()
+            if not pid_raw.isdigit():
+                flash("Invalid project id.", "error")
+                return redirect(url_for("settings.profile"))
+            pid = int(pid_raw)
+            try:
+                p = Project.query.filter_by(id=pid, user_id=current_user.id).first_or_404()
+                db.session.delete(p)
+                db.session.commit()
+                flash("Project deleted.", "success")
+            except Exception:
+                current_app.logger.exception("Failed deleting project")
+                db.session.rollback()
+                flash("Could not delete project.", "error")
+
         return redirect(url_for("settings.profile"))
 
     # GET
@@ -281,7 +427,7 @@ def profile():
         current_app.logger.exception("Failed fetching latest resume")
         latest_resume = None
 
-    view = _build_view(prof)
+    view = _build_view(prof, projects)
 
     return render_template(
         "settings/profile.html",
@@ -291,4 +437,6 @@ def profile():
         certifications=view["certifications"],
         links=view["links"],
         experience=view["experience"],
+        projects=view["projects"],   # <-- pass projects to the template
+        latest_resume=latest_resume,
     )

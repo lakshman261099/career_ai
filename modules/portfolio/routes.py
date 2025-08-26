@@ -6,7 +6,7 @@ from flask import (
 )
 from flask_login import login_required, current_user
 
-from models import db, PortfolioPage, UserProfile
+from models import db, PortfolioPage, UserProfile, Project
 
 portfolio_bp = Blueprint("portfolio", __name__, template_folder="../../templates/portfolio")
 
@@ -46,14 +46,15 @@ def _safe_links_map(links):
 
 
 def _suggest_projects(role, industry, exp_level, skills_list, is_pro_user):
-    """
-    Lightweight, deterministic suggestion generator using the student's inputs
-    and (optionally) profile skills. Pro gets 3 ideas; Free gets 1.
-    """
+    """Deterministic suggestion generator. Pro=3 ideas; Free=1."""
     role = (role or "").strip()
     industry = (industry or "").strip()
-    exp_level = (exp_level or "").strip()
-    skills = [s.get("name") for s in (skills_list or []) if (s.get("name") or "").strip()]
+    skills = []
+    for s in (skills_list or []):
+        if isinstance(s, dict) and (s.get("name") or "").strip():
+            skills.append(s["name"].strip())
+        elif isinstance(s, str) and s.strip():
+            skills.append(s.strip())
 
     def mk(title, why, outcomes, stack):
         return {
@@ -70,53 +71,65 @@ def _suggest_projects(role, industry, exp_level, skills_list, is_pro_user):
         }
 
     base_stack = skills[:6] if skills else ["Python", "SQL", "Git"]
-    ideas = []
-
-    ideas.append(mk(
-        f"{role or 'Portfolio'} Project in {industry or 'your domain'}",
-        f"Directly aligns with {role or 'your target role'} within {industry or 'your chosen industry'}.",
-        [
-            f"Designed and shipped a {industry or 'domain'}‑focused {role or 'project'} aligned to hiring signals",
-            "Planned milestones and hit delivery dates",
-            "Built clean, testable components with CI",
-        ],
-        base_stack
-    ))
-    ideas.append(mk(
-        f"{industry or 'Industry'} KPI & Insights Dashboard",
-        "Proves you can convert business questions into measurable metrics.",
-        [
-            "Implemented data pipeline + dashboard for KPIs",
-            "Automated refresh & alerting on thresholds",
-            "Drove X% improvement in a key KPI via insights",
-        ],
-        list({*base_stack, "Pandas", "Matplotlib", "Streamlit"})
-    ))
-    ideas.append(mk(
-        f"{role or 'Engineer'} Systems Integration Mini‑Platform",
-        "Highlights systems thinking and integration quality.",
-        [
-            "Designed modular architecture with clear contracts",
-            "Instrumented telemetry; validated under load",
-            "Documented trade‑offs & rollback strategy",
-        ],
-        list({*base_stack, "Docker", "FastAPI"})
-    ))
-
+    ideas = [
+        mk(
+            f"{role or 'Portfolio'} Project in {industry or 'your domain'}",
+            f"Directly aligns with {role or 'your target role'} within {industry or 'your chosen industry'}.",
+            [
+                f"Designed and shipped a {industry or 'domain'}-focused {role or 'project'} aligned to hiring signals",
+                "Planned milestones and hit delivery dates",
+                "Built clean, testable components with CI",
+            ],
+            base_stack,
+        ),
+        mk(
+            f"{industry or 'Industry'} KPI & Insights Dashboard",
+            "Proves you can convert business questions into measurable metrics.",
+            [
+                "Implemented data pipeline + dashboard for KPIs",
+                "Automated refresh & alerting on thresholds",
+                "Drove X% improvement in a key KPI via insights",
+            ],
+            list({*base_stack, "Pandas", "Matplotlib", "Streamlit"}),
+        ),
+        mk(
+            f"{role or 'Engineer'} Systems Integration Mini-Platform",
+            "Highlights systems thinking and integration quality.",
+            [
+                "Designed modular architecture with clear contracts",
+                "Instrumented telemetry; validated under load",
+                "Documented trade-offs & rollback strategy",
+            ],
+            list({*base_stack, "Docker", "FastAPI"}),
+        ),
+    ]
     return ideas[:3] if is_pro_user else ideas[:1]
 
 
-def _render_page_md(student, contact, skills, education, experience, chosen):
-    """Builds the final markdown for the public portfolio page."""
+def _render_full_portfolio_md(prof: UserProfile, projects: list):
+    """Render portfolio page from Profile Portal + Projects."""
+    student = {
+        "name": prof.full_name or (getattr(current_user, "name", "") or "Your Name"),
+        "headline": prof.headline or "",
+        "summary": prof.summary or "",
+    }
+    contact = _safe_links_map(prof.links or {})
+    skills = prof.skills or []
+    education = prof.education or []
+    experience = prof.experience or []
+    certs = prof.certifications or []
+
     lines = []
-    lines.append(f"# {student.get('name','Your Name')}")
-    if student.get("headline"):
+    # Header
+    lines.append(f"# {student['name']}")
+    if student["headline"]:
         lines.append(f"**{student['headline']}**")
     lines.append("")
-    if student.get("summary"):
+    if student["summary"]:
         lines.append(student["summary"])
         lines.append("")
 
+    # Contact
     lines.append("## Contact")
     if contact.get("email"):    lines.append(f"- Email: {contact['email']}")
     if contact.get("website"):  lines.append(f"- Website: {contact['website']}")
@@ -126,13 +139,67 @@ def _render_page_md(student, contact, skills, education, experience, chosen):
         lines.append(f"- {k.title()}: {v}")
     lines.append("")
 
+    # Skills
     if skills:
         lines.append("## Skills")
-        s = [f"{s['name']} ({int(s.get('level',3))}/5)" for s in skills if s.get("name")]
-        if s:
-            lines.append(", ".join(s))
+        formatted = []
+        for s in skills:
+            if isinstance(s, dict) and s.get("name"):
+                lvl = s.get("level")
+                formatted.append(f"{s['name']} ({int(lvl)}/5)" if lvl else s["name"])
+            elif isinstance(s, str):
+                formatted.append(s)
+        if formatted:
+            lines.append(", ".join(formatted))
             lines.append("")
 
+    # Projects
+    if projects:
+        lines.append("## Projects")
+        for p in projects:
+            lines.append(f"### {p.title}")
+            if p.short_desc:
+                lines.append(p.short_desc)
+            meta_bits = []
+            if p.role: meta_bits.append(p.role)
+            if p.start_date or p.end_date:
+                st = p.start_date.isoformat() if p.start_date else ""
+                en = p.end_date.isoformat() if p.end_date else "Present"
+                meta_bits.append(f"{st} – {en}".strip(" –"))
+            if meta_bits:
+                lines.append("*" + " · ".join(meta_bits) + "*")
+            if p.tech_stack:
+                try:
+                    lines.append(f"*Stack:* {', '.join(p.tech_stack)}")
+                except Exception:
+                    pass
+            if p.bullets:
+                for b in p.bullets:
+                    lines.append(f"- {b}")
+            if p.links:
+                for l in p.links:
+                    label = (l.get("label") or "Link") if isinstance(l, dict) else "Link"
+                    url = (l.get("url") or "") if isinstance(l, dict) else (l or "")
+                    if url:
+                        lines.append(f"- [{label}]({url})")
+            lines.append("")
+
+    # Experience
+    if experience:
+        lines.append("## Experience")
+        for ex in experience:
+            role = (ex.get("role") or "").strip()
+            comp = (ex.get("company") or "").strip()
+            st   = (ex.get("start") or "").strip()
+            en   = (ex.get("end") or "Present").strip()
+            header = " · ".join([p for p in [comp, f"{st} – {en}"] if p])
+            if role: lines.append(f"### {role}")
+            if header: lines.append(header)
+            for b in (ex.get("bullets") or []):
+                lines.append(f"- {b}")
+            lines.append("")
+
+    # Education
     if education:
         lines.append("## Education")
         for ed in education:
@@ -145,38 +212,16 @@ def _render_page_md(student, contact, skills, education, experience, chosen):
                 lines.append(f"- {comp}")
         lines.append("")
 
-    if experience:
-        lines.append("## Experience")
-        for ex in experience:
-            role = ex.get("role") or ""
-            comp = ex.get("company") or ""
-            st   = ex.get("start") or ""
-            en   = ex.get("end") or "Present"
-            header = " · ".join([p for p in [comp, f"{st} – {en}"] if p])
-            if role:
-                lines.append(f"### {role}")
-            if header:
-                lines.append(header)
-            for b in (ex.get("bullets") or []):
-                lines.append(f"- {b}")
-            lines.append("")
-    lines.append("")
-
-    if chosen:
-        lines.append("## Highlight Project")
-        lines.append(f"### {chosen.get('title','Selected Project')}")
-        if chosen.get("why"):
-            lines.append(f"*Why this matters:* {chosen['why']}")
-        if chosen.get("stack"):
-            lines.append(f"*Stack:* {', '.join(chosen['stack'])}")
-        lines.append("")
-        lines.append("**What you’ll build:**")
-        for w in (chosen.get("what") or []):
-            lines.append(f"- {w}")
-        lines.append("")
-        lines.append("**Resume bullets you can claim:**")
-        for r in (chosen.get("resume_bullets") or []):
-            lines.append(f"- {r}")
+    # Certifications
+    if certs:
+        lines.append("## Certifications")
+        for c in certs:
+            if isinstance(c, dict):
+                nm = c.get("name") or ""
+                yr = c.get("year")
+                lines.append(f"- {nm} ({yr})" if yr else f"- {nm}")
+            else:
+                lines.append(f"- {c}")
         lines.append("")
 
     return "\n".join(lines).strip()
@@ -209,11 +254,11 @@ def index():
 @login_required
 def wizard():
     """
-    Unified flow (Free & Pro):
-      1) Ask inputs OR import from Profile Portal.
-      2) Generate suggestions (1 for Free, 3 for Pro).
-      3) Pro can select and publish a full page (requires Profile Portal data).
+    Keep Import/Suggest for UI; Publish compiles from Profile + Projects.
     """
+    prof = _get_profile_safe()
+
+    # Default ctx expected by template
     ctx = {
         "target_role": "",
         "industry": "",
@@ -224,20 +269,17 @@ def wizard():
         "student": {"name": "", "headline": "", "summary": ""},
     }
 
-    prof = _get_profile_safe()
-
     if request.method == "POST":
-        action = (request.form.get("action") or "").strip()
+        action = (request.form.get("action") or "").strip().lower()
         ctx["target_role"] = (request.form.get("target_role") or "").strip()
         ctx["industry"] = (request.form.get("industry") or "").strip()
         ctx["experience_level"] = (request.form.get("experience_level") or "").strip()
 
-        # --- Import profile data into the form (no coins consumed) ---
+        # --- Import snapshot (no coins) ---
         if action == "import":
             if not prof:
                 flash("No Profile found. Pro users can set up their Profile Portal first.", "warning")
                 return render_template("portfolio/wizard.html", **ctx)
-
             links_map = _safe_links_map(prof.links or {})
             ctx["student"] = {
                 "name": prof.full_name or (getattr(current_user, "name", "") or ""),
@@ -249,12 +291,11 @@ def wizard():
             flash("Imported from your Profile Portal.", "success")
             return render_template("portfolio/wizard.html", **ctx)
 
-        # --- Generate suggestions (based on inputs + profile skills if present) ---
+        # --- Suggest projects (free:1, pro:3) ---
         if action == "suggest":
             if not ctx["target_role"] or not ctx["industry"]:
                 flash("Please enter both Target Role and Industry.", "warning")
                 return render_template("portfolio/wizard.html", **ctx)
-
             is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
             skills_list = (prof.skills if prof else []) or []
             ctx["suggestions"] = _suggest_projects(
@@ -263,65 +304,56 @@ def wizard():
             flash("Here are your tailored project suggestions.", "success")
             return render_template("portfolio/wizard.html", **ctx)
 
-        # --- Publish (Pro only) ---
+        # --- Publish (Pro only) — compile from Profile + Projects ---
         if action == "publish":
             is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
             if not is_pro_user:
                 flash("Publishing is a Pro feature. Please upgrade to continue.", "warning")
                 return redirect(url_for("billing.index"))
 
-            # MUST have profile basics for a quality page
             if not prof or not (prof.full_name or getattr(current_user, "name", "")):
                 flash("Your Profile Portal is incomplete. Please add your details in Profile Portal.", "warning")
                 return redirect(url_for("settings.profile"))
 
-            selected_index_raw = (request.form.get("selected_index") or "").strip()
-            if not selected_index_raw.isdigit():
-                flash("Please select a project suggestion.", "warning")
-                # Rebuild suggestions for display
-                skills_list = (prof.skills if prof else []) or []
-                ctx["suggestions"] = _suggest_projects(
-                    ctx["target_role"], ctx["industry"], ctx["experience_level"], skills_list, is_pro_user
+            # Load Projects
+            try:
+                projects = (Project.query
+                            .filter_by(user_id=current_user.id)
+                            .order_by(Project.start_date.desc().nullslast(), Project.id.desc())
+                            .all())
+            except Exception:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                current_app.logger.exception("Failed loading Projects for publish")
+                projects = []
+
+            missing = []
+            if not prof.headline:
+                missing.append("headline")
+            if not projects:
+                missing.append("at least one Project in Profile Portal")
+
+            if missing:
+                flash(
+                    f"Please complete your Profile Portal before publishing: {', '.join(missing)}.",
+                    "warning"
                 )
-                return render_template("portfolio/wizard.html", **ctx)
-            sel = int(selected_index_raw)
+                return redirect(url_for("settings.profile"))
 
-            # Rebuild suggestions (stateless servers)
-            skills_list = (prof.skills if prof else []) or []
-            suggestions = _suggest_projects(
-                ctx["target_role"], ctx["industry"], ctx["experience_level"], skills_list, is_pro_user
-            )
-            if sel < 0 or sel >= len(suggestions):
-                flash("Invalid selection. Please choose one of the suggestions.", "warning")
-                ctx["suggestions"] = suggestions
-                return render_template("portfolio/wizard.html", **ctx)
-            chosen = suggestions[sel]
-
-            student = {
-                "name": prof.full_name or (getattr(current_user, "name", "") or ""),
-                "headline": prof.headline or "",
-                "summary": prof.summary or "",
-            }
-            contact = _safe_links_map(prof.links or {})
-            page_md = _render_page_md(
-                student=student,
-                contact=contact,
-                skills=(prof.skills or []),
-                education=(prof.education or []),
-                experience=(prof.experience or []),
-                chosen=chosen
-            )
+            page_md = _render_full_portfolio_md(prof, projects)
 
             try:
                 page = PortfolioPage(
                     user_id=current_user.id,
-                    title=f"{student['name']} — Portfolio",
+                    title=f"{prof.full_name or current_user.name} — Portfolio",
                     content_md=page_md,
                     is_public=True,
                     created_at=datetime.utcnow(),
                 )
                 db.session.add(page)
-                db.session.flush()  # catch schema issues early
+                db.session.flush()
                 db.session.commit()
                 flash("Portfolio page published! Share your link from the list below.", "success")
                 return redirect(url_for("portfolio.index"))
@@ -330,11 +362,11 @@ def wizard():
                     db.session.rollback()
                 except Exception:
                     pass
-                current_app.logger.exception("Failed to publish PortfolioPage: %s", e)
-                flash("Could not publish your page. Please try again.", "error")
+                current_app.logger.exception("Publish failed: %s", e)
+                flash("Publish failed. Check Profile Portal fields & Projects, then try again.", "error")
                 return render_template("portfolio/wizard.html", **ctx)
 
-        # Fallback (unknown action)
+        # Unknown action -> render
         return render_template("portfolio/wizard.html", **ctx)
 
     # GET
