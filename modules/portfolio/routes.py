@@ -3,12 +3,13 @@
 from datetime import datetime
 import uuid
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, abort, current_app, render_template_string
+    Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
 )
 from flask_login import login_required, current_user
 from sqlalchemy import case, inspect, text
 
 from models import db, PortfolioPage, UserProfile, Project
+from modules.common.ai import generate_project_suggestions  # <-- use new AI entrypoint
 
 portfolio_bp = Blueprint("portfolio", __name__, template_folder="../../templates/portfolio")
 
@@ -81,66 +82,6 @@ def _coerce_links(val):
         if s:
             out.append({"label": "Link", "url": s})
     return out
-
-
-def _suggest_projects(role, industry, exp_level, skills_list, is_pro_user):
-    role = (role or "").strip()
-    industry = (industry or "").strip()
-    skills = []
-    for s in (skills_list or []):
-        if isinstance(s, dict) and (s.get("name") or "").strip():
-            skills.append(s["name"].strip())
-        elif isinstance(s, str) and s.strip():
-            skills.append(s.strip())
-
-    def mk(title, why, outcomes, stack):
-        return {
-            "title": title,
-            "why": why,
-            "what": [
-                "Define scope and success metrics",
-                "Ship MVP in milestones with a changelog",
-                "Add tests, telemetry, and docs",
-                "Capture before/after impact",
-            ],
-            "resume_bullets": outcomes,
-            "stack": stack,
-        }
-
-    base_stack = skills[:6] if skills else ["Python", "SQL", "Git"]
-    ideas = [
-        mk(
-            f"{role or 'Portfolio'} Project in {industry or 'your domain'}",
-            f"Directly aligns with {role or 'your target role'} within {industry or 'your chosen industry'}.",
-            [
-                f"Designed and shipped a {industry or 'domain'}-focused {role or 'project'} aligned to hiring signals",
-                "Planned milestones and hit delivery dates",
-                "Built clean, testable components with CI",
-            ],
-            base_stack,
-        ),
-        mk(
-            f"{industry or 'Industry'} KPI & Insights Dashboard",
-            "Proves you can convert business questions into measurable metrics.",
-            [
-                "Implemented data pipeline + dashboard for KPIs",
-                "Automated refresh & alerting on thresholds",
-                "Drove X% improvement in a key KPI via insights",
-            ],
-            list({*base_stack, "Pandas", "Matplotlib", "Streamlit"}),
-        ),
-        mk(
-            f"{role or 'Engineer'} Systems Integration Mini-Platform",
-            "Highlights systems thinking and integration quality.",
-            [
-                "Designed modular architecture with clear contracts",
-                "Instrumented telemetry; validated under load",
-                "Documented trade-offs & rollback strategy",
-            ],
-            list({*base_stack, "Docker", "FastAPI"}),
-        ),
-    ]
-    return ideas[:3] if is_pro_user else ideas[:1]
 
 
 def _render_full_portfolio_md(prof: UserProfile, projects: list):
@@ -260,6 +201,9 @@ def _sqlite_safe_projects_query():
 
 
 def _preflight_portfolio_schema():
+    """
+    Verify required tables/columns exist before we try to insert.
+    """
     try:
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
@@ -267,13 +211,11 @@ def _preflight_portfolio_schema():
             return "Schema error: table 'portfolio_page' is missing. Run migrations."
         if "project" not in tables:
             return "Schema error: table 'project' is missing. Run migrations."
-
         pp_cols = {c["name"] for c in insp.get_columns("portfolio_page")}
         required = {"id", "user_id", "title", "content_md", "is_public", "created_at", "meta_json"}
         still_needed = required - pp_cols
         if still_needed:
             return f"Schema error: 'portfolio_page' missing columns: {', '.join(sorted(still_needed))}. Run migrations."
-
         with db.engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return None
@@ -283,37 +225,26 @@ def _preflight_portfolio_schema():
 
 
 def _md_to_html(md_text: str) -> str:
-    """Render Markdown to HTML, sanitize, and make links safe."""
     text = md_text or ""
     html = text
     try:
-        import markdown  # python-markdown
-        html = markdown.markdown(
-            text,
-            extensions=["extra", "sane_lists", "smarty", "tables", "toc"]
-        )
+        import markdown
+        html = markdown.markdown(text, extensions=["extra", "sane_lists", "smarty", "tables", "toc"])
     except Exception:
-        # Fallback: escape + keep line breaks
         html = (text.replace("&", "&amp;")
                     .replace("<", "&lt;")
                     .replace(">", "&gt;")
                     .replace("\n", "<br>"))
-
-    # Sanitize (if bleach available)
     try:
         import bleach
-        allowed_tags = set(bleach.sanitizer.ALLOWED_TAGS) | {
-            "p", "pre", "code", "h1", "h2", "h3", "h4",
-            "ul", "ol", "li", "hr", "br", "blockquote", "strong", "em", "table",
-            "thead", "tbody", "tr", "th", "td", "a"
+        allowed = set(bleach.sanitizer.ALLOWED_TAGS) | {
+            "p","pre","code","h1","h2","h3","h4","ul","ol","li","hr","br","blockquote",
+            "strong","em","table","thead","tbody","tr","th","td","a"
         }
-        allowed_attrs = {"a": ["href", "title", "rel", "target"]}
-        html = bleach.clean(html, tags=allowed_tags, attributes=allowed_attrs, strip=True)
-        # Ensure links open in new tab + safe rel
+        html = bleach.clean(html, tags=allowed, attributes={"a":["href","title","rel","target"]}, strip=True)
         html = html.replace("<a ", '<a target="_blank" rel="noopener nofollow" ')
     except Exception:
         pass
-
     return html
 
 
@@ -382,10 +313,13 @@ def wizard():
                     return render_template("portfolio/wizard.html", **ctx)
                 is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
                 skills_list = (prof.skills if prof else []) or []
-                ctx["suggestions"] = _suggest_projects(
+
+                # 🔗 AI call (Free → 1 idea, Pro → 3 ideas, prompt differs by tier)
+                ctx["suggestions"] = generate_project_suggestions(
                     ctx["target_role"], ctx["industry"], ctx["experience_level"], skills_list, is_pro_user
                 )
-                flash("Here are your tailored project suggestions.", "success")
+
+                flash("Here are your AI project suggestions.", "success")
                 return render_template("portfolio/wizard.html", **ctx)
             except Exception as e:
                 err_id = uuid.uuid4().hex[:8]
@@ -477,10 +411,8 @@ def view(page_id):
 
     try:
         rendered = _md_to_html(page.content_md)
-        # IMPORTANT: blueprint uses templates/portfolio as base, so filename only:
         return render_template("public_view.html", page=page, page_html=rendered)
     except Exception as e:
         current_app.logger.exception("Public portfolio render failed: %s", e)
-        # fallback to legacy template, still with rendered HTML
         rendered = _md_to_html(page.content_md)
         return render_template("view.html", page=page, page_html=rendered)
