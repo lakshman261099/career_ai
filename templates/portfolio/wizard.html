@@ -8,7 +8,9 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-extrabold">Portfolio Wizard</h1>
-        <p class="text-white/70 text-sm">Tell us your target. Our AI suggests projects. Publish builds a full page from your Profile Portal + the selected project.</p>
+        <p class="text-white/70 text-sm">
+          Tell us your target. Our AI suggests projects. Publishing is now separate and builds a full page from your Profile Portal.
+        </p>
       </div>
       {% set _is_pro = (subscription_status|default('free')|lower == 'pro') %}
       <div class="text-xs">
@@ -69,6 +71,13 @@
 
         <div class="flex items-center gap-2">
           <button type="submit" class="btn-primary">Get Suggestions</button>
+          {% if _is_pro %}
+            <form method="POST" action="{{ url_for('portfolio.publish') }}">
+              <button type="submit" class="btn-ghost">Publish from Profile (separate) ⭐</button>
+            </form>
+          {% else %}
+            <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
+          {% endif %}
         </div>
       </form>
     </section>
@@ -98,61 +107,32 @@
   {% if suggestions and suggestions|length %}
   <section class="glass-panel rounded-2xl p-6">
     <h2 class="text-lg font-semibold mb-2">Suggested Projects</h2>
-    <p class="text-xs text-white/60">Choose one, then Publish. The page uses your Profile Portal + the selected project as a Highlight.</p>
+    <p class="text-xs text-white/60">
+      These are ideas only. To publish a portfolio page, use <em>Publish from Profile</em> (separate button).
+    </p>
 
-    <form method="POST" id="publish-form" class="mt-4 space-y-3">
-      <input type="hidden" name="action" value="publish">
-      <input type="hidden" name="target_role" value="{{ target_role|default('') }}">
-      <input type="hidden" name="industry" value="{{ industry|default('') }}">
-      <input type="hidden" name="experience_level" value="{{ experience_level|default('') }}">
-      <input type="hidden" name="mode" value="{{ mode|default('free') }}">
-      <input type="hidden" name="selected_json" id="selected_json">
-      <script>window.suggestions = {{ suggestions_json|default('[]')|safe }};</script>
-
-      <div class="space-y-3">
-        {% for s in suggestions %}
-          <label class="block border border-white/10 rounded-xl p-4 cursor-pointer hover:bg-white/5">
-            <div class="flex items-start gap-3">
-              <input type="radio" name="which" value="{{ loop.index0 }}" onchange="pickSuggestion(this.value)">
-              <div class="flex-1">
-                <div class="font-semibold">{{ s.title }}</div>
-                <div class="text-white/70 text-sm mt-1">{{ s.why }}</div>
-                {% if s.stack %}
-                  <div class="text-xs text-white/60 mt-2">Stack: {{ s.stack | join(', ') }}</div>
-                {% endif %}
-                {% if s.differentiation %}
-                  <div class="text-xs text-white/50 mt-1"><em>Standout: {{ s.differentiation }}</em></div>
-                {% endif %}
-              </div>
-            </div>
-          </label>
-        {% endfor %}
-      </div>
-
-      <div class="mt-3">
-        {% if _is_pro %}
-          <button class="btn-primary" type="submit" onclick="return ensureSelection()">Publish Portfolio Page ⭐</button>
-        {% else %}
-          <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
-        {% endif %}
-      </div>
-    </form>
+    <div class="mt-4 space-y-3">
+      {% for s in suggestions %}
+        <div class="border border-white/10 rounded-xl p-4">
+          <div class="font-semibold">{{ s.title }}</div>
+          <div class="text-white/70 text-sm mt-1">{{ s.why }}</div>
+          {% if s.stack %}
+            <div class="text-xs text-white/60 mt-2">Stack: {{ s.stack | join(', ') }}</div>
+          {% endif %}
+          {% if s.differentiation %}
+            <div class="text-xs text-white/50 mt-1"><em>Standout: {{ s.differentiation }}</em></div>
+          {% endif %}
+          {% if s.what %}
+            <ul class="list-disc pl-6 text-sm mt-2 space-y-1">
+              {% for w in s.what %}
+                <li>{{ w }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
   </section>
   {% endif %}
 </section>
-
-<script>
-function pickSuggestion(idx){
-  try {
-    const s = (window.suggestions || [])[Number(idx)];
-    document.getElementById('selected_json').value = JSON.stringify(s || {});
-  } catch(e){ console.error(e); }
-}
-function ensureSelection() {
-  const chosen = document.querySelector('input[name="which"]:checked');
-  if (!chosen) { alert("Please select a project first."); return false; }
-  pickSuggestion(chosen.value);
-  return true;
-}
-</script>
 {% endblock %}
