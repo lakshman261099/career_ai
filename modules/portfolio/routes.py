@@ -2,6 +2,7 @@
 
 from datetime import datetime
 import uuid
+import os
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
 )
@@ -9,7 +10,7 @@ from flask_login import login_required, current_user
 from sqlalchemy import case, inspect, text
 
 from models import db, PortfolioPage, UserProfile, Project
-from modules.common.ai import generate_project_suggestions  # <-- use new AI entrypoint
+from modules.common.ai import generate_project_suggestions  # AI entrypoint
 
 portfolio_bp = Blueprint("portfolio", __name__, template_folder="../../templates/portfolio")
 
@@ -311,15 +312,29 @@ def wizard():
                 if not ctx["target_role"] or not ctx["industry"]:
                     flash("Please enter both Target Role and Industry.", "warning")
                     return render_template("portfolio/wizard.html", **ctx)
+
                 is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
                 skills_list = (prof.skills if prof else []) or []
 
-                # 🔗 AI call (Free → 1 idea, Pro → 3 ideas, prompt differs by tier)
-                ctx["suggestions"] = generate_project_suggestions(
-                    ctx["target_role"], ctx["industry"], ctx["experience_level"], skills_list, is_pro_user
+                # AI call (Free → 1 idea, Pro → 3 ideas, tiered prompts)
+                ideas, used_live = generate_project_suggestions(
+                    ctx["target_role"],
+                    ctx["industry"],
+                    ctx["experience_level"],
+                    skills_list,
+                    is_pro_user,
+                    return_source=True,
                 )
+                ctx["suggestions"] = ideas
 
-                flash("Here are your AI project suggestions.", "success")
+                if used_live:
+                    flash("Here are your AI project suggestions.", "success")
+                else:
+                    if os.getenv("MOCK", "1").strip() == "1":
+                        flash("Here are your mock project suggestions (MOCK=1).", "info")
+                    else:
+                        flash("AI response wasn’t valid JSON; showing fallback suggestions.", "warning")
+
                 return render_template("portfolio/wizard.html", **ctx)
             except Exception as e:
                 err_id = uuid.uuid4().hex[:8]
@@ -351,8 +366,10 @@ def wizard():
             try:
                 projects = _sqlite_safe_projects_query().all()
             except Exception:
-                try: db.session.rollback()
-                except Exception: pass
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
                 current_app.logger.exception("Query projects failed during publish")
                 flash("Publish failed: couldn’t load your Projects. Please try again.", "error")
                 return render_template("portfolio/wizard.html", **ctx)
