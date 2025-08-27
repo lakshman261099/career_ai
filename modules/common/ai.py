@@ -4,12 +4,10 @@ import json
 from dataclasses import dataclass
 from typing import List, Dict, Any, Tuple
 
-# Models from env
 OPENAI_MODEL_FAST = os.getenv("OPENAI_MODEL_FAST", "gpt-4o-mini")
 OPENAI_MODEL_DEEP = os.getenv("OPENAI_MODEL_DEEP", "gpt-4o")
 
 def _is_mock() -> bool:
-    # Dynamic read every call so changing .env takes effect without restart (if app re-reads env).
     return (os.getenv("MOCK", "1").strip() == "1")
 
 @dataclass
@@ -20,9 +18,7 @@ class Suggestion:
     resume_bullets: List[str]
     stack: List[str]
 
-# ---------------------------
-# Helpers
-# ---------------------------
+# ---------- helpers ----------
 def _coerce_skill_names(skills_list: Any) -> List[str]:
     out = []
     for s in (skills_list or []):
@@ -68,7 +64,7 @@ def _mock_suggestions(role: str, industry: str, skills: List[str], pro: bool) ->
             [
                 "Implemented data pipeline + dashboard for KPIs",
                 "Automated refresh & alerting on thresholds",
-                "Drove measurable improvements in key KPI via insights",
+                "Drove measurable improvements in a key KPI via insights",
             ],
             list({*base_stack, "Pandas", "Matplotlib", "Streamlit"}),
         ),
@@ -85,118 +81,113 @@ def _mock_suggestions(role: str, industry: str, skills: List[str], pro: bool) ->
     ]
     return ideas[:3] if pro else ideas[:1]
 
-# ---------------------------
-# Main AI entrypoint
-# ---------------------------
+# ---------- main ----------
 def generate_project_suggestions(
     target_role: str,
     industry: str,
     experience_level: str,
     skills_list: Any,
-    is_pro_user: bool,
+    pro_mode: bool,
     return_source: bool = False,
 ) -> List[Dict[str, Any]] | Tuple[List[Dict[str, Any]], bool]:
     """
-    Returns project suggestions for portfolio.
-    Free → 1 suggestion (simple prompt)
-    Pro  → 3 suggestions (advanced structured prompt)
-
-    If return_source=True, returns (ideas, used_live_ai: bool)
+    Returns suggestions.
+    Free mode  -> 1 suggestion, simple prompt
+    Pro mode   -> 3 suggestions, advanced prompt
+    If return_source=True => (ideas, used_live_ai: bool)
     """
     skills = _coerce_skill_names(skills_list)
     used_live_ai = False
 
-    # --- MOCK / DEV MODE ---
+    # --- MOCK path ---
     if _is_mock():
-        ideas = [s.__dict__ for s in _mock_suggestions(target_role, industry, skills, is_pro_user)]
+        ideas = [s.__dict__ for s in _mock_suggestions(target_role, industry, skills, pro_mode)]
         return (ideas, used_live_ai) if return_source else ideas
 
-    # --- REAL AI CALL ---
+    # --- REAL AI path ---
     from openai import OpenAI
     client = OpenAI()
 
-    if not is_pro_user:
-        # Simple prompt for Free users
+    if not pro_mode:
         prompt = f"""
-        Suggest 1 beginner-friendly project idea for a student.
-        Target Role: {target_role}
-        Industry: {industry}
-        Experience: {experience_level}
-        Skills: {", ".join(skills) or "None"}
+        You are a career coach. Suggest ONE simple but meaningful project idea for a student:
+        - Target Role: {target_role}
+        - Industry: {industry}
+        - Experience: {experience_level}
+        - Skills: {", ".join(skills) or "None"}
 
-        Keep it simple and practical.
-        Return a JSON array with exactly 1 object, keys:
-        title, why, what (list of 4 steps), resume_bullets (list of 3), stack (list of ~5).
+        Keep it beginner-friendly and practical.
+
+        Return JSON object with key "ideas" whose value is an array with EXACTLY 1 item having:
+        title, why, what (4 steps), resume_bullets (2), stack (about 5).
         """
     else:
-        # Advanced high-level engineered prompt for Pro users
         prompt = f"""
-        You are a career coach and portfolio strategist.
-        Generate 3 highly valuable, resume-worthy project ideas for a student.
+        You are an expert career and hiring consultant.
+        Generate THREE advanced, resume-ready project suggestions tailored for:
+        - Target Role: {target_role}
+        - Industry: {industry}
+        - Experience Level: {experience_level}
+        - Skills available: {", ".join(skills) or "None"}
 
-        Make each project:
-        - Directly aligned to the Target Role and Industry
-        - Realistic to build in 4–8 weeks
-        - Resume-friendly with measurable outcomes
-        - Showcasing technical + problem-solving depth
+        For each project, ensure it is:
+        - Aligned to the hiring signals for the role in this industry
+        - Realistic for 4–8 weeks with clear milestones
+        - Focused on measurable business or technical outcomes
 
-        Context:
-        Role: {target_role}
-        Industry: {industry}
-        Experience: {experience_level}
-        Skills: {", ".join(skills) or "None"}
+        Each project must include:
+        1) title — role-relevant and professional
+        2) why — connect to hiring signals (metrics/KPIs/real scenarios)
+        3) what — 4–6 concrete build steps
+        4) resume_bullets — 3 STAR-style bullets with quantifiable impact
+        5) stack — 5–8 tools/technologies aligned to the role
+        6) differentiation — how it stands out vs typical student projects
 
-        Output strictly as a JSON array with 3 objects. Each object must have:
-        - title: strong professional title
-        - why: why this project matters for hiring signals
-        - what: 4–6 concrete build steps
-        - resume_bullets: 3 concise, measurable bullets
-        - stack: 5–8 relevant tools/technologies
+        Output STRICTLY as a JSON object with key "ideas" whose value is an array of EXACTLY 3 items.
         """
 
     try:
-        # Ask the model to ensure valid JSON
         resp = client.chat.completions.create(
-            model=OPENAI_MODEL_FAST,
+            model=OPENAI_MODEL_FAST if not pro_mode else OPENAI_MODEL_DEEP,
             messages=[
-                {"role": "system", "content": "You are an expert career AI that outputs valid JSON only."},
+                {"role": "system", "content": "You output only valid JSON and nothing else."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.6 if is_pro_user else 0.7,
-            max_tokens=900 if is_pro_user else 700,
-            response_format={"type": "json_object"},  # forces a JSON object
+            temperature=0.6 if pro_mode else 0.7,
+            max_tokens=1200 if pro_mode else 700,
+            response_format={"type": "json_object"},
         )
         raw = (resp.choices[0].message.content or "").strip()
-        # Expect a JSON object; support either {"ideas":[...]} or direct list fallback
         data = json.loads(raw)
-        if isinstance(data, dict) and "ideas" in data and isinstance(data["ideas"], list):
-            ideas = data["ideas"]
+
+        ideas_in = []
+        if isinstance(data, dict) and isinstance(data.get("ideas"), list):
+            ideas_in = data["ideas"]
         elif isinstance(data, list):
-            ideas = data
+            ideas_in = data
         else:
-            # Try to find a top-level array key by convention
             for k, v in (data.items() if isinstance(data, dict) else []):
                 if isinstance(v, list):
-                    ideas = v
+                    ideas_in = v
                     break
-            else:
-                raise ValueError("No list found in JSON output")
+            if not ideas_in:
+                raise ValueError("No ideas list found in model output")
 
-        # Normalize & trim
+        limit = 3 if pro_mode else 1
         out: List[Dict[str, Any]] = []
-        limit = 3 if is_pro_user else 1
-        for d in ideas[:limit]:
+        for d in ideas_in[:limit]:
             out.append({
                 "title": (d.get("title") or "").strip()[:200],
-                "why": (d.get("why") or "").strip()[:400],
+                "why": (d.get("why") or "").strip()[:500],
                 "what": [str(x).strip() for x in (d.get("what") or [])][:6],
                 "resume_bullets": [str(x).strip() for x in (d.get("resume_bullets") or [])][:3],
                 "stack": [str(x).strip() for x in (d.get("stack") or [])][:8],
+                # optional extra for pro
+                "differentiation": (d.get("differentiation") or "").strip()[:400],
             })
         used_live_ai = True
         return (out, used_live_ai) if return_source else out
 
     except Exception:
-        # Fallback to mock if anything goes wrong
-        ideas = [s.__dict__ for s in _mock_suggestions(target_role, industry, skills, is_pro_user)]
+        ideas = [s.__dict__ for s in _mock_suggestions(target_role, industry, skills, pro_mode)]
         return (ideas, used_live_ai) if return_source else ideas

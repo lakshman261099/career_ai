@@ -7,12 +7,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}CareerAI{% endblock %}</title>
 
+  <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/glass.css') }}"/>
-
   <script>
     tailwind.config = {
       theme: {
@@ -24,6 +20,13 @@
       }
     }
   </script>
+
+  <!-- Fonts + Glass CSS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/glass.css') }}"/>
+
   <style>
     body::before{
       content:"";
@@ -34,17 +37,25 @@
     .nav-link { opacity:.9 }
     .nav-link:hover { opacity:1; text-decoration: underline; }
     .nav-active { opacity:1; text-decoration: underline; text-underline-offset: 6px; }
-    .btn-primary { @apply inline-flex items-center px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold shadow-glow; }
-    .btn-ghost { @apply inline-flex items-center px-3 py-2 rounded-xl border border-white/20 hover:border-white/40 text-white/80; }
-    .glass-bar { @apply bg-white/5 backdrop-blur border border-white/10; }
-    .glass-card { @apply bg-white/5 backdrop-blur border border-white/10 rounded-xl; }
-    .glass-panel { @apply bg-white/5 backdrop-blur border border-white/10; }
-    .coins-pill { @apply hidden sm:flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs; }
-    .coins-chip { @apply font-semibold; }
-    .coins-sep { @apply opacity-40; }
+
+    /* Replaced @apply with raw classes so CDN Tailwind works */
+    .btn-primary { display:inline-flex; align-items:center; gap:.5rem; padding:.5rem 1rem; border-radius:.75rem; background:#f97316; color:#fff; font-weight:600; box-shadow:0 8px 30px rgba(249,115,22,.25); }
+    .btn-primary:hover { background:#ea580c; }
+
+    .btn-ghost { display:inline-flex; align-items:center; gap:.5rem; padding:.5rem .875rem; border-radius:.75rem; border:1px solid rgba(255,255,255,.2); color:rgba(255,255,255,.8); }
+    .btn-ghost:hover { border-color: rgba(255,255,255,.4); color:#fff; }
+
+    .glass-bar    { background: rgba(255,255,255,.05); backdrop-filter: blur(6px); border:1px solid rgba(255,255,255,.1); }
+    .glass-card   { background: rgba(255,255,255,.05); backdrop-filter: blur(6px); border:1px solid rgba(255,255,255,.1); border-radius: .75rem; }
+    .glass-panel  { background: rgba(255,255,255,.05); backdrop-filter: blur(6px); border:1px solid rgba(255,255,255,.1); }
+
+    .coins-pill { display:none; }
+    @media (min-width: 640px) { .coins-pill { display:flex; } }
+    .coins-chip { font-weight:600; }
+    .coins-sep { opacity:.4; }
   </style>
 </head>
-<body class="h-full bg-ink-900 text-white">
+<body class="h-full bg-ink-900 text-white" style="font-family: Inter, ui-sans-serif, system-ui;">
   <div class="fixed inset-0 -z-10 bg-gradient-to-br from-ink-900 via-ink-800 to-black"></div>
 
   <header class="sticky top-0 z-40">
@@ -61,7 +72,7 @@
         </a>
 
         <nav class="hidden md:flex items-center gap-6 text-sm">
-          <a class="nav-link {% if request.endpoint=='portfolio.index' or request.endpoint=='portfolio.wizard' %}nav-active{% endif %}" href="{{ feature_paths.portfolio }}">Portfolio</a>
+          <a class="nav-link {% if request.endpoint in ['portfolio.index','portfolio.wizard'] %}nav-active{% endif %}" href="{{ feature_paths.portfolio }}">Portfolio</a>
           <a class="nav-link {% if request.endpoint=='internships.index' %}nav-active{% endif %}" href="{{ feature_paths.internships }}">Internships</a>
           <a class="nav-link {% if request.endpoint=='skillmapper.index' %}nav-active{% endif %}" href="{{ feature_paths.skillmapper }}">Skill Mapper</a>
           <a class="nav-link {% if request.endpoint=='referral.index' %}nav-active{% endif %}" href="{{ feature_paths.referral }}">Referrals</a>
@@ -70,7 +81,7 @@
         </nav>
 
         <div class="flex items-center gap-3">
-          <div class="coins-pill">
+          <div class="coins-pill items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs">
             <span class="coins-chip">🪙 {{ FREE }}</span>
             <span class="coins-sep">|</span>
             <span class="coins-chip">⭐ {{ PRO }}</span>
@@ -101,8 +112,12 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for cat, msg in messages %}
-          <div class="glass-card border-l-4 {% if cat in ['danger','error'] %}border-red-400{% elif cat == 'warning' %}border-yellow-400{% elif cat=='success' %}border-emerald-400{% else %}border-brand-500{% endif %} px-4 py-3">
-            <p class="text-sm">{{ msg }}</p>
+          <div class="glass-card border-l-4 px-4 py-3
+                      {% if cat in ['danger','error'] %}border-red-400
+                      {% elif cat == 'warning' %}border-yellow-400
+                      {% elif cat=='success' %}border-emerald-400
+                      {% else %}border-brand-500{% endif %}">
+            <p class="text-sm">{{ msg|safe }}</p>
           </div>
         {% endfor %}
       {% endif %}
@@ -116,7 +131,7 @@
   <footer class="mt-16 mb-10">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <div class="glass-bar rounded-2xl p-4 text-xs text-white/60 flex items-center justify-between">
-        <span>© 2025 CareerAI</span>
+        <span>© {{ now.year if now else 2025 }} CareerAI</span>
         <span>Flask · SQLAlchemy · Glass UI</span>
       </div>
     </div>

@@ -3,6 +3,7 @@
 from datetime import datetime
 import uuid
 import os
+import json
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
 )
@@ -19,6 +20,7 @@ portfolio_bp = Blueprint("portfolio", __name__, template_folder="../../templates
 # Helpers
 # ---------------------------
 def _get_profile_safe():
+    """Return the current user's UserProfile row or None. Never raise."""
     try:
         return UserProfile.query.filter_by(user_id=current_user.id).first()
     except Exception:
@@ -85,7 +87,8 @@ def _coerce_links(val):
     return out
 
 
-def _render_full_portfolio_md(prof: UserProfile, projects: list):
+def _render_full_portfolio_md(prof: UserProfile, projects: list, chosen: dict | None = None):
+    """Build the Markdown that will be stored in PortfolioPage.content_md."""
     student = {
         "name": prof.full_name or (getattr(current_user, "name", "") or "Your Name"),
         "headline": prof.headline or "",
@@ -127,6 +130,35 @@ def _render_full_portfolio_md(prof: UserProfile, projects: list):
         if formatted:
             lines.append(", ".join(formatted))
             lines.append("")
+
+    # Optional: include chosen AI suggestion as "Highlight Project"
+    if chosen:
+        lines.append("## Highlight Project")
+        title = (chosen.get("title") or "Selected Project").strip()
+        why   = (chosen.get("why") or "").strip()
+        lines.append(f"### {title}")
+        if why:
+            lines.append(f"*Why this matters:* {why}")
+        stack = [s for s in (chosen.get("stack") or []) if str(s).strip()]
+        if stack:
+            lines.append(f"*Stack:* {', '.join(stack)}")
+        what = [w for w in (chosen.get("what") or []) if str(w).strip()]
+        if what:
+            lines.append("")
+            lines.append("**What you’ll build:**")
+            for w in what:
+                lines.append(f"- {w}")
+        rbs = [r for r in (chosen.get("resume_bullets") or []) if str(r).strip()]
+        if rbs:
+            lines.append("")
+            lines.append("**Resume bullets you can claim:**")
+            for r in rbs:
+                lines.append(f"- {r}")
+        diff = (chosen.get("differentiation") or "").strip()
+        if diff:
+            lines.append("")
+            lines.append(f"*How it stands out:* {diff}")
+        lines.append("")
 
     if projects:
         lines.append("## Projects")
@@ -202,16 +234,13 @@ def _sqlite_safe_projects_query():
 
 
 def _preflight_portfolio_schema():
-    """
-    Verify required tables/columns exist before we try to insert.
-    """
+    """Verify required tables/columns exist before we try to insert."""
     try:
         insp = inspect(db.engine)
         tables = set(insp.get_table_names())
         if "portfolio_page" not in tables:
             return "Schema error: table 'portfolio_page' is missing. Run migrations."
-        if "project" not in tables:
-            return "Schema error: table 'project' is missing. Run migrations."
+        # project table optional for publish
         pp_cols = {c["name"] for c in insp.get_columns("portfolio_page")}
         required = {"id", "user_id", "title", "content_md", "is_public", "created_at", "meta_json"}
         still_needed = required - pp_cols
@@ -274,148 +303,152 @@ def index():
 @portfolio_bp.route("/wizard", methods=["GET", "POST"], endpoint="wizard")
 @login_required
 def wizard():
+    # Always compute prof and a full ctx, even on GET
     prof = _get_profile_safe()
-
     ctx = {
         "target_role": "",
         "industry": "",
         "experience_level": "",
-        "imported": False,
+        "mode": "free",            # "free" or "pro"
         "suggestions": [],
-        "contact": {"email": "", "website": "", "linkedin": "", "github": "", "custom": {}},
-        "student": {"name": "", "headline": "", "summary": ""},
+        "suggestions_json": "[]",  # JS uses this; always a valid JSON string
+        "prof": prof,              # template must read this instead of current_user.profile
     }
 
-    if request.method == "POST":
-        action = (request.form.get("action") or "").strip().lower()
-        ctx["target_role"] = (request.form.get("target_role") or "").strip()
-        ctx["industry"] = (request.form.get("industry") or "").strip()
-        ctx["experience_level"] = (request.form.get("experience_level") or "").strip()
+    # GET
+    if request.method == "GET":
+        try:
+            return render_template("portfolio/wizard.html", **ctx)
+        except Exception as e:
+            err_id = uuid.uuid4().hex[:8]
+            current_app.logger.exception("Wizard GET failed [%s]: %s", err_id, e)
+            flash(f"Something went wrong loading the wizard (wz-{err_id}).", "error")
+            return redirect(url_for("portfolio.index"))
 
-        if action == "import":
-            if not prof:
-                flash("No Profile found. Pro users can set up their Profile Portal first.", "warning")
+    # POST (suggest / publish)
+    action = (request.form.get("action") or "").strip().lower()
+    ctx["target_role"] = (request.form.get("target_role") or "").strip()
+    ctx["industry"] = (request.form.get("industry") or "").strip()
+    ctx["experience_level"] = (request.form.get("experience_level") or "").strip()
+    ctx["mode"] = (request.form.get("mode") or "free").strip()
+
+    if action == "suggest":
+        try:
+            if not ctx["target_role"] or not ctx["industry"]:
+                flash("Please enter both Target Role and Industry.", "warning")
                 return render_template("portfolio/wizard.html", **ctx)
-            links_map = _safe_links_map(prof.links or {})
-            ctx["student"] = {
-                "name": prof.full_name or (getattr(current_user, "name", "") or ""),
-                "headline": prof.headline or "",
-                "summary": prof.summary or "",
-            }
-            ctx["contact"] = links_map
-            ctx["imported"] = True
-            flash("Imported from your Profile Portal.", "success")
+
+            pro_mode = (ctx["mode"] == "pro")
+            if pro_mode and (getattr(current_user, "subscription_status", "free").lower() != "pro"):
+                flash("Pro suggestions require a Pro plan. Switch to Free mode or upgrade.", "warning")
+                return render_template("portfolio/wizard.html", **ctx)
+
+            skills_list = (prof.skills if prof else []) or []
+            ideas, used_live = generate_project_suggestions(
+                ctx["target_role"],
+                ctx["industry"],
+                ctx["experience_level"],
+                skills_list,
+                pro_mode,
+                return_source=True,  # returns (ideas, used_live)
+            )
+
+            ctx["suggestions"] = ideas
+            ctx["suggestions_json"] = json.dumps(ideas, ensure_ascii=False)
+
+            if used_live:
+                flash(("Pro" if pro_mode else "Free") + " AI suggestions generated.", "success")
+            else:
+                if os.getenv("MOCK", "1").strip() == "1":
+                    flash(("Pro" if pro_mode else "Free") + " mock suggestions (MOCK=1).", "info")
+                else:
+                    flash("AI output invalid JSON; showing fallback suggestions.", "warning")
+
+            return render_template("portfolio/wizard.html", **ctx)
+        except Exception as e:
+            err_id = uuid.uuid4().hex[:8]
+            current_app.logger.exception("Suggest failed [%s]: %s", err_id, e)
+            flash(f"Something went wrong generating suggestions (sg-{err_id}).", "error")
             return render_template("portfolio/wizard.html", **ctx)
 
-        if action == "suggest":
+    if action == "publish":
+        # Parse chosen suggestion (optional)
+        chosen = None
+        selected_json = (request.form.get("selected_json") or "").strip()
+        if selected_json:
             try:
-                if not ctx["target_role"] or not ctx["industry"]:
-                    flash("Please enter both Target Role and Industry.", "warning")
-                    return render_template("portfolio/wizard.html", **ctx)
-
-                is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
-                skills_list = (prof.skills if prof else []) or []
-
-                # AI call (Free → 1 idea, Pro → 3 ideas, tiered prompts)
-                ideas, used_live = generate_project_suggestions(
-                    ctx["target_role"],
-                    ctx["industry"],
-                    ctx["experience_level"],
-                    skills_list,
-                    is_pro_user,
-                    return_source=True,
-                )
-                ctx["suggestions"] = ideas
-
-                if used_live:
-                    flash("Here are your AI project suggestions.", "success")
-                else:
-                    if os.getenv("MOCK", "1").strip() == "1":
-                        flash("Here are your mock project suggestions (MOCK=1).", "info")
-                    else:
-                        flash("AI response wasn’t valid JSON; showing fallback suggestions.", "warning")
-
-                return render_template("portfolio/wizard.html", **ctx)
-            except Exception as e:
-                err_id = uuid.uuid4().hex[:8]
-                current_app.logger.exception("Suggest failed [%s]: %s", err_id, e)
-                flash(f"Something went wrong generating suggestions (sg-{err_id}). Try again.", "error")
-                return render_template("portfolio/wizard.html", **ctx)
-
-        if action == "publish":
-            is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
-            if not is_pro_user:
-                flash("Publishing is a Pro feature. Please upgrade to continue.", "warning")
-                return redirect(url_for("billing.index"))
-
-            schema_msg = _preflight_portfolio_schema()
-            if schema_msg:
-                flash(schema_msg, "error")
-                return render_template("portfolio/wizard.html", **ctx)
-
-            if not prof:
-                flash("Your Profile Portal is empty. Please add your details first.", "warning")
-                return redirect(url_for("settings.profile"))
-
-            missing = []
-            if not (prof.full_name or getattr(current_user, "name", "")):
-                missing.append("full name")
-            if not (prof.headline or "").strip():
-                missing.append("headline")
-
-            try:
-                projects = _sqlite_safe_projects_query().all()
+                chosen = json.loads(selected_json)
             except Exception:
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
-                current_app.logger.exception("Query projects failed during publish")
-                flash("Publish failed: couldn’t load your Projects. Please try again.", "error")
-                return render_template("portfolio/wizard.html", **ctx)
+                chosen = None
 
-            if not projects:
-                missing.append("at least one Project in Profile Portal")
+        is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
+        if not is_pro_user:
+            flash("Publishing is a Pro feature. Please upgrade to continue.", "warning")
+            return redirect(url_for("billing.index"))
 
-            if missing:
-                flash(f"Please complete your Profile Portal before publishing: {', '.join(missing)}.", "warning")
-                return redirect(url_for("settings.profile"))
+        schema_msg = _preflight_portfolio_schema()
+        if schema_msg:
+            flash(schema_msg, "error")
+            return render_template("portfolio/wizard.html", **ctx)
 
+        if not prof:
+            flash("Your Profile Portal is empty. Please add your details first.", "warning")
+            return redirect(url_for("settings.profile"))
+
+        missing = []
+        if not (prof.full_name or getattr(current_user, "name", "")):
+            missing.append("full name")
+        if not (prof.headline or "").strip():
+            missing.append("headline")
+        if missing:
+            flash(f"Please complete your Profile Portal before publishing: {', '.join(missing)}.", "warning")
+            return redirect(url_for("settings.profile"))
+
+        # Projects (optional)
+        try:
+            projects = _sqlite_safe_projects_query().all()
+        except Exception:
             try:
-                page_md = _render_full_portfolio_md(prof, projects)
-            except Exception as re:
-                err_id = uuid.uuid4().hex[:8]
-                current_app.logger.exception("Render portfolio markdown failed [%s]: %s", err_id, re)
-                flash(f"Publish failed (render-{err_id}). Please check your project fields.", "error")
-                return render_template("portfolio/wizard.html", **ctx)
+                db.session.rollback()
+            except Exception:
+                pass
+            current_app.logger.exception("Query projects failed during publish")
+            projects = []
 
+        try:
+            page_md = _render_full_portfolio_md(prof, projects, chosen)
+        except Exception as re:
+            err_id = uuid.uuid4().hex[:8]
+            current_app.logger.exception("Render portfolio markdown failed [%s]: %s", err_id, re)
+            flash(f"Publish failed (render-{err_id}). Please check your inputs.", "error")
+            return render_template("portfolio/wizard.html", **ctx)
+
+        try:
+            page = PortfolioPage(
+                user_id=current_user.id,
+                title=f"{prof.full_name or current_user.name} — Portfolio",
+                content_md=page_md,
+                is_public=True,
+                created_at=datetime.utcnow(),
+            )
+            db.session.add(page)
+            db.session.flush()
+            db.session.commit()
+            flash("Portfolio page published! Share your link from the list below.", "success")
+            return redirect(url_for("portfolio.index"))
+        except Exception as e:
+            err_id = uuid.uuid4().hex[:8]
             try:
-                page = PortfolioPage(
-                    user_id=current_user.id,
-                    title=f"{prof.full_name or current_user.name} — Portfolio",
-                    content_md=page_md,
-                    is_public=True,
-                    created_at=datetime.utcnow(),
-                )
-                db.session.add(page)
-                db.session.flush()
-                db.session.commit()
-                flash("Portfolio page published! Share your link from the list below.", "success")
-                return redirect(url_for("portfolio.index"))
-            except Exception as e:
-                err_id = uuid.uuid4().hex[:8]
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
-                db_msg = getattr(getattr(e, "orig", None), "args", None)
-                db_msg = db_msg[0] if (isinstance(db_msg, (list, tuple)) and db_msg) else str(e)
-                current_app.logger.exception("Publish failed [%s]: %s", err_id, e)
-                flash(f"Publish failed (db-{err_id}). Details: {db_msg}", "error")
-                return render_template("portfolio/wizard.html", **ctx)
+                db.session.rollback()
+            except Exception:
+                pass
+            db_msg = getattr(getattr(e, "orig", None), "args", None)
+            db_msg = db_msg[0] if (isinstance(db_msg, (list, tuple)) and db_msg) else str(e)
+            current_app.logger.exception("Publish failed [%s]: %s", err_id, e)
+            flash(f"Publish failed (db-{err_id}). Details: {db_msg}", "error")
+            return render_template("portfolio/wizard.html", **ctx)
 
-        return render_template("portfolio/wizard.html", **ctx)
-
+    # Fallback
     return render_template("portfolio/wizard.html", **ctx)
 
 
@@ -425,7 +458,6 @@ def view(page_id):
     page = PortfolioPage.query.get_or_404(page_id)
     if not page.is_public:
         abort(404)
-
     try:
         rendered = _md_to_html(page.content_md)
         return render_template("public_view.html", page=page, page_html=rendered)

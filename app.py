@@ -31,26 +31,20 @@ def free_coins():
         try:
             return getattr(current_user, "coins_free", 0) or 0
         except Exception:
-            try:
-                db.session.rollback()
-            except Exception:
-                pass
+            try: db.session.rollback()
+            except Exception: pass
             return 0
     return 0
-
 
 def pro_coins():
     if getattr(current_user, "is_authenticated", False):
         try:
             return getattr(current_user, "coins_pro", 0) or 0
         except Exception:
-            try:
-                db.session.rollback()
-            except Exception:
-                pass
+            try: db.session.rollback()
+            except Exception: pass
             return 0
     return 0
-
 
 def is_pro():
     if getattr(current_user, "is_authenticated", False):
@@ -58,15 +52,13 @@ def is_pro():
             status = (getattr(current_user, "subscription_status", "free") or "free").lower()
             return bool(getattr(current_user, "is_pro", False) or status == "pro")
         except Exception:
-            try:
-                db.session.rollback()
-            except Exception:
-                pass
+            try: db.session.rollback()
+            except Exception: pass
             return False
     return False
 
-
 def register_template_globals(app: Flask):
+    # Keep named for legacy templates; we still inject the values via context_processor below
     app.jinja_env.globals.update(
         free_coins=free_coins,
         pro_coins=pro_coins,
@@ -152,6 +144,7 @@ def run_auto_migrations(app: Flask) -> None:
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
 
+    # Logging
     handlers = [logging.StreamHandler(sys.stdout)]
     token = os.getenv("LOGTAIL_TOKEN")
     if token:
@@ -160,6 +153,7 @@ def create_app():
     app.logger.handlers = handlers
     app.logger.setLevel(logging.INFO)
 
+    # Core config
     secret = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY") or "dev-secret-key"
     app.config["SECRET_KEY"] = secret
 
@@ -200,7 +194,7 @@ def create_app():
     app.register_blueprint(skillmapper_bp, url_prefix="/skillmapper")
     app.register_blueprint(settings_bp, url_prefix="/settings")
 
-    # Helpers in templates
+    # Expose helper callables (legacy support)
     register_template_globals(app)
 
     # Routes
@@ -218,9 +212,10 @@ def create_app():
             app.static_folder, "favicon.ico", mimetype="image/vnd.microsoft.icon"
         )
 
-    # Context for all templates
+    # Context for all templates (SAFE)
     @app.context_processor
     def inject_globals():
+        # tenant (optional)
         tenant_name = None
         try:
             host = (request.host or "").split(":")[0]
@@ -243,8 +238,8 @@ def create_app():
         feature_paths = {
             "home":        safe_url("landing"),
             "dashboard":   safe_url("dashboard"),
-            "profile":     portal_url,          # unified Profile Portal
-            "resume":      portal_url,          # back-compat; points to portal
+            "profile":     portal_url,
+            "resume":      portal_url,  # back-compat
             "portfolio":   safe_url("portfolio.index"),
             "internships": safe_url("internships.index"),
             "referral":    safe_url("referral.index"),
@@ -258,7 +253,7 @@ def create_app():
         }
 
         return dict(
-            now=datetime.utcnow(),
+            now=datetime.utcnow(),                 # used in footer
             tenant_name=tenant_name,
             user_free=free_coins(),
             user_pro=pro_coins(),
