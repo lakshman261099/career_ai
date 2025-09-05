@@ -4,7 +4,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "a2626b1c1fd0"
-down_revision = "<timestamp>"  # <-- REPLACE with your current head id (add_project_table)
+down_revision = "20250826_add_project_table"  # <-- REPLACE with your current head id (add_project_table)
 branch_labels = None
 depends_on = None
 

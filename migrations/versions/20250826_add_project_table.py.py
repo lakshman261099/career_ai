@@ -7,7 +7,7 @@ import sqlalchemy as sa
 # Use the hex prefix from the filename for `revision`
 # Example: if the filename is "20250826_1234_add_project_table.py",
 # set revision = "20250826_1234"
-revision = "<timestamp>"
+revision = "20250826_add_project_table"
 down_revision = "131d3d348caa"   # points to add_user_profile_table
 branch_labels = None
 depends_on = None
