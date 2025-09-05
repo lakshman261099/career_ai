@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json as _json
-import logging
+import logging, os, sys, traceback
 from datetime import datetime
 
 from flask import render_template, request, jsonify
@@ -16,6 +16,7 @@ from modules.common.ai import generate_skillmap
 
 log = logging.getLogger(__name__)
 FEATURE_KEY = "skillmapper"
+SHOW_ERRS = os.getenv("SHOW_SM_ERRORS", "0") == "1"
 
 
 def _latest_resume_text(user_id: int) -> str:
@@ -61,7 +62,6 @@ def index():
 @login_required
 def run_free():
     try:
-        # If user is NOT pro, consume 🪙. Pro users bypass coin checks here.
         if not current_user.is_pro:
             ok = authorize_and_consume(current_user, FEATURE_KEY)
             if not ok:
@@ -78,11 +78,7 @@ def run_free():
             return_source=True,
         )
 
-        # Debug breadcrumb
-        try:
-            log.info("SM/free used_live_ai=%s text_len=%d", used_live_ai, len(free_text_skills))
-        except Exception:
-            pass
+        log.info("SM/free used_live_ai=%s text_len=%d", used_live_ai, len(free_text_skills))
 
         snap = SkillMapSnapshot(
             user_id=current_user.id,
@@ -95,13 +91,15 @@ def run_free():
         db.session.commit()
 
         return jsonify({"ok": True, "data": data, "used_live_ai": used_live_ai})
-    except Exception:
+    except Exception as e:
         log.exception("SkillMapper /free failed")
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        return jsonify({"ok": False, "error": "Internal error (free). Check server logs."}), 500
+        traceback.print_exc(file=sys.stderr)
+        try: db.session.rollback()
+        except Exception: pass
+        msg = "Internal error (free). Check server logs."
+        if SHOW_ERRS:
+            msg += f" :: {e.__class__.__name__}: {e}"
+        return jsonify({"ok": False, "error": msg}), 500
 
 
 @bp.route("/pro", methods=["POST"])
@@ -124,16 +122,10 @@ def run_pro():
             return_source=True,
         )
 
-        # Debug breadcrumb
-        try:
-            log.info(
-                "SM/pro used_live_ai=%s profile_keys=%s resume_len=%d",
-                used_live_ai,
-                list(profile.keys()),
-                len(resume_text or ""),
-            )
-        except Exception:
-            pass
+        log.info(
+            "SM/pro used_live_ai=%s profile_keys=%s resume_len=%d",
+            used_live_ai, list(profile.keys()), len(resume_text or "")
+        )
 
         snap = SkillMapSnapshot(
             user_id=current_user.id,
@@ -146,13 +138,15 @@ def run_pro():
         db.session.commit()
 
         return jsonify({"ok": True, "data": data, "used_live_ai": used_live_ai})
-    except Exception:
+    except Exception as e:
         log.exception("SkillMapper /pro failed")
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        return jsonify({"ok": False, "error": "Internal error (pro). Check server logs."}), 500
+        traceback.print_exc(file=sys.stderr)
+        try: db.session.rollback()
+        except Exception: pass
+        msg = "Internal error (pro). Check server logs."
+        if SHOW_ERRS:
+            msg += f" :: {e.__class__.__name__}: {e}"
+        return jsonify({"ok": False, "error": msg}), 500
 
 
 # --------------- utils ----------------
