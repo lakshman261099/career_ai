@@ -15,7 +15,7 @@ from modules.portfolio.routes import portfolio_bp
 from modules.internships.routes import internships_bp
 from modules.referral.routes import referral_bp
 from modules.jobpack.routes import jobpack_bp
-from modules.skillmapper.routes import skillmapper_bp
+from modules.skillmapper import bp as skillmapper_bp
 from modules.settings.routes import settings_bp
 
 # Alembic
@@ -191,7 +191,7 @@ def create_app():
     app.register_blueprint(internships_bp, url_prefix="/internships")
     app.register_blueprint(referral_bp, url_prefix="/referral")
     app.register_blueprint(jobpack_bp, url_prefix="/jobpack")
-    app.register_blueprint(skillmapper_bp, url_prefix="/skillmapper")
+    app.register_blueprint(skillmapper_bp)
     app.register_blueprint(settings_bp, url_prefix="/settings")
 
     # Expose helper callables (legacy support)

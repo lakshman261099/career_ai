@@ -1,51 +1,72 @@
 {% extends "base.html" %}
-{% block title %}Skill Mapper — CareerAI{% endblock %}
+{% block title %}Skill Mapper{% endblock %}
+
 {% block content %}
-<section class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 pt-12">
-  <div class="glass-panel rounded-2xl p-6">
-    <h1 class="text-xl font-bold mb-3">Skill Mapper</h1>
-    <form method="POST">
-      <label class="block text-sm mb-1">Title (optional)</label>
-      <input name="title" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20" placeholder="e.g., Backend Engineer @ Acme">
-
-      <label class="block text-sm mt-4 mb-1">Paste Text (e.g., JD)</label>
-      <textarea name="text" rows="10" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
-        placeholder="Paste a job description or text to extract skills from...">{{ raw_text }}</textarea>
-
-      <div class="mt-4 flex gap-2">
-        <button class="btn-primary" type="submit">Map Skills</button>
-        <a class="btn-ghost" href="{{ feature_paths.billing }}">Get Pro</a>
-      </div>
-    </form>
+<div class="sm-container">
+  <div class="sm-header">
+    <h1>Skill Mapper</h1>
+    <p class="sm-subtitle">Discover your best-fit roles and what’s hiring now.</p>
   </div>
 
-  {% if result %}
-    <div class="glass-panel rounded-2xl p-6 mt-6">
-      <h2 class="text-lg font-semibold mb-2">Detected Skills</h2>
-      {% if result.skills %}
-        <ul class="flex flex-wrap gap-2">
-          {% for s in result.skills %}
-            <li class="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm">{{ s }}</li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <div class="text-white/60 text-sm">No skills detected.</div>
-      {% endif %}
+  <div class="sm-grid">
+    <!-- Free panel -->
+    <div class="sm-card">
+      <div class="sm-card-head">
+        <h2>Free run (🪙)</h2>
+        <p>Paste your skills/interests. We’ll map 3 specialized roles.</p>
+      </div>
+      <textarea id="sm-free-input" class="sm-textarea" placeholder="e.g., Python, SQL, Tableau, stats, curiosity about business metrics"></textarea>
+      <button id="sm-free-btn" class="sm-btn">Run Skill Mapper</button>
+      <div class="sm-hint">Free runs use Silver credits. Pro users get unlimited access.</div>
+    </div>
 
-      {% if result.categories %}
-        <div class="mt-5">
-          <h3 class="font-semibold mb-1">Categories</h3>
-          <div class="grid md:grid-cols-2 gap-3 text-sm">
-            {% for cat, items in result.categories.items() %}
-              <div class="glass-card p-3 rounded-xl">
-                <div class="font-semibold mb-1">{{ cat }}</div>
-                <div class="text-white/70">{{ items|join(', ') }}</div>
-              </div>
-            {% endfor %}
-          </div>
-        </div>
+    <!-- Pro panel -->
+    <div class="sm-card">
+      <div class="sm-card-head">
+        <h2>Pro analysis (⭐)</h2>
+        <p>Use your Profile Portal + latest resume for a deep analysis.</p>
+      </div>
+      {% if is_pro %}
+        <button id="sm-pro-btn" class="sm-btn sm-btn-pro">Analyze from Profile</button>
+        <div class="sm-hint">We read your Profile + latest resume on file.</div>
+      {% else %}
+        <a href="{{ feature_paths.billing }}" class="sm-btn sm-btn-upgrade">Upgrade to Pro</a>
+        <div class="sm-hint">Publishing portfolio & Skill Mapper Pro require Pro.</div>
       {% endif %}
     </div>
-  {% endif %}
-</section>
+  </div>
+
+  <div id="sm-results" class="sm-results hidden">
+    <div class="sm-results-head">
+      <h2>Top 3 Roles</h2>
+      <div id="sm-meta" class="sm-meta"></div>
+    </div>
+    <div id="sm-roles" class="sm-roles"></div>
+
+    <div class="sm-hiring">
+      <h3>What’s hiring now</h3>
+      <div id="sm-hiring-strip" class="sm-hiring-strip"></div>
+    </div>
+
+    <div class="sm-cta">
+      <button id="sm-add-portfolio" class="sm-btn-outline">Add selected micro-project to Portfolio (opens editor)</button>
+    </div>
+  </div>
+
+  <div id="sm-toast" class="sm-toast hidden"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/skillmapper.css') }}">
+
+<!-- Safer JSON export for VS Code (no red squiggles) -->
+<script type="application/json" id="sm-config">
+  {
+    "is_pro": {{ is_pro | tojson }},
+    "settings_path": {{ (feature_paths.settings ~ '#projects') | tojson }}
+  }
+</script>
+
+<script src="{{ url_for('static', filename='js/skillmapper.js') }}"></script>
 {% endblock %}
