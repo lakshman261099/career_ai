@@ -17,12 +17,29 @@ if config.config_file_name is not None:
 from models import db
 target_metadata = db.metadata
 
+
 def _db_url():
-    # Prefer env DATABASE_URL (Render provides it); fallback to alembic.ini value; then dev sqlite
-    url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url") or "sqlite:///career_ai.db"
+    """
+    Decide which database URL to use:
+    1. If Alembic is run with -x dburl=..., prefer that (supports ?sslmode=require).
+    2. Else, use DATABASE_URL from environment.
+    3. Else, fallback to alembic.ini sqlalchemy.url.
+    4. Else, fallback to local sqlite.
+    """
+    x_args = context.get_x_argument(as_dictionary=True)
+    if "dburl" in x_args:
+        url = x_args["dburl"]
+    else:
+        url = (
+            os.getenv("DATABASE_URL")
+            or config.get_main_option("sqlalchemy.url")
+            or "sqlite:///career_ai.db"
+        )
+
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     return url
+
 
 def run_migrations_offline():
     url = _db_url()
@@ -37,6 +54,7 @@ def run_migrations_offline():
     )
     with context.begin_transaction():
         context.run_migrations()
+
 
 def run_migrations_online():
     url = _db_url()
@@ -57,6 +75,7 @@ def run_migrations_online():
         )
         with context.begin_transaction():
             context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()
