@@ -158,6 +158,7 @@ def generate_project_suggestions(
             response_format={"type": "json_object"},
         )
         raw = (resp.choices[0].message.content or "").strip()
+        print("[SkillMapper] RAW OpenAI output:", raw[:400], flush=True)
         data = json.loads(raw)
 
         ideas_in = []
@@ -555,6 +556,6 @@ def generate_skillmap(
         return (data, used_live_ai) if return_source else data
 
     except Exception:
-        # Fail safely to mock
+        print("[SkillMapper] ERROR calling OpenAI:", repr(e), flush=True)
         data = _mock_skillmap(pro_mode)
         return (data, used_live_ai) if return_source else data
