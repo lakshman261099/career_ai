@@ -158,7 +158,7 @@ def generate_project_suggestions(
             response_format={"type": "json_object"},
         )
         raw = (resp.choices[0].message.content or "").strip()
-        print("[SkillMapper] RAW OpenAI output:", raw[:400], flush=True)
+        print("[SkillMapper] RAW OpenAI output:", raw[:1000], flush=True)
         data = json.loads(raw)
 
         ideas_in = []
