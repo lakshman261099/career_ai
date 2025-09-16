@@ -555,7 +555,10 @@ def generate_skillmap(
         used_live_ai = True
         return (data, used_live_ai) if return_source else data
 
-    except Exception:
-        print("[SkillMapper] ERROR calling OpenAI:", repr(e), flush=True)
+    except Exception as e:
+        import traceback, sys
+        print("=== SkillMapper ERROR ===", file=sys.stderr)
+        print(str(e), file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         data = _mock_skillmap(pro_mode)
         return (data, used_live_ai) if return_source else data
