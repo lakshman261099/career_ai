@@ -505,21 +505,12 @@ def generate_skillmap(
     free_text_skills: str | None = None,
     return_source: bool = False,
 ) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
-    """
-    Generates the Skill Mapper JSON.
-    - In Free mode, pass free_text_skills (string the student pasted).
-    - In Pro mode, pass profile_json (dict from Profile Portal) and optionally resume_text.
-    Returns:
-      dict  (or (dict, used_live_ai) if return_source=True)
-    """
     used_live_ai = False
 
-    # --- MOCK path ---
     if _is_mock():
         data = _mock_skillmap(pro_mode)
         return (data, used_live_ai) if return_source else data
 
-    # --- REAL AI path ---
     try:
         from openai import OpenAI
         client = OpenAI()
@@ -531,9 +522,7 @@ def generate_skillmap(
                 "resume_text": resume_text or "",
             }
         else:
-            inputs = {
-                "free_text_skills": (free_text_skills or "").strip()
-            }
+            inputs = {"free_text_skills": (free_text_skills or "").strip()}
 
         messages = build_skillmapper_messages(pro_mode, inputs)
 
@@ -547,7 +536,6 @@ def generate_skillmap(
         raw = (resp.choices[0].message.content or "").strip()
         data = json.loads(raw)
 
-        # minimal validation + fill meta.digest if missing
         data = _light_validate_skillmap(data)
         if isinstance(data.get("meta"), dict) and not data["meta"].get("inputs_digest"):
             data["meta"]["inputs_digest"] = _digest_inputs_for_meta(inputs)
@@ -556,9 +544,11 @@ def generate_skillmap(
         return (data, used_live_ai) if return_source else data
 
     except Exception as e:
-        import traceback, sys
+        import sys, traceback
         print("=== SkillMapper ERROR ===", file=sys.stderr)
         print(str(e), file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
+
         data = _mock_skillmap(pro_mode)
         return (data, used_live_ai) if return_source else data
+
