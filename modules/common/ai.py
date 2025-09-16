@@ -478,24 +478,39 @@ def build_skillmapper_messages(pro_mode: bool, inputs: Dict[str, Any]) -> List[D
 
 def _light_validate_skillmap(data: Any) -> Dict[str, Any]:
     """
-    Lightweight sanity checks to avoid hard dependency on jsonschema.
-    On failure, raises ValueError.
+    Tolerant validator: patch missing fields instead of throwing.
     """
     if not isinstance(data, dict):
-        raise ValueError("SkillMap must be a JSON object")
+        return {"mode": "free", "top_roles": [], "hiring_now": [], "call_to_action": "", "meta": {}}
+
+    # Ensure required keys exist
     for k in ["mode", "top_roles", "hiring_now", "call_to_action", "meta"]:
         if k not in data:
-            raise ValueError(f"Missing key: {k}")
+            data[k] = [] if k in ("top_roles", "hiring_now") else {} if k == "meta" else ""
+
+    # Mode sanity
     if data["mode"] not in ("free", "pro"):
-        raise ValueError("Invalid mode")
-    if not (isinstance(data["top_roles"], list) and len(data["top_roles"]) == 3):
-        raise ValueError("top_roles must be array of exactly 3")
-    for role in data["top_roles"]:
-        if not isinstance(role, dict) or "title" not in role or "match_score" not in role:
-            raise ValueError("Invalid role item")
-    if not isinstance(data["hiring_now"], list) or len(data["hiring_now"]) < 3:
-        raise ValueError("hiring_now must have at least 3 items")
+        data["mode"] = "free"
+
+    # Top roles list
+    if not isinstance(data.get("top_roles"), list):
+        data["top_roles"] = []
+    else:
+        # trim to max 3
+        data["top_roles"] = data["top_roles"][:3]
+
+    # Hiring now list
+    if not isinstance(data.get("hiring_now"), list):
+        data["hiring_now"] = []
+    elif len(data["hiring_now"]) > 5:
+        data["hiring_now"] = data["hiring_now"][:5]
+
+    # Meta always dict
+    if not isinstance(data.get("meta"), dict):
+        data["meta"] = {}
+
     return data
+
 
 def generate_skillmap(
     pro_mode: bool,
