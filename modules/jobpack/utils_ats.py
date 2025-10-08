@@ -99,36 +99,95 @@ Respond only with valid JSON — no explanations, markdown, or commentary.
 # ------------------------------------------------------------------
 # Analyzer — always AI, model depends on mode
 # ------------------------------------------------------------------
-
 def analyze_jobpack(jd_text: str, resume_text: str, pro_mode: bool = False) -> Dict[str, Any]:
     """
-    Full AI-powered ATS + Resume Evaluator
-    - pro_mode=True → uses GPT-4o (deep)
-    - pro_mode=False → uses GPT-4o-mini (fast, cheaper)
+    AI-powered ATS + Resume Evaluator
+    - Free → gpt-4o-mini
+    - Pro  → gpt-4o
     """
     from openai import OpenAI
+    import logging, json, re
+
+    log = logging.getLogger("jobpack_ai")
     client = OpenAI()
 
-    clean_jd = _clean_jd(jd_text)
-    model = OPENAI_MODEL_DEEP if pro_mode else OPENAI_MODEL_FAST
+    clean_jd = _clean_job_description(jd_text or "")
+    model = "gpt-4o" if pro_mode else "gpt-4o-mini"
 
-    prompt = JOBPACK_PROMPT.format(
-        jd=clean_jd,
-        resume=(resume_text or "")[:4000],
-        schema=JOBPACK_JSON_SCHEMA,
-    )
+    prompt = f"""
+You are CareerAI — a professional AI career assistant.
+Analyze the following Job Description (JD) and Resume text.
 
-    completion = client.chat.completions.create(
-        model=model,
-        temperature=0.45,
-        max_tokens=2200,
-        messages=[
-            {"role": "system", "content": "You are CareerAI. Output only JSON per schema."},
-            {"role": "user", "content": prompt}
-        ],
-        response_format={"type": "json_object"},
-    )
+Return a single valid JSON object strictly matching this schema:
+{JOBPACK_JSON_SCHEMA}
 
-    raw = completion.choices[0].message.content.strip()
-    data = json.loads(raw)
-    return data
+Rules:
+- Output ONLY JSON (no markdown, no explanations, no text outside {{...}}).
+- Include realistic numeric scores (0–100), helpful rewrite suggestions, and concrete next steps.
+- If resume text is empty, still infer likely missing skills.
+
+Inputs:
+JD:
+{clean_jd}
+
+Resume:
+{(resume_text or "")[:4000]}
+"""
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=0.4,
+            max_tokens=2000,
+            messages=[
+                {"role": "system", "content": "You output only valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+            timeout=60,
+        )
+
+        raw = (resp.choices[0].message.content or "").strip()
+        if not raw:
+            raise ValueError("Empty response from model")
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            # Try to recover if GPT returned formatted JSON
+            m = re.search(r"(\{[\s\S]+\})", raw)
+            if not m:
+                raise
+            data = json.loads(m.group(1))
+
+        # Default safety net so template never breaks
+        defaults = {
+            "summary": "", "role_detected": "", "fit_overview": [],
+            "ats_score": 0, "skill_table": [], "rewrite_suggestions": [],
+            "next_steps": [], "impact_summary": "", "subscores": {},
+            "resume_ats": {}, "learning_links": [], "interview_qa": [],
+            "practice_plan": [], "application_checklist": []
+        }
+        for k, v in defaults.items():
+            data.setdefault(k, v)
+
+        # Add usage info for debugging/logs
+        usage = getattr(resp, "usage", None)
+        data["_usage"] = {
+            "model": model,
+            "input_tokens": getattr(usage, "prompt_tokens", None),
+            "output_tokens": getattr(usage, "completion_tokens", None),
+            "total_tokens": getattr(usage, "total_tokens", None),
+        }
+
+        return data
+
+    except Exception as e:
+        log.exception("JobPack AI analysis failed: %s", e)
+        return {
+            "summary": "An error occurred during AI analysis.",
+            "impact_summary": str(e),
+            "ats_score": 0,
+            "fit_overview": [],
+            "_usage": {"model": model, "error": True},
+        }
