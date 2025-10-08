@@ -9,20 +9,24 @@ from models import db, User
 # - Pro-only features cost Gold ⭐
 # ---------------------------------------------------------------------
 FEATURE_COSTS = {
-    # Free/Pro (suggestion generation) — uses 🪙 for Free, ⭐ for Pro depending on plan
+    # Portfolio Builder (both tiers use 1 credit)
     "portfolio":            {"coins_free": 1, "coins_pro": 1},
 
-    # Other features (unchanged)
-    "internships":          {"coins_free": 1},
-    "referral":             {"coins_free": 1},
-    "skillmapper":          {"coins_free": 1},
+    # Internship Analyzer
+    "internship_analyzer":  {"coins_free": 1, "coins_pro": 1},
+
+    # Referral Trainer (currently Free-only, Pro extensions coming soon)
+    "referral_trainer":     {"coins_free": 1},
+
+    # Skill Mapper
+    "skillmapper":          {"coins_free": 1, "coins_pro": 1},
 
     # Pro-only features
-    "resume":               {"coins_pro": 100},
-    "jobpack":              {"coins_pro": 100},
+    "resume":               {"coins_pro": 1},
+    "jobpack":              {"coins_pro": 1},
 
-    # NEW: publishing a portfolio page is Pro-only and costs ⭐
-    "portfolio_publish":    {"coins_pro": 100},
+    # Portfolio publishing (Pro-only)
+    "portfolio_publish":    {"coins_pro": 1},
 }
 
 
@@ -53,8 +57,6 @@ def consume_free(user: User, feature: str) -> None:
     if (user.coins_free or 0) < need:
         raise ValueError("Not enough Silver credits.")
     user.coins_free -= need
-    if user.coins_free < 0:
-        user.coins_free = 0
     db.session.commit()
 
 
@@ -75,8 +77,6 @@ def consume_pro(user: User, feature: str) -> None:
     if (user.coins_pro or 0) < need:
         raise ValueError("Not enough Gold credits.")
     user.coins_pro -= need
-    if user.coins_pro < 0:
-        user.coins_pro = 0
     db.session.commit()
 
 
@@ -85,18 +85,19 @@ def consume_pro(user: User, feature: str) -> None:
 # ---------------------------
 def authorize_and_consume(user: User, feature: str) -> bool:
     """
-    Tries Silver first (if the feature lists a Silver cost), then Gold (if it lists a Gold cost).
-    Returns True if a deduction succeeded.
+    Deducts credits for the given feature.
+    Free users spend 🪙 if defined, Pro users spend ⭐ if defined.
+    Returns True if deduction succeeded, False otherwise.
     """
     c = _cost(feature)
 
     # Free (🪙) path
-    if "coins_free" in c and can_use_free(user, feature):
+    if "coins_free" in c and not user.is_pro and can_use_free(user, feature):
         consume_free(user, feature)
         return True
 
     # Pro (⭐) path
-    if "coins_pro" in c and can_use_pro(user, feature):
+    if "coins_pro" in c and user.is_pro and can_use_pro(user, feature):
         consume_pro(user, feature)
         return True
 

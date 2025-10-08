@@ -193,6 +193,233 @@ def generate_project_suggestions(
         ideas = [s.__dict__ for s in _mock_suggestions(target_role, industry, skills, pro_mode)]
         return (ideas, used_live_ai) if return_source else ideas
 
+# ---------- Internship Analyzer (Free & Pro) ----------
+
+INTERNSHIP_ANALYZER_JSON_SCHEMA = r"""
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mode", "meta"],
+  "properties": {
+    "mode": { "type": "string", "enum": ["free", "pro"] },
+    "summary": { "type": "string" },
+    "skill_growth": { "type": "array", "items": { "type": "string" } },
+    "skill_enhancement": { "type": "array", "items": { "type": "string" } },
+    "career_impact": { "type": "string" },
+    "new_paths": { "type": "array", "items": { "type": "string" } },
+    "resume_boost": { "type": "array", "items": { "type": "string" } },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generated_at_utc", "inputs_digest"],
+      "properties": {
+        "generated_at_utc": { "type": "string" },
+        "inputs_digest": { "type": "string" }
+      }
+    }
+  }
+}
+"""
+
+FREE_INTERNSHIP_ANALYZER_PROMPT = """\
+You are InternshipAnalyzer, a career coach for Free users.
+Return ONLY valid JSON matching the schema.
+
+Rules:
+- Mode: "free".
+- Input is a pasted internship description.
+- Produce a short 3–4 sentence "summary" describing how this internship will help the student (exposure, learning, growth).
+- Do not include any other keys.
+
+Inputs:
+- internship_text: {internship_text}
+
+Output:
+- Must validate against the JSON Schema.
+
+JSON Schema:
+{json_schema}
+
+Respond with JSON only.
+"""
+
+PRO_INTERNSHIP_ANALYZER_PROMPT = """\
+You are InternshipAnalyzer, a Pro career coach.
+Return ONLY valid JSON matching the schema.
+
+Rules:
+- Mode: "pro".
+- Input: internship description + student profile.
+- Provide arrays for: skill_growth, skill_enhancement, new_paths, resume_boost.
+- Provide a single string for career_impact.
+- meta must include generated_at_utc + inputs_digest.
+
+Inputs:
+- internship_text: {internship_text}
+- profile_json: {profile_json}
+
+Output:
+- Must validate against the JSON Schema.
+
+JSON Schema:
+{json_schema}
+
+Respond with JSON only.
+"""
+
+def _mock_internship_analysis(pro_mode: bool) -> Dict[str, Any]:
+    if not pro_mode:
+        return {
+            "mode": "free",
+            "summary": "This internship will help you gain practical exposure, teamwork experience, "
+                       "and improve your skills for future opportunities.",
+            "meta": {"generated_at_utc": "2025-09-16T00:00:00Z", "inputs_digest": "sha256:mock"}
+        }
+    return {
+        "mode": "pro",
+        "skill_growth": ["Cloud basics", "Agile teamwork"],
+        "skill_enhancement": ["Python", "SQL"],
+        "career_impact": "Strong fit for Data Analyst / Backend Engineer pathways.",
+        "new_paths": ["Cloud engineering", "Data visualization"],
+        "resume_boost": [
+            "Built dashboards with SQL/Excel",
+            "Worked in Agile sprints with team of 5"
+        ],
+        "meta": {"generated_at_utc": "2025-09-16T00:00:00Z", "inputs_digest": "sha256:mock"}
+    }
+
+def generate_internship_analysis(
+    pro_mode: bool,
+    *,
+    internship_text: str,
+    profile_json: Dict[str, Any] | None = None,
+    return_source: bool = False,
+) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
+    used_live_ai = False
+    if _is_mock():
+        data = _mock_internship_analysis(pro_mode)
+        return (data, used_live_ai) if return_source else data
+
+    from openai import OpenAI
+    client = OpenAI()
+
+    try:
+        if pro_mode:
+            prompt = PRO_INTERNSHIP_ANALYZER_PROMPT.format(
+                internship_text=internship_text[:4000],
+                profile_json=json.dumps(profile_json or {}, ensure_ascii=False),
+                json_schema=INTERNSHIP_ANALYZER_JSON_SCHEMA,
+            )
+        else:
+            prompt = FREE_INTERNSHIP_ANALYZER_PROMPT.format(
+                internship_text=internship_text[:4000],
+                json_schema=INTERNSHIP_ANALYZER_JSON_SCHEMA,
+            )
+
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL_DEEP if pro_mode else OPENAI_MODEL_FAST,
+            messages=[
+                {"role": "system", "content": "You output only valid JSON and nothing else."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.4 if pro_mode else 0.6,
+            max_tokens=1000,
+            response_format={"type": "json_object"},
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        data = json.loads(raw)
+        used_live_ai = True
+        return (data, used_live_ai) if return_source else data
+
+    except Exception:
+        data = _mock_internship_analysis(pro_mode)
+        return (data, used_live_ai) if return_source else data
+
+
+# ---------- Referral Trainer (Free only) ----------
+
+REFERRAL_JSON_SCHEMA = r"""
+{
+  "type": "object",
+  "required": ["warm", "cold", "follow"],
+  "properties": {
+    "warm": { "type": "string" },
+    "cold": { "type": "string" },
+    "follow": { "type": "string" }
+  }
+}
+"""
+
+REFERRAL_PROMPT = """\
+You are ReferralTrainer, a career coach helping students draft outreach.
+Return ONLY valid JSON matching the schema.
+
+Rules:
+- Input: contact details + candidate profile.
+- Produce 3 messages: warm, cold, follow.
+- Keep each under 3 sentences, professional but approachable.
+- Do not add commentary or markdown.
+
+Inputs:
+- contact: {contact}
+- candidate_profile: {candidate_profile}
+
+Output:
+- Must validate against the JSON Schema.
+
+JSON Schema:
+{json_schema}
+
+Respond with JSON only.
+"""
+
+def _mock_referral_messages(contact: Dict[str, Any], candidate_profile: Dict[str, Any]) -> Dict[str, str]:
+    base = f"Hi {contact.get('name', 'there')}, I'm applying for {candidate_profile.get('role','an internship')}."
+    return {
+        "warm": base + " Could we grab 10 minutes? I built a small project relevant to your team.",
+        "cold": base + " I built a small role-aligned project; may I share a 2-min Loom?",
+        "follow": base + " Following up in case my earlier note got buried — appreciate your time!",
+    }
+
+def generate_referral_messages(
+    contact: Dict[str, Any],
+    candidate_profile: Dict[str, Any],
+    return_source: bool = False,
+) -> Dict[str, str] | Tuple[Dict[str, str], bool]:
+    used_live_ai = False
+    if _is_mock():
+        data = _mock_referral_messages(contact, candidate_profile)
+        return (data, used_live_ai) if return_source else data
+
+    from openai import OpenAI
+    client = OpenAI()
+
+    try:
+        prompt = REFERRAL_PROMPT.format(
+            contact=json.dumps(contact, ensure_ascii=False),
+            candidate_profile=json.dumps(candidate_profile, ensure_ascii=False),
+            json_schema=REFERRAL_JSON_SCHEMA,
+        )
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL_FAST,
+            messages=[
+                {"role": "system", "content": "You output only valid JSON and nothing else."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.6,
+            max_tokens=500,
+            response_format={"type": "json_object"},
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        data = json.loads(raw)
+        used_live_ai = True
+        return (data, used_live_ai) if return_source else data
+
+    except Exception:
+        data = _mock_referral_messages(contact, candidate_profile)
+        return (data, used_live_ai) if return_source else data
+
+
 # ---------- SkillMapper (Free & Pro) ----------
 
 # JSON schema as a string (used for prompting and light sanity checks)

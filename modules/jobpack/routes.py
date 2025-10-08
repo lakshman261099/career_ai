@@ -1,205 +1,312 @@
 # modules/jobpack/routes.py
-
-import io, json, traceback
+import io, json
 from datetime import datetime
+from typing import Any, List
+
 from flask import Blueprint, render_template, request, send_file, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
-from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.pdfgen import canvas
 
-from helpers import jobpack_analyze
-from models import db, JobPackReport
+from models import db, JobPackReport, ResumeAsset
 from limits import authorize_and_consume, can_use_pro, consume_pro
+from modules.jobpack.utils_ats import analyze_jobpack
+
 
 jobpack_bp = Blueprint("jobpack", __name__, template_folder='../../templates/jobpack')
 
 
-# ---------- helpers ----------
+# ---------------------- helpers ----------------------
+
 def _safe_result(raw) -> dict:
-    """
-    Normalize any analyzer output (None/str/dict/other) into a safe dict
-    that templates can always render without key errors.
-    """
     base = {
-        "fit": {"score": "-", "gaps": [], "keywords": []},
-        "cover": "",
-        "qna": [],  # list of {"q": "...", "a": "..."}
-        "notes": "",
+        "summary": "",
+        "role_detected": "",
+        "fit_overview": [],
+        "ats_score": 0,
+        "skill_table": [],
+        "rewrite_suggestions": [],
+        "next_steps": [],
+        "impact_summary": "",
+        "detected_keywords": [],
+        "matched_count": 0,
+        "missing_count": 0,
+        "resume_missing": False,
+        "report_tier": "Standard Analysis",
+        "resume_ats": {
+            "resume_ats_score": 0,
+            "blockers": [],
+            "warnings": [],
+            "keyword_coverage": {
+                "required_keywords": [],
+                "present_keywords": [],
+                "missing_keywords": []
+            },
+            "resume_rewrite_actions": []
+        },
+        # NEW
+        "learning_links": [],
+        "interview_qa": [],
+        "practice_plan": [],
+        "application_checklist": [],
     }
-
-    # If it's a string, treat as notes/summary
-    if isinstance(raw, str):
-        base["notes"] = raw[:4000]
-        return base
-
-    # If it's a dict, pull known fields defensively
     if isinstance(raw, dict):
-        fit = raw.get("fit") or {}
-        base["fit"]["score"] = fit.get("score", base["fit"]["score"])
-        base["fit"]["gaps"] = fit.get("gaps", base["fit"]["gaps"]) or []
-        base["fit"]["keywords"] = fit.get("keywords", base["fit"]["keywords"]) or []
-        base["cover"] = (raw.get("cover") or "")[:20000]
-        qna = raw.get("qna") or []
-        # keep only well-formed q/a items
-        safe_qna = []
-        for item in qna:
-            if isinstance(item, dict):
-                safe_qna.append({"q": (item.get("q") or "")[:1000], "a": (item.get("a") or "")[:2000]})
-        base["qna"] = safe_qna[:20]
-        base["notes"] = (raw.get("notes") or raw.get("summary") or "")[:4000]
-        return base
-
-    # Fallback for weird types
-    base["notes"] = str(raw)[:4000]
+        for k in base.keys():
+            base[k] = raw.get(k, base[k])
     return base
 
 
-# ---------- routes ----------
+
+def _coerce_skill_names(skills_any: Any) -> List[str]:
+    out: List[str] = []
+    if isinstance(skills_any, list):
+        for s in skills_any:
+            if isinstance(s, dict) and (s.get("name") or "").strip():
+                out.append(s["name"].strip())
+            elif isinstance(s, str) and s.strip():
+                out.append(s.strip())
+    return out
+
+
+def _profile_to_resume_text(profile) -> str:
+    """
+    Build a human-readable text resume from structured Profile Portal data.
+    Used for Pro deep evaluation if resume not uploaded.
+    """
+    if not profile:
+        return ""
+
+    lines: List[str] = []
+    # Header
+    if profile.full_name:
+        lines.append(profile.full_name)
+    if profile.headline:
+        lines.append(profile.headline)
+    if profile.location:
+        lines.append(f"Location: {profile.location}")
+
+    # Skills
+    skills = _coerce_skill_names(profile.skills)
+    if skills:
+        lines.append("Skills: " + ", ".join(skills))
+
+    # Experience
+    if profile.experience:
+        lines.append("\nExperience:")
+        for item in profile.experience[:8]:
+            if not isinstance(item, dict):
+                continue
+            role = item.get("role", "")
+            company = item.get("company", "")
+            dates = " • ".join(filter(None, [item.get("start", ""), item.get("end", "")]))
+            if role or company:
+                lines.append(f"- {role} at {company} ({dates})")
+            for b in (item.get("bullets") or [])[:5]:
+                if isinstance(b, str) and b.strip():
+                    lines.append(f"  • {b.strip()}")
+
+    # Projects
+    projects = getattr(profile.user, "projects", []) if getattr(profile, "user", None) else []
+    if projects:
+        lines.append("\nProjects:")
+        for p in projects[:5]:
+            title = getattr(p, "title", "")
+            desc = getattr(p, "short_desc", "")
+            stack = ", ".join(p.tech_stack or [])
+            lines.append(f"- {title}")
+            if desc:
+                lines.append(f"  • {desc}")
+            if stack:
+                lines.append(f"  • Stack: {stack}")
+
+    # Education
+    if profile.education:
+        lines.append("\nEducation:")
+        for e in profile.education[:4]:
+            if not isinstance(e, dict):
+                continue
+            school = e.get("school", "")
+            degree = e.get("degree", "")
+            year = str(e.get("year", ""))
+            lines.append(" - " + " — ".join(filter(None, [school, degree, year])))
+
+    return "\n".join(lines)[:6000]
+
+
+def _get_latest_profile_resume_text(user) -> str:
+    """
+    Prefer the most recent ResumeAsset text.
+    Fallback: synthesize from Profile Portal.
+    """
+    try:
+        asset = (
+            ResumeAsset.query
+            .filter(ResumeAsset.user_id == user.id)
+            .order_by(ResumeAsset.created_at.desc())
+            .first()
+        )
+        if asset and asset.text:
+            return asset.text
+    except Exception as e:
+        current_app.logger.warning("ResumeAsset lookup failed: %s", e)
+
+    profile = getattr(user, "profile", None)
+    return _profile_to_resume_text(profile)
+
+
+# ---------------------- main route ----------------------
+
 @jobpack_bp.route("/", methods=["GET", "POST"], endpoint="index")
 @login_required
 def index():
     """
-    Paste-only Job Pack analyzer.
-    mode=basic  -> free first, fallback to pro (authorize_and_consume)
-    mode=pro    -> strictly Pro (consume ⭐ as per FEATURES['jobpack'].pro_cost)
+    Job Pack — AI-powered ATS + Resume Evaluator
+    Free: standard match analysis.
+    Pro: CareerAI Deep Evaluation (uses profile portal).
     """
+    mode = (request.form.get("mode") or "basic").lower()
     result = None
-    last_report_id = None
-    mode = (request.form.get("mode") or "basic").lower() if request.method == "POST" else "basic"
 
     if request.method == "POST":
-        jd = (request.form.get("jd") or "").strip()
-        resume = (request.form.get("resume") or "").strip()
+        jd_text = (request.form.get("jd") or "").strip()
+        resume_text = (request.form.get("resume") or "").strip()
 
-        if not jd:
-            flash("Paste a job description.", "warning")
-            return render_template("jobpack/index.html", result=None, last_report_id=None, mode=mode)
+        if not jd_text:
+            flash("Please paste a job description.", "warning")
+            return render_template("jobpack/index.html", result=None, mode=mode)
 
         try:
-            # 1) Credit gating (only consume AFTER success)
-            used_pro_credit = False
+            # Credit validation
             if mode == "pro":
                 if not can_use_pro(current_user, "jobpack"):
-                    flash("Not enough Pro credits for deep analysis.", "warning")
+                    flash("Not enough Pro credits to run Deep Evaluation.", "warning")
                     return redirect(url_for("billing.index"))
-                # don't consume yet; consume after successful analysis
-                use_pro = True
             else:
-                # basic: try free; if none, block with upsell (no hidden pro auto-spend)
                 if not authorize_and_consume(current_user, "jobpack"):
-                    flash("You’ve hit today’s free limit. Upgrade to Pro to continue.", "warning")
+                    flash("You’ve used your free Job Pack today. Upgrade to Pro ⭐ to continue.", "warning")
                     return redirect(url_for("billing.index"))
-                use_pro = False  # already consumed a free unit
 
-            # 2) Run analysis safely
-            raw = jobpack_analyze(jd, resume)  # may raise or return odd shapes
-            safe = _safe_result(raw)
+            # For Pro Deep Evaluation, load profile resume automatically if none pasted
+            if mode == "pro" and not resume_text:
+                resume_text = _get_latest_profile_resume_text(current_user)
+                if resume_text:
+                    flash("Loaded your Profile Portal data for deep analysis.", "info")
 
-            # 3) Only now consume pro credit if requested mode=pro and analysis succeeded
-            if use_pro:
+            # Run analysis
+            raw = analyze_jobpack(jd_text, resume_text, pro_mode=(mode == "pro"))
+            result = _safe_result(raw)
+
+            # consume credit after successful analysis
+            if mode == "pro":
                 consume_pro(current_user, "jobpack")
-                used_pro_credit = True
 
-            # 4) Persist report
+            # persist report
             report = JobPackReport(
                 user_id=current_user.id,
-                job_title=None,
+                job_title=result.get("role_detected"),
                 company=None,
-                jd_text=jd,
-                analysis=json.dumps(safe, ensure_ascii=False),
+                jd_text=jd_text,
+                analysis=json.dumps(result, ensure_ascii=False),
                 created_at=datetime.utcnow(),
             )
             db.session.add(report)
             db.session.commit()
-            last_report_id = report.id
-            result = safe
+
+            return render_template(
+                "jobpack/result.html",
+                result=result,
+                mode=mode,
+                is_pro=current_user.is_pro,
+            )
 
         except Exception as e:
-            current_app.logger.exception("JobPack analyse error: %s", e)
+            current_app.logger.exception("JobPack Analysis Error: %s", e)
             try:
-                db.session.rollback()  # <-- IMPORTANT
+                db.session.rollback()
             except Exception:
                 pass
-            flash("Something went wrong while analysing. Try a different job text or try again later.", "danger")
+            flash("An error occurred during analysis. Please try again later.", "danger")
 
-            result = _safe_result({"notes": "Analysis failed.", "fit": {"score": "-", "gaps": [], "keywords": []}})
-            last_report_id = None
-            # Log full traceback; never 500 to the user
-            
+    return render_template("jobpack/index.html", result=None, mode=mode)
 
-    return render_template("jobpack/index.html", result=result, last_report_id=last_report_id, mode=mode)
 
+# ---------------------- PDF Export ----------------------
 
 @jobpack_bp.route("/export/pdf", methods=["POST"], endpoint="export_pdf")
 @login_required
 def export_pdf():
     """
-    Pro-only PDF export (gated, no extra credit consumed).
+    Export Job Pack report to PDF (Pro only).
     """
-    # Be robust: some codebases define is_pro as prop; others as status
-    is_pro = getattr(current_user, "is_pro", False) or getattr(current_user, "subscription_status", "free") == "pro"
-    if not is_pro:
+    if not current_user.is_pro:
         flash("PDF export is a Pro feature.", "warning")
         return redirect(url_for("billing.index"))
 
-    data = request.form.get("data")
-    if not data:
-        return ("Missing data", 400)
-
     try:
+        data = request.form.get("data")
+        if not data:
+            flash("Missing report data.", "danger")
+            return redirect(url_for("jobpack.index"))
+
         result = json.loads(data)
-    except Exception:
-        return ("Bad JSON", 400)
+        safe = _safe_result(result)
 
-    # Ensure safe shape for PDF generator
-    safe = _safe_result(result)
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        y = height - 60
 
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    y = height - 40
+        def section(title: str, lines: List[str], small=False):
+            nonlocal y
+            c.setFont("Helvetica-Bold", 13)
+            c.setFillColor(colors.white)
+            c.drawString(40, y, title)
+            y -= 18
+            c.setFont("Helvetica", 9 if small else 10)
+            for line in lines:
+                if not line:
+                    continue
+                c.drawString(40, y, line[:110])
+                y -= 12 if small else 14
+                if y < 60:
+                    c.showPage()
+                    y = height - 60
 
-    # Header
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(40, y, "Job Pack Report")
-    y -= 24
+        # Header
+        c.setFillColorRGB(0.1, 0.12, 0.18)
+        c.rect(0, height - 80, width, 80, fill=True, stroke=False)
+        c.setFont("Helvetica-Bold", 16)
+        c.setFillColor(colors.white)
+        c.drawString(40, height - 50, "CareerAI Deep Evaluation Report ⭐")
 
-    # Fit section
-    fit = safe.get("fit", {})
-    p.setFont("Helvetica", 10)
-    p.drawString(40, y, f"Fit Score: {fit.get('score', '-')}")
-    y -= 16
-    p.drawString(40, y, "Gaps: " + ", ".join(fit.get("gaps", []) or []))
-    y -= 16
-    p.drawString(40, y, "Keywords: " + ", ".join(fit.get("keywords", []) or []))
-    y -= 20
+        section("Role Summary", [safe["summary"], f"Detected Role: {safe['role_detected']}"])
+        section("Fit Overview", [f"{f['category']}: {f['match']}% — {f['comment']}" for f in safe["fit_overview"]])
+        section("ATS Score", [f"Overall Score: {safe['ats_score']}%"])
 
-    # Cover Letter
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(40, y, "Cover Letter:")
-    y -= 16
-    p.setFont("Helvetica", 10)
-    for line in (safe.get("cover", "") or "").split("\n"):
-        p.drawString(40, y, (line or "")[:100])
-        y -= 14
-        if y < 60:
-            p.showPage(); y = height - 40
-            p.setFont("Helvetica", 10)
+        # Resume ATS details
+        ra = safe.get("resume_ats", {}) or {}
+        kc = ra.get("keyword_coverage", {}) or {}
+        section("Resume ATS — Must Fix (Blockers)", [f"• {b}" for b in ra.get("blockers", [])] or ["None"], small=True)
+        section("Resume ATS — Should Fix (Warnings)", [f"• {w}" for w in ra.get("warnings", [])] or ["None"], small=True)
+        section("Resume ATS — Missing Keywords", [", ".join(kc.get("missing_keywords", [])[:30]) or "None"], small=True)
+        section("Resume ATS — Exact Fixes", [f"• {a}" for a in ra.get("resume_rewrite_actions", [])], small=True)
 
-    # Q&A
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(40, y, "Interview Q&A:")
-    y -= 16
-    p.setFont("Helvetica", 10)
-    for qa in (safe.get("qna", []) or []):
-        p.drawString(40, y, "Q: " + (qa.get("q", "") or "")[:100])
-        y -= 14
-        p.drawString(40, y, "A: " + (qa.get("a", "") or "")[:100])
-        y -= 18
-        if y < 60:
-            p.showPage(); y = height - 40
-            p.setFont("Helvetica", 10)
+        section("Resume Rewrite Suggestions", [f"• {s}" for s in safe["rewrite_suggestions"]])
+        section("Next Steps", [f"• {s}" for s in safe["next_steps"]])
+        section("Impact Summary", [safe["impact_summary"]])
 
-    p.save()
-    buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name="jobpack_report.pdf", mimetype="application/pdf")
+        c.save()
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name="CareerAI_Deep_Evaluation_Report.pdf",
+            mimetype="application/pdf",
+        )
+
+    except Exception as e:
+        current_app.logger.exception("PDF export failed: %s", e)
+        flash("Could not export PDF. Please try again later.", "danger")
+        return redirect(url_for("jobpack.index"))
