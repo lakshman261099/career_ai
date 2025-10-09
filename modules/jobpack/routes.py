@@ -3,7 +3,7 @@ import io, json
 from datetime import datetime
 from typing import Any, List
 
-from flask import Blueprint, render_template, request, send_file, flash, redirect, url_for, current_app
+from flask import Blueprint, render_template, render_template_string, request, send_file, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -45,7 +45,7 @@ def _safe_result(raw) -> dict:
             },
             "resume_rewrite_actions": []
         },
-        # NEW
+        # Extended sections
         "learning_links": [],
         "interview_qa": [],
         "practice_plan": [],
@@ -55,7 +55,6 @@ def _safe_result(raw) -> dict:
         for k in base.keys():
             base[k] = raw.get(k, base[k])
     return base
-
 
 
 def _coerce_skill_names(skills_any: Any) -> List[str]:
@@ -70,75 +69,42 @@ def _coerce_skill_names(skills_any: Any) -> List[str]:
 
 
 def _profile_to_resume_text(profile) -> str:
-    """
-    Build a human-readable text resume from structured Profile Portal data.
-    Used for Pro deep evaluation if resume not uploaded.
-    """
     if not profile:
         return ""
-
     lines: List[str] = []
-    # Header
-    if profile.full_name:
-        lines.append(profile.full_name)
-    if profile.headline:
-        lines.append(profile.headline)
-    if profile.location:
-        lines.append(f"Location: {profile.location}")
-
-    # Skills
+    if profile.full_name: lines.append(profile.full_name)
+    if profile.headline: lines.append(profile.headline)
+    if profile.location: lines.append(f"Location: {profile.location}")
     skills = _coerce_skill_names(profile.skills)
-    if skills:
-        lines.append("Skills: " + ", ".join(skills))
-
-    # Experience
+    if skills: lines.append("Skills: " + ", ".join(skills))
     if profile.experience:
         lines.append("\nExperience:")
         for item in profile.experience[:8]:
-            if not isinstance(item, dict):
-                continue
-            role = item.get("role", "")
-            company = item.get("company", "")
-            dates = " • ".join(filter(None, [item.get("start", ""), item.get("end", "")]))
-            if role or company:
-                lines.append(f"- {role} at {company} ({dates})")
+            if not isinstance(item, dict): continue
+            role = item.get("role", ""); company = item.get("company", "")
+            dates = " • ".join(filter(None, [item.get("start",""), item.get("end","")]))
+            if role or company: lines.append(f"- {role} at {company} ({dates})")
             for b in (item.get("bullets") or [])[:5]:
-                if isinstance(b, str) and b.strip():
-                    lines.append(f"  • {b.strip()}")
-
-    # Projects
+                if isinstance(b,str) and b.strip(): lines.append(f"  • {b.strip()}")
     projects = getattr(profile.user, "projects", []) if getattr(profile, "user", None) else []
     if projects:
         lines.append("\nProjects:")
         for p in projects[:5]:
-            title = getattr(p, "title", "")
-            desc = getattr(p, "short_desc", "")
+            title = getattr(p,"title",""); desc = getattr(p,"short_desc","")
             stack = ", ".join(p.tech_stack or [])
             lines.append(f"- {title}")
-            if desc:
-                lines.append(f"  • {desc}")
-            if stack:
-                lines.append(f"  • Stack: {stack}")
-
-    # Education
+            if desc: lines.append(f"  • {desc}")
+            if stack: lines.append(f"  • Stack: {stack}")
     if profile.education:
         lines.append("\nEducation:")
         for e in profile.education[:4]:
-            if not isinstance(e, dict):
-                continue
-            school = e.get("school", "")
-            degree = e.get("degree", "")
-            year = str(e.get("year", ""))
+            if not isinstance(e, dict): continue
+            school = e.get("school",""); degree = e.get("degree",""); year = str(e.get("year",""))
             lines.append(" - " + " — ".join(filter(None, [school, degree, year])))
-
     return "\n".join(lines)[:6000]
 
 
 def _get_latest_profile_resume_text(user) -> str:
-    """
-    Prefer the most recent ResumeAsset text.
-    Fallback: synthesize from Profile Portal.
-    """
     try:
         asset = (
             ResumeAsset.query
@@ -150,7 +116,6 @@ def _get_latest_profile_resume_text(user) -> str:
             return asset.text
     except Exception as e:
         current_app.logger.warning("ResumeAsset lookup failed: %s", e)
-
     profile = getattr(user, "profile", None)
     return _profile_to_resume_text(profile)
 
@@ -162,10 +127,11 @@ def _get_latest_profile_resume_text(user) -> str:
 def index():
     """
     Job Pack — AI-powered ATS + Resume Evaluator
-    Free: standard match analysis.
-    Pro: CareerAI Deep Evaluation (uses profile portal).
+    Free: standard match analysis (gpt-4o-mini).
+    Pro: CareerAI Deep Evaluation (gpt-4o; uses profile portal if resume not provided).
     """
     mode = (request.form.get("mode") or "basic").lower()
+    is_pro_run = (mode == "pro")
     result = None
 
     if request.method == "POST":
@@ -176,32 +142,41 @@ def index():
             flash("Please paste a job description.", "warning")
             return render_template("jobpack/index.html", result=None, mode=mode)
 
+        # Credits
+        if is_pro_run:
+            if not can_use_pro(current_user, "jobpack"):
+                flash("Not enough Pro credits to run Deep Evaluation.", "warning")
+                return redirect(url_for("billing.index"))
+        else:
+            if not authorize_and_consume(current_user, "jobpack"):
+                flash("You’ve used your free Job Pack today. Upgrade to Pro ⭐ to continue.", "warning")
+                return redirect(url_for("billing.index"))
+
+        # Auto-load resume from Profile Portal for Pro runs if empty
+        if is_pro_run and not resume_text:
+            resume_text = _get_latest_profile_resume_text(current_user)
+            if resume_text:
+                flash("Loaded your Profile Portal data for deep analysis.", "info")
+
+        # Run AI
         try:
-            # Credit validation
-            if mode == "pro":
-                if not can_use_pro(current_user, "jobpack"):
-                    flash("Not enough Pro credits to run Deep Evaluation.", "warning")
-                    return redirect(url_for("billing.index"))
-            else:
-                if not authorize_and_consume(current_user, "jobpack"):
-                    flash("You’ve used your free Job Pack today. Upgrade to Pro ⭐ to continue.", "warning")
-                    return redirect(url_for("billing.index"))
+            raw = analyze_jobpack(jd_text, resume_text, pro_mode=is_pro_run)
+        except Exception as e:
+            current_app.logger.exception("JobPack Analysis Error: %s", e)
+            flash("An error occurred during analysis. Please try again later.", "danger")
+            return render_template("jobpack/index.html", result=None, mode=mode)
 
-            # For Pro Deep Evaluation, load profile resume automatically if none pasted
-            if mode == "pro" and not resume_text:
-                resume_text = _get_latest_profile_resume_text(current_user)
-                if resume_text:
-                    flash("Loaded your Profile Portal data for deep analysis.", "info")
+        result = _safe_result(raw)
 
-            # Run analysis
-            raw = analyze_jobpack(jd_text, resume_text, pro_mode=(mode == "pro"))
-            result = _safe_result(raw)
-
-            # consume credit after successful analysis
-            if mode == "pro":
+        # Deduct ⭐ for pro runs AFTER successful AI call
+        if is_pro_run:
+            try:
                 consume_pro(current_user, "jobpack")
+            except Exception as e:
+                current_app.logger.warning("Pro credit consume failed after analysis: %s", e)
 
-            # persist report
+        # Persist (best-effort)
+        try:
             report = JobPackReport(
                 user_id=current_user.id,
                 job_title=result.get("role_detected"),
@@ -212,22 +187,35 @@ def index():
             )
             db.session.add(report)
             db.session.commit()
-
-            return render_template(
-                "jobpack/result.html",
-                result=result,
-                mode=mode,
-                is_pro=current_user.is_pro,
-            )
-
         except Exception as e:
-            current_app.logger.exception("JobPack Analysis Error: %s", e)
+            current_app.logger.warning("JobPack report save failed: %s", e)
             try:
                 db.session.rollback()
             except Exception:
                 pass
-            flash("An error occurred during analysis. Please try again later.", "danger")
 
+        # SAFE RENDER: if the template raises, show a small inline debug view
+        try:
+            return render_template(
+                "jobpack/result.html",
+                result=result,
+                mode=mode,
+                is_pro=is_pro_run,
+            )
+        except Exception as e:
+            current_app.logger.exception("JobPack result template failed: %s", e)
+            pretty = json.dumps(result, ensure_ascii=False, indent=2)[:8000]
+            html = f"""
+            <div style="max-width:900px;margin:40px auto;font-family:system-ui;">
+              <h2>JobPack Result (Fallback Debug View)</h2>
+              <p style="color:#b00">Template rendering failed. See server logs for the stack trace.</p>
+              <pre style="background:#111;color:#eee;padding:16px;border-radius:8px;white-space:pre-wrap">{pretty}</pre>
+              <p><a href="{url_for('jobpack.index')}" style="text-decoration:underline">← Back to Job Pack</a></p>
+            </div>
+            """
+            return render_template_string(html), 200
+
+    # GET
     return render_template("jobpack/index.html", result=None, mode=mode)
 
 
@@ -249,8 +237,7 @@ def export_pdf():
             flash("Missing report data.", "danger")
             return redirect(url_for("jobpack.index"))
 
-        result = json.loads(data)
-        safe = _safe_result(result)
+        safe = _safe_result(json.loads(data))
 
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=A4)
@@ -281,7 +268,7 @@ def export_pdf():
         c.drawString(40, height - 50, "CareerAI Deep Evaluation Report ⭐")
 
         section("Role Summary", [safe["summary"], f"Detected Role: {safe['role_detected']}"])
-        section("Fit Overview", [f"{f['category']}: {f['match']}% — {f['comment']}" for f in safe["fit_overview"]])
+        section("Fit Overview", [f"{f.get('category','')}: {f.get('match',0)}% — {f.get('comment','')}" for f in safe["fit_overview"]])
         section("ATS Score", [f"Overall Score: {safe['ats_score']}%"])
 
         # Resume ATS details
@@ -289,7 +276,7 @@ def export_pdf():
         kc = ra.get("keyword_coverage", {}) or {}
         section("Resume ATS — Must Fix (Blockers)", [f"• {b}" for b in ra.get("blockers", [])] or ["None"], small=True)
         section("Resume ATS — Should Fix (Warnings)", [f"• {w}" for w in ra.get("warnings", [])] or ["None"], small=True)
-        section("Resume ATS — Missing Keywords", [", ".join(kc.get("missing_keywords", [])[:30]) or "None"], small=True)
+        section("Resume ATS — Missing Keywords", [", ".join((kc.get("missing_keywords") or [])[:30]) or "None"], small=True)
         section("Resume ATS — Exact Fixes", [f"• {a}" for a in ra.get("resume_rewrite_actions", [])], small=True)
 
         section("Resume Rewrite Suggestions", [f"• {s}" for s in safe["rewrite_suggestions"]])
