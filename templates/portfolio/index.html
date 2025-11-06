@@ -9,10 +9,9 @@
     </div>
     <div class="flex items-center gap-2">
       <a href="{{ url_for('portfolio.wizard') }}" class="btn-ghost">Open Wizard</a>
+      <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost">Preview from Profile</a>
       {% if subscription_status|default('free')|lower == 'pro' %}
-        <form method="POST" action="{{ url_for('portfolio.publish') }}">
-          <button type="submit" class="btn-primary">Publish from Profile ⭐</button>
-        </form>
+        <a href="{{ url_for('portfolio.publish') }}" class="btn-primary">Publish from Profile ⭐</a>
       {% else %}
         <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
       {% endif %}
@@ -45,10 +44,9 @@
       <p class="text-white/70 text-sm">No portfolio pages yet.</p>
       <div class="mt-3 flex items-center gap-2">
         <a href="{{ url_for('portfolio.wizard') }}" class="btn-ghost">Open Wizard</a>
+        <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost">Preview from Profile</a>
         {% if subscription_status|default('free')|lower == 'pro' %}
-          <form method="POST" action="{{ url_for('portfolio.publish') }}">
-            <button type="submit" class="btn-primary">Publish from Profile ⭐</button>
-          </form>
+          <a href="{{ url_for('portfolio.publish') }}" class="btn-primary">Publish from Profile ⭐</a>
         {% else %}
           <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
         {% endif %}

@@ -1,6 +1,7 @@
 from sqlalchemy.exc import OperationalError
+
 from app import app
-from models import db, University, User
+from models import University, User, db
 
 with app.app_context():
     db.create_all()
@@ -12,11 +13,24 @@ with app.app_context():
         needs_uni = University.query.first() is None
 
     if needs_uni:
-        db.session.add(University(name="VelTech University", domain="veltech.edu", tenant_slug="veltech.jobpack.ai"))
-        db.session.add(University(name="Demo University", domain="demo.local", tenant_slug="demo.jobpack.ai"))
+        db.session.add(
+            University(
+                name="VelTech University",
+                domain="veltech.edu",
+                tenant_slug="veltech.jobpack.ai",
+            )
+        )
+        db.session.add(
+            University(
+                name="Demo University",
+                domain="demo.local",
+                tenant_slug="demo.jobpack.ai",
+            )
+        )
 
     if not User.query.filter_by(email="demo@career.ai").first():
-        u = User(name="Demo User", email="demo@career.ai"); u.set_password("demo123")
+        u = User(name="Demo User", email="demo@career.ai")
+        u.set_password("demo123")
         db.session.add(u)
 
     db.session.commit()

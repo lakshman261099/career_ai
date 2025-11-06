@@ -1,23 +1,34 @@
 # modules/jobpack/routes.py
-import io, json
+import io
+import json
 from datetime import datetime
 from typing import Any, List
 
-from flask import Blueprint, render_template, render_template_string, request, send_file, flash, redirect, url_for, current_app
-from flask_login import login_required, current_user
-from reportlab.lib.pagesizes import A4
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    render_template_string,
+    request,
+    send_file,
+    url_for,
+)
+from flask_login import current_user, login_required
 from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-from models import db, JobPackReport, ResumeAsset
 from limits import authorize_and_consume, can_use_pro, consume_pro
+from models import JobPackReport, ResumeAsset, db
 from modules.jobpack.utils_ats import analyze_jobpack
 
-
-jobpack_bp = Blueprint("jobpack", __name__, template_folder='../../templates/jobpack')
+jobpack_bp = Blueprint("jobpack", __name__, template_folder="../../templates/jobpack")
 
 
 # ---------------------- helpers ----------------------
+
 
 def _safe_result(raw) -> dict:
     base = {
@@ -41,9 +52,9 @@ def _safe_result(raw) -> dict:
             "keyword_coverage": {
                 "required_keywords": [],
                 "present_keywords": [],
-                "missing_keywords": []
+                "missing_keywords": [],
             },
-            "resume_rewrite_actions": []
+            "resume_rewrite_actions": [],
         },
         # Extended sections
         "learning_links": [],
@@ -72,34 +83,52 @@ def _profile_to_resume_text(profile) -> str:
     if not profile:
         return ""
     lines: List[str] = []
-    if profile.full_name: lines.append(profile.full_name)
-    if profile.headline: lines.append(profile.headline)
-    if profile.location: lines.append(f"Location: {profile.location}")
+    if profile.full_name:
+        lines.append(profile.full_name)
+    if profile.headline:
+        lines.append(profile.headline)
+    if profile.location:
+        lines.append(f"Location: {profile.location}")
     skills = _coerce_skill_names(profile.skills)
-    if skills: lines.append("Skills: " + ", ".join(skills))
+    if skills:
+        lines.append("Skills: " + ", ".join(skills))
     if profile.experience:
         lines.append("\nExperience:")
         for item in profile.experience[:8]:
-            if not isinstance(item, dict): continue
-            role = item.get("role", ""); company = item.get("company", "")
-            dates = " • ".join(filter(None, [item.get("start",""), item.get("end","")]))
-            if role or company: lines.append(f"- {role} at {company} ({dates})")
+            if not isinstance(item, dict):
+                continue
+            role = item.get("role", "")
+            company = item.get("company", "")
+            dates = " • ".join(
+                filter(None, [item.get("start", ""), item.get("end", "")])
+            )
+            if role or company:
+                lines.append(f"- {role} at {company} ({dates})")
             for b in (item.get("bullets") or [])[:5]:
-                if isinstance(b,str) and b.strip(): lines.append(f"  • {b.strip()}")
-    projects = getattr(profile.user, "projects", []) if getattr(profile, "user", None) else []
+                if isinstance(b, str) and b.strip():
+                    lines.append(f"  • {b.strip()}")
+    projects = (
+        getattr(profile.user, "projects", []) if getattr(profile, "user", None) else []
+    )
     if projects:
         lines.append("\nProjects:")
         for p in projects[:5]:
-            title = getattr(p,"title",""); desc = getattr(p,"short_desc","")
+            title = getattr(p, "title", "")
+            desc = getattr(p, "short_desc", "")
             stack = ", ".join(p.tech_stack or [])
             lines.append(f"- {title}")
-            if desc: lines.append(f"  • {desc}")
-            if stack: lines.append(f"  • Stack: {stack}")
+            if desc:
+                lines.append(f"  • {desc}")
+            if stack:
+                lines.append(f"  • Stack: {stack}")
     if profile.education:
         lines.append("\nEducation:")
         for e in profile.education[:4]:
-            if not isinstance(e, dict): continue
-            school = e.get("school",""); degree = e.get("degree",""); year = str(e.get("year",""))
+            if not isinstance(e, dict):
+                continue
+            school = e.get("school", "")
+            degree = e.get("degree", "")
+            year = str(e.get("year", ""))
             lines.append(" - " + " — ".join(filter(None, [school, degree, year])))
     return "\n".join(lines)[:6000]
 
@@ -107,8 +136,7 @@ def _profile_to_resume_text(profile) -> str:
 def _get_latest_profile_resume_text(user) -> str:
     try:
         asset = (
-            ResumeAsset.query
-            .filter(ResumeAsset.user_id == user.id)
+            ResumeAsset.query.filter(ResumeAsset.user_id == user.id)
             .order_by(ResumeAsset.created_at.desc())
             .first()
         )
@@ -122,6 +150,7 @@ def _get_latest_profile_resume_text(user) -> str:
 
 # ---------------------- main route ----------------------
 
+
 @jobpack_bp.route("/", methods=["GET", "POST"], endpoint="index")
 @login_required
 def index():
@@ -131,7 +160,7 @@ def index():
     Pro: CareerAI Deep Evaluation (gpt-4o; uses profile portal if resume not provided).
     """
     mode = (request.form.get("mode") or "basic").lower()
-    is_pro_run = (mode == "pro")
+    is_pro_run = mode == "pro"
     result = None
 
     if request.method == "POST":
@@ -149,7 +178,10 @@ def index():
                 return redirect(url_for("billing.index"))
         else:
             if not authorize_and_consume(current_user, "jobpack"):
-                flash("You’ve used your free Job Pack today. Upgrade to Pro ⭐ to continue.", "warning")
+                flash(
+                    "You’ve used your free Job Pack today. Upgrade to Pro ⭐ to continue.",
+                    "warning",
+                )
                 return redirect(url_for("billing.index"))
 
         # Auto-load resume from Profile Portal for Pro runs if empty
@@ -163,7 +195,9 @@ def index():
             raw = analyze_jobpack(jd_text, resume_text, pro_mode=is_pro_run)
         except Exception as e:
             current_app.logger.exception("JobPack Analysis Error: %s", e)
-            flash("An error occurred during analysis. Please try again later.", "danger")
+            flash(
+                "An error occurred during analysis. Please try again later.", "danger"
+            )
             return render_template("jobpack/index.html", result=None, mode=mode)
 
         result = _safe_result(raw)
@@ -173,7 +207,9 @@ def index():
             try:
                 consume_pro(current_user, "jobpack")
             except Exception as e:
-                current_app.logger.warning("Pro credit consume failed after analysis: %s", e)
+                current_app.logger.warning(
+                    "Pro credit consume failed after analysis: %s", e
+                )
 
         # Persist (best-effort)
         try:
@@ -221,6 +257,7 @@ def index():
 
 # ---------------------- PDF Export ----------------------
 
+
 @jobpack_bp.route("/export/pdf", methods=["POST"], endpoint="export_pdf")
 @login_required
 def export_pdf():
@@ -267,19 +304,46 @@ def export_pdf():
         c.setFillColor(colors.white)
         c.drawString(40, height - 50, "CareerAI Deep Evaluation Report ⭐")
 
-        section("Role Summary", [safe["summary"], f"Detected Role: {safe['role_detected']}"])
-        section("Fit Overview", [f"{f.get('category','')}: {f.get('match',0)}% — {f.get('comment','')}" for f in safe["fit_overview"]])
+        section(
+            "Role Summary", [safe["summary"], f"Detected Role: {safe['role_detected']}"]
+        )
+        section(
+            "Fit Overview",
+            [
+                f"{f.get('category','')}: {f.get('match',0)}% — {f.get('comment','')}"
+                for f in safe["fit_overview"]
+            ],
+        )
         section("ATS Score", [f"Overall Score: {safe['ats_score']}%"])
 
         # Resume ATS details
         ra = safe.get("resume_ats", {}) or {}
         kc = ra.get("keyword_coverage", {}) or {}
-        section("Resume ATS — Must Fix (Blockers)", [f"• {b}" for b in ra.get("blockers", [])] or ["None"], small=True)
-        section("Resume ATS — Should Fix (Warnings)", [f"• {w}" for w in ra.get("warnings", [])] or ["None"], small=True)
-        section("Resume ATS — Missing Keywords", [", ".join((kc.get("missing_keywords") or [])[:30]) or "None"], small=True)
-        section("Resume ATS — Exact Fixes", [f"• {a}" for a in ra.get("resume_rewrite_actions", [])], small=True)
+        section(
+            "Resume ATS — Must Fix (Blockers)",
+            [f"• {b}" for b in ra.get("blockers", [])] or ["None"],
+            small=True,
+        )
+        section(
+            "Resume ATS — Should Fix (Warnings)",
+            [f"• {w}" for w in ra.get("warnings", [])] or ["None"],
+            small=True,
+        )
+        section(
+            "Resume ATS — Missing Keywords",
+            [", ".join((kc.get("missing_keywords") or [])[:30]) or "None"],
+            small=True,
+        )
+        section(
+            "Resume ATS — Exact Fixes",
+            [f"• {a}" for a in ra.get("resume_rewrite_actions", [])],
+            small=True,
+        )
 
-        section("Resume Rewrite Suggestions", [f"• {s}" for s in safe["rewrite_suggestions"]])
+        section(
+            "Resume Rewrite Suggestions",
+            [f"• {s}" for s in safe["rewrite_suggestions"]],
+        )
         section("Next Steps", [f"• {s}" for s in safe["next_steps"]])
         section("Impact Summary", [safe["impact_summary"]])
 

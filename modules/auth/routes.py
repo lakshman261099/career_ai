@@ -1,17 +1,17 @@
 # modules/auth/routes.py
 
 import os
+import random
 import smtplib
 import string
-import random
-from email.mime.text import MIMEText
 from datetime import datetime, timedelta
+from email.mime.text import MIMEText
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
-from flask_login import LoginManager, login_user, logout_user, login_required
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask_login import LoginManager, login_required, login_user, logout_user
 from werkzeug.security import gen_salt
 
-from models import db, User
+from models import User, db
 
 auth_bp = Blueprint("auth", __name__, template_folder="../../templates/auth")
 login_manager = LoginManager()
@@ -78,7 +78,9 @@ def register():
             flash("Email already registered.", "error")
             return render_template("auth/register.html")
 
-        u = User(name=name, email=email, verified=True)  # mark verified on password signup
+        u = User(
+            name=name, email=email, verified=True
+        )  # mark verified on password signup
         u.set_password(pw)
         db.session.add(u)
         db.session.commit()

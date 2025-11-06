@@ -2,21 +2,29 @@
 from __future__ import annotations
 
 import json as _json
-import logging, os, sys, traceback
+import logging
+import os
+import sys
+import traceback
 from datetime import datetime
 
-from flask import render_template, request, jsonify
-from flask_login import login_required, current_user
+from flask import jsonify, render_template, request
+from flask_login import current_user, login_required
 from sqlalchemy import desc
 
-from . import bp
-from models import db, UserProfile, ResumeAsset, SkillMapSnapshot
 from limits import authorize_and_consume
+from models import ResumeAsset, SkillMapSnapshot, UserProfile, db
 from modules.common.ai import generate_skillmap
+
+from . import bp
 
 log = logging.getLogger(__name__)
 FEATURE_KEY = "skillmapper"
 SHOW_ERRS = os.getenv("SHOW_SM_ERRORS", "0") == "1"
+CAREER_AI_VERSION = os.getenv("CAREER_AI_VERSION", "2025-Q4")
+
+# Max size guardrails (avoid huge pastes)
+MAX_FREE_TEXT = int(os.getenv("SM_MAX_FREE_TEXT", "12000"))
 
 
 def _latest_resume_text(user_id: int) -> str:
@@ -55,6 +63,7 @@ def index():
         "skillmapper/index.html",
         is_pro=current_user.is_pro,
         feature_key=FEATURE_KEY,
+        updated_tag=CAREER_AI_VERSION,  # optional UI label
     )
 
 
@@ -62,15 +71,34 @@ def index():
 @login_required
 def run_free():
     try:
+        # Silver credit check for non-Pro users
         if not current_user.is_pro:
             ok = authorize_and_consume(current_user, FEATURE_KEY)
             if not ok:
-                return jsonify({"ok": False, "error": "Not enough Silver credits to run Skill Mapper."}), 402
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": "Not enough Silver credits to run Skill Mapper.",
+                        }
+                    ),
+                    402,
+                )
 
-        payload = (request.get_json(silent=True) or {})
+        payload = request.get_json(silent=True) or {}
         free_text_skills = (payload.get("free_text_skills") or "").strip()
+
         if not free_text_skills:
-            return jsonify({"ok": False, "error": "Please paste your skills/interests text."}), 400
+            return (
+                jsonify(
+                    {"ok": False, "error": "Please paste your skills/interests text."}
+                ),
+                400,
+            )
+
+        # Cap size to keep prompts bounded
+        if len(free_text_skills) > MAX_FREE_TEXT:
+            free_text_skills = free_text_skills[:MAX_FREE_TEXT]
 
         data, used_live_ai = generate_skillmap(
             pro_mode=False,
@@ -78,24 +106,33 @@ def run_free():
             return_source=True,
         )
 
-        log.info("SM/free used_live_ai=%s text_len=%d", used_live_ai, len(free_text_skills))
-
-        snap = SkillMapSnapshot(
-            user_id=current_user.id,
-            source_title="Skill Mapper (Free)",
-            input_text=free_text_skills,
-            skills_json=json_dumps_safe(data),
-            created_at=datetime.utcnow(),
+        log.info(
+            "SM/free used_live_ai=%s text_len=%d", used_live_ai, len(free_text_skills)
         )
-        db.session.add(snap)
-        db.session.commit()
+
+        # Persist snapshot (best-effort)
+        try:
+            snap = SkillMapSnapshot(
+                user_id=current_user.id,
+                source_title="Skill Mapper (Free)",
+                input_text=free_text_skills,
+                skills_json=json_dumps_safe(data),
+                created_at=datetime.utcnow(),
+            )
+            db.session.add(snap)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            log.warning("SkillMapper snapshot save failed (free).", exc_info=True)
 
         return jsonify({"ok": True, "data": data, "used_live_ai": used_live_ai})
     except Exception as e:
         log.exception("SkillMapper /free failed")
         traceback.print_exc(file=sys.stderr)
-        try: db.session.rollback()
-        except Exception: pass
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         msg = "Internal error (free). Check server logs."
         if SHOW_ERRS:
             msg += f" :: {e.__class__.__name__}: {e}"
@@ -107,11 +144,27 @@ def run_free():
 def run_pro():
     try:
         if not current_user.is_pro:
-            return jsonify({"ok": False, "error": "Skill Mapper Pro requires a Pro subscription."}), 403
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "Skill Mapper Pro requires a Pro subscription.",
+                    }
+                ),
+                403,
+            )
 
         profile = _profile_json(current_user.id)
         if not profile:
-            return jsonify({"ok": False, "error": "Your Profile Portal looks empty. Please add basic details and skills first."}), 400
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "Your Profile Portal looks empty. Please add basic details and skills first.",
+                    }
+                ),
+                400,
+            )
 
         resume_text = _latest_resume_text(current_user.id)
 
@@ -124,25 +177,34 @@ def run_pro():
 
         log.info(
             "SM/pro used_live_ai=%s profile_keys=%s resume_len=%d",
-            used_live_ai, list(profile.keys()), len(resume_text or "")
+            used_live_ai,
+            list(profile.keys()),
+            len(resume_text or ""),
         )
 
-        snap = SkillMapSnapshot(
-            user_id=current_user.id,
-            source_title="Skill Mapper (Pro)",
-            input_text="profile+resume",
-            skills_json=json_dumps_safe(data),
-            created_at=datetime.utcnow(),
-        )
-        db.session.add(snap)
-        db.session.commit()
+        # Persist snapshot (best-effort)
+        try:
+            snap = SkillMapSnapshot(
+                user_id=current_user.id,
+                source_title="Skill Mapper (Pro)",
+                input_text="profile+resume",
+                skills_json=json_dumps_safe(data),
+                created_at=datetime.utcnow(),
+            )
+            db.session.add(snap)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            log.warning("SkillMapper snapshot save failed (pro).", exc_info=True)
 
         return jsonify({"ok": True, "data": data, "used_live_ai": used_live_ai})
     except Exception as e:
         log.exception("SkillMapper /pro failed")
         traceback.print_exc(file=sys.stderr)
-        try: db.session.rollback()
-        except Exception: pass
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         msg = "Internal error (pro). Check server logs."
         if SHOW_ERRS:
             msg += f" :: {e.__class__.__name__}: {e}"

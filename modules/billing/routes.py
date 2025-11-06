@@ -2,9 +2,20 @@
 
 import os
 from datetime import datetime
-from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, jsonify
-from flask_login import login_required, current_user
-from models import db, User
+
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
+from flask_login import current_user, login_required
+
+from models import User, db
 
 billing_bp = Blueprint("billing", __name__, template_folder="../../templates")
 
@@ -37,6 +48,7 @@ def _grant_initial_pro_coins(user: User, minimum: int = INITIAL_PRO_COINS) -> No
 # Pricing / Index
 # ------------------------------------------
 
+
 @billing_bp.route("/", endpoint="index")
 def index():
     """
@@ -46,7 +58,11 @@ def index():
         "pricing.html",
         stripe_public_key=STRIPE_PUBLISHABLE_KEY,
         price_id=STRIPE_PRICE_ID_PRO,
-        subscription_status=getattr(current_user, "subscription_status", "free") if getattr(current_user, "is_authenticated", False) else "free",
+        subscription_status=(
+            getattr(current_user, "subscription_status", "free")
+            if getattr(current_user, "is_authenticated", False)
+            else "free"
+        ),
     )
 
 
@@ -75,10 +91,13 @@ def checkout_pro():
             mode="subscription",
             payment_method_types=["card"],
             line_items=[{"price": STRIPE_PRICE_ID_PRO, "quantity": 1}],
-            success_url=url_for("billing.success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}",
+            success_url=url_for("billing.success", _external=True)
+            + "?session_id={CHECKOUT_SESSION_ID}",
             cancel_url=url_for("billing.cancel", _external=True),
             customer=current_user.stripe_customer_id or None,
-            customer_email=current_user.email if not current_user.stripe_customer_id else None,
+            customer_email=(
+                current_user.email if not current_user.stripe_customer_id else None
+            ),
             metadata={"user_id": str(current_user.id)},
             allow_promotion_codes=True,
         )
@@ -92,7 +111,9 @@ def checkout_pro():
 @billing_bp.route("/success", endpoint="success")
 @login_required
 def success():
-    flash("Checkout started — we’ll update your Pro status once payment confirms.", "info")
+    flash(
+        "Checkout started — we’ll update your Pro status once payment confirms.", "info"
+    )
     return render_template("billing_success.html")
 
 
@@ -119,7 +140,9 @@ def webhook():
 
     try:
         if STRIPE_WEBHOOK_SECRET:
-            event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, STRIPE_WEBHOOK_SECRET
+            )
         else:
             # Dev fallback (NOT for production)
             event = stripe.Event.construct_from(request.get_json(), stripe.api_key)
@@ -139,7 +162,9 @@ def webhook():
                 user = User.query.get(int(user_id))
             else:
                 customer_email = session_obj.get("customer_details", {}).get("email")
-                user = User.query.filter_by(email=(customer_email or "").lower()).first()
+                user = User.query.filter_by(
+                    email=(customer_email or "").lower()
+                ).first()
 
             if user:
                 # Link Stripe IDs

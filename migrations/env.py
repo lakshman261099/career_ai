@@ -15,6 +15,7 @@ if config.config_file_name is not None:
 
 # Import models metadata directly (no app import; avoids recursion)
 from models import db
+
 target_metadata = db.metadata
 
 

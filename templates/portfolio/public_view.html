@@ -1,13 +1,15 @@
 {% extends "public_base.html" %}
-{% block title %}{{ page.title }} — Portfolio{% endblock %}
-{% block ogt %}{{ page.title }} — Portfolio{% endblock %}
+{% block title %}{{ (page.title if page else 'Portfolio Preview') }} — Portfolio{% endblock %}
+{% block ogt %}{{ (page.title if page else 'Portfolio Preview') }} — Portfolio{% endblock %}
 {% block og_description %}Public portfolio page{% endblock %}
-{% block meta_description %}{{ (page.title or 'Portfolio') ~ ' — public portfolio page' }}{% endblock %}
+{% block meta_description %}{{ ((page.title if page else 'Portfolio Preview') ~ ' — public portfolio page') }}{% endblock %}
 
 {% block content %}
   <section class="hero-card">
-    <div class="title">{{ page.title }}</div>
-    <div class="subtitle">Public portfolio page</div>
+    <div class="title">{{ (page.title if page else 'Portfolio Preview') }}</div>
+    <div class="subtitle">
+      Career-ready Portfolio · Built {{ page.created_at.strftime('%d %b %Y') if page and page.created_at else 'recently' }}
+    </div>
   </section>
 
   <article class="content-card">

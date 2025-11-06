@@ -1,10 +1,11 @@
 # models.py
 
-from datetime import datetime, date
-from flask_sqlalchemy import SQLAlchemy
+from datetime import date, datetime
+
 from flask_login import UserMixin
-from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import UniqueConstraint, Index
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import Index, UniqueConstraint
+from werkzeug.security import check_password_hash, generate_password_hash
 
 db = SQLAlchemy()
 
@@ -51,7 +52,9 @@ class User(UserMixin, db.Model):
     verified = db.Column(db.Boolean, default=False, nullable=False)
 
     # Billing / subscription
-    subscription_status = db.Column(db.String(32), default="free", nullable=False)  # "free" | "pro" | "canceled" | etc.
+    subscription_status = db.Column(
+        db.String(32), default="free", nullable=False
+    )  # "free" | "pro" | "canceled" | etc.
     stripe_customer_id = db.Column(db.String(120), index=True, nullable=True)
     stripe_subscription_id = db.Column(db.String(120), index=True, nullable=True)
     pro_since = db.Column(db.DateTime, nullable=True)
@@ -59,7 +62,7 @@ class User(UserMixin, db.Model):
 
     # Credits
     coins_free = db.Column(db.Integer, default=10, nullable=False)  # Silver 🪙
-    coins_pro = db.Column(db.Integer, default=0, nullable=False)    # Gold ⭐
+    coins_pro = db.Column(db.Integer, default=0, nullable=False)  # Gold ⭐
 
     # Tenancy
     university_id = db.Column(
@@ -109,11 +112,19 @@ class UserProfile(db.Model):
     phone = db.Column(db.String(32), nullable=True)
 
     # Flexible structured fields
-    links = db.Column(db.JSON, default=dict)           # {"linkedin": "...", "github": "...", ...}
-    skills = db.Column(db.JSON, default=list)          # e.g. [{"name":"Python","level":3}, ...] or ["Python", ...]
-    education = db.Column(db.JSON, default=list)       # [{school, degree, year}, ...]
-    experience = db.Column(db.JSON, default=list)      # [{company, role, start, end, bullets:[...]}]
-    certifications = db.Column(db.JSON, default=list)  # ["AWS CCP", ...] or [{"name":"AWS CCP","year":"2024"}]
+    links = db.Column(
+        db.JSON, default=dict
+    )  # {"linkedin": "...", "github": "...", ...}
+    skills = db.Column(
+        db.JSON, default=list
+    )  # e.g. [{"name":"Python","level":3}, ...] or ["Python", ...]
+    education = db.Column(db.JSON, default=list)  # [{school, degree, year}, ...]
+    experience = db.Column(
+        db.JSON, default=list
+    )  # [{company, role, start, end, bullets:[...]}]
+    certifications = db.Column(
+        db.JSON, default=list
+    )  # ["AWS CCP", ...] or [{"name":"AWS CCP","year":"2024"}]
 
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -135,24 +146,30 @@ class Project(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"),
-        index=True, nullable=False
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
 
     # Core project fields
     title = db.Column(db.String(200), nullable=False)
     short_desc = db.Column(db.String(500), nullable=True)
-    bullets = db.Column(db.JSON, default=list)       # ["Did X", "Improved Y by Z%"]
-    tech_stack = db.Column(db.JSON, default=list)     # ["Flask","Postgres","Docker"]
+    bullets = db.Column(db.JSON, default=list)  # ["Did X", "Improved Y by Z%"]
+    tech_stack = db.Column(db.JSON, default=list)  # ["Flask","Postgres","Docker"]
     role = db.Column(db.String(120), nullable=True)
     start_date = db.Column(db.Date, nullable=True)
     end_date = db.Column(db.Date, nullable=True)
-    links = db.Column(db.JSON, default=list)          # [{"label":"GitHub","url":"..."}]
+    links = db.Column(db.JSON, default=list)  # [{"label":"GitHub","url":"..."}]
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
-    user = db.relationship("User", backref=db.backref("projects", lazy=True, cascade="all, delete-orphan"))
+    user = db.relationship(
+        "User", backref=db.backref("projects", lazy=True, cascade="all, delete-orphan")
+    )
 
     def __repr__(self):
         return f"<Project {self.id} u={self.user_id} {self.title[:30]}>"
@@ -166,18 +183,26 @@ class FreeUsage(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     feature = db.Column(db.String(64), index=True, nullable=False)
     day = db.Column(db.Date, default=date.today, index=True, nullable=False)
     count = db.Column(db.Integer, default=0, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("user_id", "feature", "day", name="uq_free_usage_user_feature_day"),
+        UniqueConstraint(
+            "user_id", "feature", "day", name="uq_free_usage_user_feature_day"
+        ),
         Index("ix_free_usage_user_feature_day", "user_id", "feature", "day"),
     )
 
-    user = db.relationship("User", backref=db.backref("free_usage", lazy=True, cascade="all, delete-orphan"))
+    user = db.relationship(
+        "User",
+        backref=db.backref("free_usage", lazy=True, cascade="all, delete-orphan"),
+    )
 
     def __repr__(self):
         return f"<FreeUsage u={self.user_id} {self.feature} {self.day} x{self.count}>"
@@ -191,7 +216,10 @@ class PortfolioPage(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     title = db.Column(db.String(200), nullable=False)
     content_md = db.Column(db.Text, nullable=True)
@@ -200,7 +228,10 @@ class PortfolioPage(db.Model):
     # NEW: metadata for locking, tier, suggestion_count, timestamps, etc.
     meta_json = db.Column(db.JSON, default=dict)
 
-    user = db.relationship("User", backref=db.backref("portfolio_pages", lazy=True, cascade="all, delete-orphan"))
+    user = db.relationship(
+        "User",
+        backref=db.backref("portfolio_pages", lazy=True, cascade="all, delete-orphan"),
+    )
 
     def __repr__(self):
         return f"<PortfolioPage {self.id} u={self.user_id} '{self.title}'>"
@@ -214,7 +245,10 @@ class JobPackReport(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     job_title = db.Column(db.String(200), nullable=True)
     company = db.Column(db.String(200), nullable=True)
@@ -222,7 +256,10 @@ class JobPackReport(db.Model):
     analysis = db.Column(db.Text, nullable=True)  # JSON as text (SQLite friendly)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    user = db.relationship("User", backref=db.backref("jobpack_reports", lazy=True, cascade="all, delete-orphan"))
+    user = db.relationship(
+        "User",
+        backref=db.backref("jobpack_reports", lazy=True, cascade="all, delete-orphan"),
+    )
 
     def __repr__(self):
         return f"<JobPackReport {self.id} u={self.user_id} {self.job_title}>"
@@ -236,14 +273,22 @@ class InternshipRecord(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     role = db.Column(db.String(120), nullable=True)
     location = db.Column(db.String(120), nullable=True)
     results_json = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    user = db.relationship("User", backref=db.backref("internship_records", lazy=True, cascade="all, delete-orphan"))
+    user = db.relationship(
+        "User",
+        backref=db.backref(
+            "internship_records", lazy=True, cascade="all, delete-orphan"
+        ),
+    )
 
     def __repr__(self):
         return f"<InternshipRecord {self.id} u={self.user_id} {self.role or ''}>"
@@ -257,7 +302,10 @@ class OutreachContact(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     name = db.Column(db.String(120), nullable=True)
     role = db.Column(db.String(120), nullable=True)
@@ -266,7 +314,12 @@ class OutreachContact(db.Model):
     source = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    user = db.relationship("User", backref=db.backref("outreach_contacts", lazy=True, cascade="all, delete-orphan"))
+    user = db.relationship(
+        "User",
+        backref=db.backref(
+            "outreach_contacts", lazy=True, cascade="all, delete-orphan"
+        ),
+    )
 
     def __repr__(self):
         return f"<OutreachContact {self.id} u={self.user_id} {self.email or self.name or ''}>"
@@ -280,14 +333,24 @@ class SkillMapSnapshot(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
-    source_title = db.Column(db.String(200), nullable=True)   # e.g., "Backend Engineer @ X"
-    input_text = db.Column(db.Text, nullable=True)            # pasted JD or text
-    skills_json = db.Column(db.Text, nullable=True)           # JSON as text
+    source_title = db.Column(
+        db.String(200), nullable=True
+    )  # e.g., "Backend Engineer @ X"
+    input_text = db.Column(db.Text, nullable=True)  # pasted JD or text
+    skills_json = db.Column(db.Text, nullable=True)  # JSON as text
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    user = db.relationship("User", backref=db.backref("skillmap_snapshots", lazy=True, cascade="all, delete-orphan"))
+    user = db.relationship(
+        "User",
+        backref=db.backref(
+            "skillmap_snapshots", lazy=True, cascade="all, delete-orphan"
+        ),
+    )
 
     def __repr__(self):
         return f"<SkillMapSnapshot {self.id} u={self.user_id}>"
@@ -301,13 +364,19 @@ class AgentJob(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     job_url = db.Column(db.String(500), nullable=True)
     status = db.Column(db.String(64), default="queued", nullable=False)
     notes = db.Column(db.Text, nullable=True)
 
-    user = db.relationship("User", backref=db.backref("agent_jobs", lazy=True, cascade="all, delete-orphan"))
+    user = db.relationship(
+        "User",
+        backref=db.backref("agent_jobs", lazy=True, cascade="all, delete-orphan"),
+    )
 
     def __repr__(self):
         return f"<AgentJob {self.id} u={self.user_id} {self.status}>"
@@ -321,13 +390,19 @@ class ResumeAsset(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
-        db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     filename = db.Column(db.String(255), nullable=True)
     text = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    user = db.relationship("User", backref=db.backref("resume_assets", lazy=True, cascade="all, delete-orphan"))
+    user = db.relationship(
+        "User",
+        backref=db.backref("resume_assets", lazy=True, cascade="all, delete-orphan"),
+    )
 
     def __repr__(self):
         return f"<ResumeAsset {self.id} u={self.user_id} {self.filename or ''}>"

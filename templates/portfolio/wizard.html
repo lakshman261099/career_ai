@@ -9,7 +9,7 @@
       <div>
         <h1 class="text-2xl font-extrabold">Portfolio Wizard</h1>
         <p class="text-white/70 text-sm">
-          Tell us your target. Our AI suggests projects. Publishing is now separate and builds a full page from your Profile Portal.
+          Tell us your target. Our AI suggests projects. Publishing is separate and builds a full page from your Profile Portal.
         </p>
       </div>
       {% set _is_pro = (subscription_status|default('free')|lower == 'pro') %}
@@ -26,7 +26,8 @@
   <div class="grid lg:grid-cols-3 gap-6">
     <!-- Inputs -->
     <section class="glass-panel rounded-2xl p-6 lg:col-span-2">
-      <form method="POST" id="inputs-form" class="space-y-4">
+      <!-- Suggestion form ONLY -->
+      <form method="POST" action="{{ url_for('portfolio.wizard') }}" id="inputs-form" class="space-y-4">
         <input type="hidden" name="action" value="suggest" id="action-field">
 
         <div class="grid md:grid-cols-2 gap-3">
@@ -69,17 +70,20 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-3 pt-2">
           <button type="submit" class="btn-primary">Get Suggestions</button>
-          {% if _is_pro %}
-            <form method="POST" action="{{ url_for('portfolio.publish') }}">
-              <button type="submit" class="btn-ghost">Publish from Profile (separate) ⭐</button>
-            </form>
-          {% else %}
-            <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
-          {% endif %}
         </div>
       </form>
+
+      <!-- Separate actions (NOT nested inside the form) -->
+      <div class="flex flex-wrap items-center gap-3 pt-4">
+        {% if _is_pro %}
+          <a href="{{ url_for('portfolio.publish') }}" class="btn-ghost">Publish from Profile ⭐</a>
+          <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost text-sm">Preview before publish</a>
+        {% else %}
+          <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
+        {% endif %}
+      </div>
     </section>
 
     <!-- Profile snapshot -->

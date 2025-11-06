@@ -1,0 +1,35 @@
+Endpoint                 Methods    Rule                         
+-----------------------  ---------  -----------------------------
+auth.login               GET, POST  /auth/login                  
+auth.logout              GET        /auth/logout                 
+auth.otp_request         GET, POST  /auth/otp/request            
+auth.otp_verify          GET, POST  /auth/otp/verify             
+auth.register            GET, POST  /auth/register               
+auth.signup              GET, POST  /auth/signup                 
+billing.cancel           GET        /billing/cancel              
+billing.checkout_pro     POST       /billing/checkout/pro        
+billing.index            GET        /billing/                    
+billing.mock_topup_free  GET        /billing/mock-topup/free     
+billing.mock_topup_pro   GET        /billing/mock-topup/pro      
+billing.pricing_legacy   GET        /billing/pricing             
+billing.success          GET        /billing/success             
+billing.webhook          POST       /billing/webhook             
+dashboard                GET        /dashboard                   
+favicon                  GET        /favicon.ico                 
+internships.analyse      POST       /internships/analyse         
+internships.index        GET        /internships/                
+jobpack.export_pdf       POST       /jobpack/export/pdf          
+jobpack.index            GET, POST  /jobpack/                    
+landing                  GET        /                            
+portfolio.index          GET        /portfolio/                  
+portfolio.preview        GET        /portfolio/preview           
+portfolio.publish        GET, POST  /portfolio/publish           
+portfolio.view           GET        /portfolio/view/<int:page_id>
+portfolio.wizard         GET, POST  /portfolio/wizard            
+referral.index           GET, POST  /referral/                   
+settings.index           GET, POST  /settings/                   
+settings.profile         GET, POST  /settings/profile            
+skillmapper.index        GET        /skillmapper                 
+skillmapper.run_free     POST       /skillmapper/free            
+skillmapper.run_pro      POST       /skillmapper/pro             
+static                   GET        /static/<path:filename>      

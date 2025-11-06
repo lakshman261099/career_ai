@@ -1,0 +1,16 @@
+templates/auth
+templates/base.html
+templates/billing_success.html
+templates/dashboard.html
+templates/errors
+templates/internships
+templates/jobpack
+templates/landing.html
+templates/portfolio
+templates/pricing.html
+templates/privacy.html
+templates/public_base.html
+templates/referral
+templates/resume
+templates/settings
+templates/skillmapper

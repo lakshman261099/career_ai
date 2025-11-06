@@ -1,26 +1,28 @@
-import os, logging, sys
+import logging
+import os
+import sys
 from datetime import datetime
-from flask import Flask, render_template, request, send_from_directory, url_for
-from flask_login import current_user
-from dotenv import load_dotenv
-from logtail import LogtailHandler
-
-from models import db, University
-from limits import init_limits
-
-# Blueprints
-from modules.auth.routes import auth_bp, login_manager
-from modules.billing.routes import billing_bp
-from modules.portfolio.routes import portfolio_bp
-from modules.internships.routes import internships_bp
-from modules.referral.routes import referral_bp
-from modules.jobpack.routes import jobpack_bp
-from modules.skillmapper import bp as skillmapper_bp
-from modules.settings.routes import settings_bp
 
 # Alembic
 from alembic import command
 from alembic.config import Config
+from dotenv import load_dotenv
+from flask import Flask, render_template, request, send_from_directory, url_for
+from flask_login import current_user
+from logtail import LogtailHandler
+
+from limits import init_limits
+from models import University, db
+
+# Blueprints
+from modules.auth.routes import auth_bp, login_manager
+from modules.billing.routes import billing_bp
+from modules.internships.routes import internships_bp
+from modules.jobpack.routes import jobpack_bp
+from modules.portfolio.routes import portfolio_bp
+from modules.referral.routes import referral_bp
+from modules.settings.routes import settings_bp
+from modules.skillmapper import bp as skillmapper_bp
 
 load_dotenv()
 
@@ -31,31 +33,42 @@ def free_coins():
         try:
             return getattr(current_user, "coins_free", 0) or 0
         except Exception:
-            try: db.session.rollback()
-            except Exception: pass
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             return 0
     return 0
+
 
 def pro_coins():
     if getattr(current_user, "is_authenticated", False):
         try:
             return getattr(current_user, "coins_pro", 0) or 0
         except Exception:
-            try: db.session.rollback()
-            except Exception: pass
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             return 0
     return 0
+
 
 def is_pro():
     if getattr(current_user, "is_authenticated", False):
         try:
-            status = (getattr(current_user, "subscription_status", "free") or "free").lower()
+            status = (
+                getattr(current_user, "subscription_status", "free") or "free"
+            ).lower()
             return bool(getattr(current_user, "is_pro", False) or status == "pro")
         except Exception:
-            try: db.session.rollback()
-            except Exception: pass
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             return False
     return False
+
 
 def register_template_globals(app: Flask):
     # Keep named for legacy templates; we still inject the values via context_processor below
@@ -68,7 +81,7 @@ def register_template_globals(app: Flask):
 
 # -------------------- Auto Alembic ---------------------
 def run_auto_migrations(app: Flask) -> None:
-    from sqlalchemy import create_engine, text, inspect
+    from sqlalchemy import create_engine, inspect, text
 
     if os.getenv("AUTO_MIGRATE", "1") != "1":
         return
@@ -79,7 +92,11 @@ def run_auto_migrations(app: Flask) -> None:
         return
 
     cfg = Config(os.path.join(app.root_path, "alembic.ini"))
-    url = db_url.replace("postgres://", "postgresql://", 1) if db_url.startswith("postgres://") else db_url
+    url = (
+        db_url.replace("postgres://", "postgresql://", 1)
+        if db_url.startswith("postgres://")
+        else db_url
+    )
     cfg.set_main_option("sqlalchemy.url", url)
 
     def _upgrade():
@@ -91,12 +108,14 @@ def run_auto_migrations(app: Flask) -> None:
         app.logger.info("Alembic migrations applied (upgrade head).")
         return
     except Exception as e1:
-        msg1 = (str(e1) or "")
+        msg1 = str(e1) or ""
         app.logger.error(f"Alembic upgrade failed (1st try): {msg1}")
 
     if "Can't locate revision" in msg1 or "No such revision" in msg1:
         try:
-            app.logger.warning("Dropping alembic_version to clear stale revision pointer...")
+            app.logger.warning(
+                "Dropping alembic_version to clear stale revision pointer..."
+            )
             engine = create_engine(url)
             with engine.begin() as conn:
                 conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
@@ -119,9 +138,12 @@ def run_auto_migrations(app: Flask) -> None:
                 with app.app_context():
                     command.stamp(cfg, "head")
                     from datetime import datetime as _dt
+
                     autogen_msg = f"autosync_{_dt.utcnow().strftime('%Y%m%d%H%M%S')}"
                     command.revision(cfg, message=autogen_msg, autogenerate=True)
-                    app.logger.warning("Alembic created an autogenerate 'autosync' migration (diff-only).")
+                    app.logger.warning(
+                        "Alembic created an autogenerate 'autosync' migration (diff-only)."
+                    )
                     command.upgrade(cfg, "head")
                     app.logger.info("Alembic migrations applied after autosync.")
                     return
@@ -131,6 +153,7 @@ def run_auto_migrations(app: Flask) -> None:
     try:
         with app.app_context():
             from datetime import datetime as _dt
+
             autogen_msg = f"autosync_{_dt.utcnow().strftime('%Y%m%d%H%M%S')}"
             command.revision(cfg, message=autogen_msg, autogenerate=True)
             _upgrade()
@@ -154,10 +177,16 @@ def create_app():
     app.logger.setLevel(logging.INFO)
 
     # Core config
-    secret = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY") or "dev-secret-key"
+    secret = (
+        os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY") or "dev-secret-key"
+    )
     app.config["SECRET_KEY"] = secret
 
-    db_url = os.getenv("DATABASE_URL") or os.getenv("DEV_DATABASE_URI") or "sqlite:///career_ai.db"
+    db_url = (
+        os.getenv("DATABASE_URL")
+        or os.getenv("DEV_DATABASE_URI")
+        or "sqlite:///career_ai.db"
+    )
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
@@ -175,7 +204,10 @@ def create_app():
         )
         try:
             from werkzeug.middleware.proxy_fix import ProxyFix
-            app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
+            app.wsgi_app = ProxyFix(
+                app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1
+            )
         except Exception:
             pass
 
@@ -236,24 +268,24 @@ def create_app():
         portal_url = safe_url("settings.profile")
 
         feature_paths = {
-            "home":        safe_url("landing"),
-            "dashboard":   safe_url("dashboard"),
-            "profile":     portal_url,
-            "resume":      portal_url,  # back-compat
-            "portfolio":   safe_url("portfolio.index"),
+            "home": safe_url("landing"),
+            "dashboard": safe_url("dashboard"),
+            "profile": portal_url,
+            "resume": portal_url,  # back-compat
+            "portfolio": safe_url("portfolio.index"),
             "internships": safe_url("internships.index"),
-            "referral":    safe_url("referral.index"),
-            "jobpack":     safe_url("jobpack.index"),
+            "referral": safe_url("referral.index"),
+            "jobpack": safe_url("jobpack.index"),
             "skillmapper": safe_url("skillmapper.index"),
-            "settings":    safe_url("settings.index"),
-            "billing":     safe_url("billing.index"),
-            "login":       safe_url("auth.login"),
-            "logout":      safe_url("auth.logout"),
-            "signup":      safe_url("auth.register"),
+            "settings": safe_url("settings.index"),
+            "billing": safe_url("billing.index"),
+            "login": safe_url("auth.login"),
+            "logout": safe_url("auth.logout"),
+            "signup": safe_url("auth.register"),
         }
 
         return dict(
-            now=datetime.utcnow(),                 # used in footer
+            now=datetime.utcnow(),  # used in footer
             tenant_name=tenant_name,
             user_free=free_coins(),
             user_pro=pro_coins(),
@@ -289,7 +321,9 @@ def create_app():
     # Dev sqlite quickstart
     with app.app_context():
         is_sqlite = str(app.config["SQLALCHEMY_DATABASE_URI"]).startswith("sqlite")
-        is_prod = os.getenv("FLASK_ENV") == "production" or os.getenv("ENV") == "production"
+        is_prod = (
+            os.getenv("FLASK_ENV") == "production" or os.getenv("ENV") == "production"
+        )
         if is_sqlite and not is_prod:
             db.create_all()
 

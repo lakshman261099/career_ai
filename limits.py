@@ -1,7 +1,8 @@
 # limits.py — coin-based credits (Free = 🪙, Pro = ⭐)
 
 from flask import current_app
-from models import db, User
+
+from models import User, db
 
 # ---------------------------------------------------------------------
 # Pricing policy (easy to tweak later)
@@ -10,23 +11,18 @@ from models import db, User
 # ---------------------------------------------------------------------
 FEATURE_COSTS = {
     # Portfolio Builder (both tiers use 1 credit)
-    "portfolio":            {"coins_free": 1, "coins_pro": 1},
-
+    "portfolio": {"coins_free": 1, "coins_pro": 1},
     # Internship Analyzer
-    "internship_analyzer":  {"coins_free": 1, "coins_pro": 1},
-
+    "internship_analyzer": {"coins_free": 1, "coins_pro": 1},
     # Referral Trainer (currently Free-only, Pro extensions coming soon)
-    "referral_trainer":     {"coins_free": 1},
-
+    "referral_trainer": {"coins_free": 1},
     # Skill Mapper
-    "skillmapper":          {"coins_free": 1, "coins_pro": 1},
-
+    "skillmapper": {"coins_free": 1, "coins_pro": 1},
     # Pro-only features
-    "resume":               {"coins_pro": 1},
-    "jobpack":              {"coins_pro": 1},
-
+    "resume": {"coins_pro": 1},
+    "jobpack": {"coins_pro": 1},
     # Portfolio publishing (Pro-only)
-    "portfolio_publish":    {"coins_pro": 1},
+    "portfolio_publish": {"coins_pro": 1},
 }
 
 
@@ -66,7 +62,11 @@ def consume_free(user: User, feature: str) -> None:
 def can_use_pro(user: User, feature: str) -> bool:
     c = _cost(feature)
     need = int(c.get("coins_pro", 0) or 0)
-    return (user.subscription_status or "free").lower() == "pro" and need > 0 and (user.coins_pro or 0) >= need
+    return (
+        (user.subscription_status or "free").lower() == "pro"
+        and need > 0
+        and (user.coins_pro or 0) >= need
+    )
 
 
 def consume_pro(user: User, feature: str) -> None:
