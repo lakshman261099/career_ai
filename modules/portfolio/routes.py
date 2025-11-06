@@ -377,16 +377,17 @@ def index():
 @portfolio_bp.route("/wizard", methods=["GET", "POST"], endpoint="wizard")
 @login_required
 def wizard():
-    """Shows suggestions only. No publishing here."""
+    """Two-column wizard: Free (1 idea) vs Pro (3 deep)."""
     prof = _get_profile_safe()
+
     ctx = {
         "target_role": "",
         "industry": "",
         "experience_level": "",
-        "mode": "free",  # "free" or "pro"
-        "suggestions": [],
-        "suggestions_json": "[]",
-        "prof": prof,  # template reads this (not current_user.profile)
+        "mode": "free",
+        "free_suggestions": [],
+        "pro_suggestions": [],
+        "prof": prof,
         "updated_tag": CAREER_AI_VERSION,
     }
 
@@ -399,77 +400,103 @@ def wizard():
             flash(f"Something went wrong loading the wizard (wz-{err_id}).", "error")
             return redirect(url_for("portfolio.index"))
 
-    # POST: suggest only
     action = (request.form.get("action") or "").strip().lower()
-    if action != "suggest":
-        # ignore other actions here
-        return render_template("portfolio/wizard.html", **ctx)
-
-    ctx["target_role"] = (request.form.get("target_role") or "").strip()[:MAX_FIELD]
-    ctx["industry"] = (request.form.get("industry") or "").strip()[:MAX_FIELD]
-    ctx["experience_level"] = (request.form.get("experience_level") or "").strip()[
-        :MAX_FIELD
-    ]
-    ctx["mode"] = (request.form.get("mode") or "free").strip()
 
     try:
-        if not ctx["target_role"] or not ctx["industry"]:
-            flash("Please enter both Target Role and Industry.", "warning")
+        # ---- FREE MODE ----
+        if action == "suggest_free":
+            trg = (request.form.get("target_role_free") or "").strip()[:MAX_FIELD]
+            ind = (request.form.get("industry_free") or "").strip()[:MAX_FIELD]
+            lvl = (request.form.get("experience_level_free") or "").strip()[:MAX_FIELD]
+
+            if not trg or not ind:
+                flash("Please enter both Target Role and Industry (Free).", "warning")
+                return render_template("portfolio/wizard.html", **ctx)
+
+            skills_list = (prof.skills if prof else []) or []
+            ideas, used_live = generate_project_suggestions(
+                trg, ind, lvl, skills_list, False, return_source=True
+            )
+            ctx.update({
+                "target_role": trg, "industry": ind, "experience_level": lvl,
+                "free_suggestions": ideas,
+                "mode": "free",
+            })
+            flash("Free AI suggestion generated.", "success" if used_live else "warning")
             return render_template("portfolio/wizard.html", **ctx)
 
-        pro_mode = ctx["mode"] == "pro"
-        if pro_mode and (
-            getattr(current_user, "subscription_status", "free").lower() != "pro"
-        ):
-            flash(
-                "Pro suggestions require a Pro plan. Switch to Free mode or upgrade.",
-                "warning",
+        # ---- PRO MODE ----
+        if action == "suggest_pro":
+            is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
+            if not is_pro_user:
+                flash("Pro suggestions require a Pro plan. Upgrade to continue.", "warning")
+                return render_template("portfolio.wizard.html", **ctx)
+
+            trg = (request.form.get("target_role_pro") or "").strip()[:MAX_FIELD]
+            ind = (request.form.get("industry_pro") or "").strip()[:MAX_FIELD]
+            lvl = (request.form.get("experience_level_pro") or "").strip()[:MAX_FIELD]
+            if not trg or not ind:
+                flash("Please enter both Target Role and Industry (Pro).", "warning")
+                return render_template("portfolio/wizard.html", **ctx)
+
+            # Focus (with 'Other') + time budget + preferred stack
+            focus_area = request.form.getlist("focus_area")
+            other_focus = (request.form.get("focus_other") or "").strip()[:60]
+            if other_focus:
+                focus_area.append(other_focus)
+
+            time_budget = (request.form.get("time_budget") or "4w").strip()[:8]
+
+            preferred_stack_raw = (request.form.get("preferred_stack") or "").strip()[:MAX_TEXT]
+            preferred_stack = []
+            if preferred_stack_raw:
+                preferred_stack = [p.strip() for p in preferred_stack_raw.replace(",", " ").split() if p.strip()]
+
+            use_profile = (request.form.get("use_profile") == "1")
+
+            skills_list = (prof.skills if prof else []) or []
+            profile_payload = None
+            if use_profile and prof:
+                profile_payload = {
+                    "full_name": prof.full_name,
+                    "headline": prof.headline,
+                    "summary": prof.summary,
+                    "links": prof.links,
+                    "skills": prof.skills,
+                    "education": prof.education,
+                    "experience": prof.experience,
+                    "certifications": prof.certifications,
+                    # Preferences for deeper tailoring
+                    "preferences": {
+                        "focus_area": focus_area,
+                        "time_budget": time_budget,
+                        "preferred_stack": preferred_stack,
+                    },
+                }
+
+            ideas, used_live = generate_project_suggestions(
+                trg, ind, lvl, skills_list, True,
+                return_source=True,
+                profile_json=profile_payload,
             )
+
+            ctx.update({
+                "target_role": trg, "industry": ind, "experience_level": lvl,
+                "pro_suggestions": ideas,
+                "mode": "pro",
+            })
+            flash("Pro AI suggestions generated.", "success" if used_live else "warning")
             return render_template("portfolio/wizard.html", **ctx)
 
-        # ---- NEW: pass Profile Portal details into the AI for higher-quality ideas
-        skills_list = (prof.skills if prof else []) or []
-        profile_payload = None
-        if prof:
-            profile_payload = {
-                "full_name": prof.full_name,
-                "headline": prof.headline,
-                "summary": prof.summary,
-                "links": prof.links,
-                "skills": prof.skills,
-                "education": prof.education,
-                "experience": prof.experience,
-                "certifications": prof.certifications,
-            }
-
-        ideas, used_live = generate_project_suggestions(
-            ctx["target_role"],
-            ctx["industry"],
-            ctx["experience_level"],
-            skills_list,
-            pro_mode,
-            return_source=True,  # returns (ideas, used_live)
-            profile_json=profile_payload,  # leverage Profile Portal for tailoring
-        )
-        # ---- END NEW
-
-        ctx["suggestions"] = ideas
-        ctx["suggestions_json"] = json.dumps(ideas, ensure_ascii=False)
-
-        if used_live:
-            flash(
-                ("Pro" if pro_mode else "Free") + " AI suggestions generated.",
-                "success",
-            )
-        else:
-            flash("We had trouble parsing AI output. Please try again.", "warning")
-
+        # Unknown/empty action → just show page again
         return render_template("portfolio/wizard.html", **ctx)
+
     except Exception as e:
         err_id = uuid.uuid4().hex[:8]
-        current_app.logger.exception("Suggest failed [%s]: %s", err_id, e)
+        current_app.logger.exception("Wizard POST failed [%s]: %s", err_id, e)
         flash(f"Something went wrong generating suggestions (sg-{err_id}).", "error")
         return render_template("portfolio/wizard.html", **ctx)
+
 
 
 @portfolio_bp.route("/publish", methods=["GET", "POST"], endpoint="publish")

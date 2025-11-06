@@ -1,9 +1,10 @@
 # modules/common/ai.py
-import json
 import os
+import json
+import re
 from dataclasses import dataclass
+from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
 
 # -------------------------------------------------------------------
 # Config (env-driven)
@@ -18,189 +19,229 @@ FRESHNESS_NOTE = (
     "If information could have changed, add a short 'Check latest' note."
 )
 
-
 # -------------------------------------------------------------------
 # Utilities
 # -------------------------------------------------------------------
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
-
 def _inputs_digest(obj: Any) -> str:
     try:
         import hashlib
-
         s = json.dumps(obj, sort_keys=True)[:5000]
         return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()
     except Exception:
         return "sha256:na"
 
-
-@dataclass
-class Suggestion:
-    title: str
-    why: str
-    what: List[str]
-    resume_bullets: List[str]
-    stack: List[str]
-    differentiation: str = ""
-
-
 def _coerce_skill_names(skills_list: Any) -> List[str]:
     out = []
-    for s in skills_list or []:
+    for s in (skills_list or []):
         if isinstance(s, dict) and (s.get("name") or "").strip():
             out.append(s["name"].strip())
         elif isinstance(s, str) and s.strip():
             out.append(s.strip())
     return out
 
-
-import json
+def _to_sentence(s: str) -> str:
+    s = (s or "").strip()
+    if not s:
+        return ""
+    s = re.sub(r"\s+", " ", s).rstrip(".")
+    return s + "."
 
 # -------------------------------------------------------------------
-# Portfolio Builder — High-quality (uses Profile Portal when available)
+# Portfolio Builder — REAL-TIME (no stored ideas)
 # -------------------------------------------------------------------
-import os
-from typing import Any, Dict, List, Tuple
+# We ask the model to return STRICT JSON. We then lightly validate/trim so UI stays tidy.
 
-from helpers import portfolio_suggestions as _portfolio_suggestions_helper
-
-PROJECT_SUGGESTIONS_SCHEMA = r"""
+FREE_PORTFOLIO_JSON_SCHEMA = r"""
 {
   "type": "object",
   "additionalProperties": false,
   "required": ["mode", "ideas", "meta"],
   "properties": {
-    "mode": { "type": "string", "enum": ["free", "pro"] },
+    "mode": { "type": "string", "enum": ["free"] },
     "ideas": {
       "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title","why","what","resume_bullets","stack"],
+        "required": ["title", "why", "what", "milestones", "resume_bullets", "stack"],
         "properties": {
-          "title": { "type": "string", "minLength": 8 },
-          "why": { "type": "string", "minLength": 12 },
-          "stack": { "type": "array", "items": { "type": "string" }, "minItems": 3, "maxItems": 10 },
-          "what": { "type": "array", "items": { "type": "string" }, "minItems": 3, "maxItems": 8 },
-          "resume_bullets": { "type": "array", "items": { "type": "string" }, "minItems": 3, "maxItems": 6 },
-          "milestones": { "type": "array", "items": { "type": "string" }, "minItems": 3, "maxItems": 6 },
-          "differentiation": { "type": "string" }
+          "title": { "type": "string", "minLength": 3, "maxLength": 120 },
+          "why":   { "type": "string", "minLength": 8, "maxLength": 280 },
+          "what":  { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "string", "maxLength": 110 } },
+          "milestones": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "string", "maxLength": 110 } },
+          "resume_bullets": { "type": "array", "minItems": 2, "maxItems": 3, "items": { "type": "string", "maxLength": 140 } },
+          "stack": { "type": "array", "minItems": 2, "maxItems": 4, "items": { "type": "string", "maxLength": 32 } }
         }
       }
     },
     "meta": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["generated_at_utc","inputs_digest","used_profile_fields"],
+      "required": ["generated_at_utc", "inputs_digest"],
       "properties": {
         "generated_at_utc": { "type": "string" },
-        "inputs_digest": { "type": "string" },
-        "used_profile_fields": { "type": "array", "items": { "type": "string" } }
+        "inputs_digest": { "type": "string" }
       }
     }
   }
 }
 """
 
-PORTFOLIO_FREE_PROMPT = """\
-You are PortfolioWizard for a student career app.
+PRO_PORTFOLIO_JSON_SCHEMA = r"""
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mode", "ideas", "meta"],
+  "properties": {
+    "mode": { "type": "string", "enum": ["pro"] },
+    "ideas": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "why", "what", "milestones", "rubric", "risks", "stretch_goals", "resume_bullets", "stack", "mentor_note"],
+        "properties": {
+          "title": { "type": "string", "minLength": 3, "maxLength": 120 },
+          "why":   { "type": "string", "minLength": 12, "maxLength": 300 },
+          "what":  { "type": "array", "minItems": 6, "maxItems": 6, "items": { "type": "string", "maxLength": 130 } },
+          "milestones": { "type": "array", "minItems": 4, "maxItems": 6, "items": { "type": "string", "maxLength": 120 } },
+          "rubric": { "type": "array", "minItems": 5, "maxItems": 6, "items": { "type": "string", "maxLength": 120 } },
+          "risks":  { "type": "array", "minItems": 3, "maxItems": 4, "items": { "type": "string", "maxLength": 120 } },
+          "stretch_goals": { "type": "array", "minItems": 3, "maxItems": 4, "items": { "type": "string", "maxLength": 120 } },
+          "resume_bullets": { "type": "array", "minItems": 3, "maxItems": 5, "items": { "type": "string", "maxLength": 160 } },
+          "stack": { "type": "array", "minItems": 4, "maxItems": 10, "items": { "type": "string", "maxLength": 32 } },
+          "mentor_note": { "type": "string", "minLength": 30, "maxLength": 240 }
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generated_at_utc", "inputs_digest"],
+      "properties": {
+        "generated_at_utc": { "type": "string" },
+        "inputs_digest": { "type": "string" }
+      }
+    }
+  }
+}
+"""
 
-GOAL: Produce ONE practical, beginner-friendly project idea that can be completed in ~2–4 weeks.
-It must be tailored to the student's target role and industry.
+FREE_PORTFOLIO_PROMPT = """\
+You are PortfolioCoach for FREE users inside a Flask web app.
 
-Context:
-- Freshness: {freshness}
-- Target role: {target_role}
-- Industry: {industry}
-- Experience level: {experience_level}
-- Student skills (from profile): {skill_names}
+Return ONLY valid JSON that strictly matches the JSON Schema below.
+Do not include markdown, code fences, or commentary.
 
-Rules:
-- Output JSON matching the schema.
-- Keep the stack realistic for the student's current skills.
-- "what" are concrete features; "resume_bullets" are quantified, recruiter-friendly.
-- "milestones" are chronological and deliverable-focused (prototype → v1 → polish).
-- DO NOT include any commentary—JSON only.
+Freshness: {freshness}
+
+Goal:
+- Produce exactly ONE concise, practical project idea.
+- Match the student's target role, industry, and level.
+- Keep it less complex than a senior project but still portfolio-worthy.
+- Make "what" 3 clear build steps, and "milestones" 3 high-confidence weekly checkpoints.
+- "resume_bullets" should be recruiter-friendly and measurable when possible.
+- Prefer technologies the student knows; otherwise pick common, teachable tools.
+
+Inputs:
+- target_role: {target_role}
+- industry: {industry}
+- level: {level}
+- student_skills: {student_skills}
 
 JSON Schema:
 {json_schema}
+
+Respond with JSON only.
 """
 
-PORTFOLIO_PRO_PROMPT = """\
-You are PortfolioWizard Pro for a student career app.
+PRO_PORTFOLIO_PROMPT = """\
+You are PortfolioCoach for PRO users in a Flask web app.
 
-GOAL: Produce THREE resume-ready project ideas tailored to the profile and target domain.
-Each idea should be distinct and showcase a different facet (e.g., data, backend, UI, systems, etc.).
+Return ONLY valid JSON that strictly matches the JSON Schema below.
+Do not include markdown, code fences, or commentary.
 
-Context:
-- Freshness: {freshness}
-- Target role: {target_role}
-- Industry: {industry}
-- Experience level: {experience_level}
-- Full Profile JSON (authoritative): {profile_json}
+Freshness: {freshness}
 
-Guidelines:
-- Output JSON matching the schema.
-- Use the student's skills, experience, and past projects to pick an appropriate stack and scope.
-- "what" are concrete features; "resume_bullets" are quantified and employer-friendly.
-- "milestones" show a 2–6 week plan with shippable checkpoints.
-- "differentiation" explains how this idea stands out from generic student projects.
-- DO NOT include any commentary—JSON only.
+Goal:
+- Produce EXACTLY THREE distinct project ideas; they must not feel like reskins.
+- Each idea should read like guidance from an experienced mentor—clear, direct, and scoped to the level.
+- Use the student's profile (skills, experience) when "use_profile" is true; otherwise use inputs.
+- "what" must be 6 concrete build items that could map to tickets.
+- "milestones" must match the provided time budget (2w, 4w, or 6w).
+- "rubric" defines how success is judged.
+- "risks" explain likely failure modes with mitigation.
+- "stretch_goals" are optional extensions if time remains.
+- "resume_bullets" are outcome-oriented and truthful.
+- "stack" should be realistic for the student (favor known tools, or mainstream choices).
+- Write "mentor_note" as a single short paragraph with pragmatic advice.
+
+Inputs:
+- target_role: {target_role}
+- industry: {industry}
+- level: {level}
+- time_budget: {time_budget}
+- focus_area: {focus_area}
+- preferred_stack: {preferred_stack}
+- use_profile: {use_profile}
+- profile_json (optional): {profile_json}
+- student_skills (fallback): {student_skills}
 
 JSON Schema:
 {json_schema}
+
+Respond with JSON only.
 """
 
+def _light_validate_portfolio_free(data: Any) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        return {"mode": "free", "ideas": [], "meta": {}}
+    ideas = data.get("ideas") or []
+    if not isinstance(ideas, list):
+        ideas = []
+    if ideas:
+        i = ideas[0]
+        i["title"] = (i.get("title") or "Portfolio Project")[:120]
+        i["why"] = _to_sentence(i.get("why") or "")
+        i["what"] = [(str(x)[:110]) for x in (i.get("what") or [])][:3]
+        i["milestones"] = [(str(x)[:110]) for x in (i.get("milestones") or [])][:3]
+        i["resume_bullets"] = [(str(x)[:160]) for x in (i.get("resume_bullets") or [])][:3]
+        i["stack"] = [(str(x)[:32]) for x in (i.get("stack") or [])][:4]
+        ideas = [i]
+    meta = data.get("meta") or {}
+    return {"mode": "free", "ideas": ideas, "meta": meta}
 
-def _inputs_digest(obj: Any) -> str:
-    try:
-        import hashlib
-
-        s = json.dumps(obj, sort_keys=True)[:5000]
-        return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()
-    except Exception:
-        return "sha256:na"
-
-
-def _coerce_skill_names(skills_list: Any) -> List[str]:
+def _light_validate_portfolio_pro(data: Any) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        return {"mode": "pro", "ideas": [], "meta": {}}
+    ideas = data.get("ideas") or []
+    if not isinstance(ideas, list):
+        ideas = []
     out = []
-    for s in skills_list or []:
-        if isinstance(s, dict) and (s.get("name") or "").strip():
-            out.append(s["name"].strip())
-        elif isinstance(s, str) and s.strip():
-            out.append(s.strip())
-    return out
-
-
-def _postprocess_ideas(ideas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Tidy fields so templates always render nicely."""
-    cleaned = []
-    for it in ideas or []:
-        cleaned.append(
-            {
-                "title": (it.get("title") or "Project Idea").strip(),
-                "why": (it.get("why") or "").strip(),
-                "stack": [s.strip() for s in (it.get("stack") or []) if str(s).strip()][
-                    :10
-                ],
-                "what": [w.strip() for w in (it.get("what") or []) if str(w).strip()][
-                    :8
-                ],
-                "resume_bullets": [
-                    b.strip()
-                    for b in (it.get("resume_bullets") or [])
-                    if str(b).strip()
-                ][:6],
-                "milestones": [
-                    m.strip() for m in (it.get("milestones") or []) if str(m).strip()
-                ][:6],
-                "differentiation": (it.get("differentiation") or "").strip(),
-            }
-        )
-    return cleaned
-
+    for i in ideas[:3]:
+        obj = {
+            "title": (i.get("title") or "Project")[:120],
+            "why": _to_sentence(i.get("why") or ""),
+            "what": [(str(x)[:130]) for x in (i.get("what") or [])][:6],
+            "milestones": [(str(x)[:120]) for x in (i.get("milestones") or [])][:6],
+            "rubric": [(str(x)[:120]) for x in (i.get("rubric") or [])][:6],
+            "risks": [(str(x)[:120]) for x in (i.get("risks") or [])][:4],
+            "stretch_goals": [(str(x)[:120]) for x in (i.get("stretch_goals") or [])][:4],
+            "resume_bullets": [(str(x)[:160]) for x in (i.get("resume_bullets") or [])][:5],
+            "stack": [(str(x)[:32]) for x in (i.get("stack") or [])][:10],
+            "mentor_note": (i.get("mentor_note") or "")[:240],
+            "differentiation": "",
+        }
+        out.append(obj)
+    meta = data.get("meta") or {}
+    return {"mode": "pro", "ideas": out, "meta": meta}
 
 def generate_project_suggestions(
     target_role: str,
@@ -209,112 +250,114 @@ def generate_project_suggestions(
     skills_list: Any,
     pro_mode: bool,
     return_source: bool = False,
-    *,
-    profile_json: Dict[str, Any] | None = None,
+    profile_json: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]] | Tuple[List[Dict[str, Any]], bool]:
     """
-    High-quality suggestions.
-    - Free: 1 idea (beginner-friendly)
-    - Pro: 3 ideas (resume-ready, milestones, impact bullets, tailored stack)
-    Uses OpenAI when available; falls back to helper on failure.
+    Real-time generation via OpenAI (no stored archetypes).
+    - Free: 1 concise, beginner-friendly idea.
+    - Pro:  3 distinct, level/time-budget aware ideas with rubric/risks/stretch/mentor_note.
     """
+    from openai import OpenAI
+    client = OpenAI()
+
+    role = (target_role or "").strip() or "Software Engineer Intern"
+    industry = (industry or "").strip() or "General"
+    level = (experience_level or "").strip() or "Student"
+    student_skills = _coerce_skill_names(skills_list)
     used_live_ai = False
-    target_role = (target_role or "").strip() or "Software Engineer Intern"
-    industry = (industry or "").strip() or "technology"
-    experience_level = (experience_level or "").strip() or "student"
-    skill_names = _coerce_skill_names(skills_list)
 
     try:
-        from openai import OpenAI
-
-        client = OpenAI()
-
         if pro_mode:
-            prompt = PORTFOLIO_PRO_PROMPT.format(
+            prefs = (profile_json or {}).get("preferences", {}) if profile_json else {}
+            prompt = PRO_PORTFOLIO_PROMPT.format(
                 freshness=FRESHNESS_NOTE,
-                target_role=target_role,
+                target_role=role,
                 industry=industry,
-                experience_level=experience_level,
+                level=level,
+                time_budget=prefs.get("time_budget", "4w"),
+                focus_area=(prefs.get("focus_area") or []),
+                preferred_stack=(prefs.get("preferred_stack") or []),
+                use_profile=bool(profile_json is not None),
                 profile_json=json.dumps(profile_json or {}, ensure_ascii=False),
-                json_schema=PROJECT_SUGGESTIONS_SCHEMA,
+                student_skills=student_skills,
+                json_schema=PRO_PORTFOLIO_JSON_SCHEMA,
             )
         else:
-            prompt = PORTFOLIO_FREE_PROMPT.format(
+            prompt = FREE_PORTFOLIO_PROMPT.format(
                 freshness=FRESHNESS_NOTE,
-                target_role=target_role,
+                target_role=role,
                 industry=industry,
-                experience_level=experience_level,
-                skill_names=", ".join(skill_names[:20]),
-                json_schema=PROJECT_SUGGESTIONS_SCHEMA,
+                level=level,
+                student_skills=student_skills,
+                json_schema=FREE_PORTFOLIO_JSON_SCHEMA,
             )
 
         resp = client.chat.completions.create(
             model=OPENAI_MODEL_DEEP if pro_mode else OPENAI_MODEL_FAST,
             messages=[
-                {
-                    "role": "system",
-                    "content": "You output only valid JSON and nothing else.",
-                },
+                {"role": "system", "content": "You output only valid JSON that exactly matches the provided schema."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.45 if pro_mode else 0.7,
-            max_tokens=1200 if pro_mode else 700,
+            temperature=0.5 if pro_mode else 0.7,
+            max_tokens=1700 if pro_mode else 700,
             response_format={"type": "json_object"},
         )
+
         raw = (resp.choices[0].message.content or "").strip()
         data = json.loads(raw)
-        ideas = _postprocess_ideas(data.get("ideas") or [])
-        # enforce 3 vs 1
-        ideas = ideas[:3] if pro_mode else ideas[:1]
+
+        # Ensure meta (timestamp + input hash)
+        meta = data.get("meta") or {}
+        if "generated_at_utc" not in meta:
+            meta["generated_at_utc"] = _utc_now_iso()
+        if "inputs_digest" not in meta:
+            meta["inputs_digest"] = _inputs_digest({
+                "role": role,
+                "industry": industry,
+                "level": level,
+                "skills": student_skills[:20],
+                "pro_mode": pro_mode,
+                "profile": bool(profile_json),
+            })
+        data["meta"] = meta
+
         used_live_ai = True
 
+        # Light validation/trim to keep UI clean
+        clean = _light_validate_portfolio_pro(data) if pro_mode else _light_validate_portfolio_free(data)
+        ideas = clean.get("ideas") or []
         return (ideas, used_live_ai) if return_source else ideas
 
-    except Exception:
-        # Fallback: legacy helper (keeps app functional if API/config missing)
-        raw_list = _portfolio_suggestions_helper(
-            name="", role=target_role, deep=pro_mode
-        )
-
-        # Convert legacy list into structured items
-        def _legacy_to_struct(txt: str) -> Dict[str, Any]:
-            parts = [p.strip() for p in (txt or "").split("—") if p.strip()]
-            title = parts[0] if parts else "Project Idea"
-            tech = parts[1] if len(parts) > 1 else ""
-            features = parts[2] if len(parts) > 2 else ""
-            outcome = parts[3] if len(parts) > 3 else ""
-            stack = [s.strip() for s in tech.replace(",", " ").split() if s.strip()][:6]
-            what = [
-                w.strip() for w in features.replace(";", ",").split(",") if w.strip()
-            ][:6]
-            resume_bullets = [
-                f"Implemented {w}" + (f" using {', '.join(stack[:3])}" if stack else "")
-                for w in what[:3]
-            ]
-            if outcome:
-                resume_bullets.append(f"Achieved: {outcome}")
-            milestones = [
-                "Week 1: Scope + repo + basic scaffold",
-                "Week 2: Core feature set",
-                "Week 3: Polish + README + demo",
-            ]
-            return {
-                "title": title,
-                "why": outcome,
-                "stack": stack,
-                "what": what,
-                "resume_bullets": resume_bullets,
-                "milestones": milestones,
+    except Exception as e:
+        # Fallback: schema-preserving minimal payload (not a mock idea)
+        if pro_mode:
+            ideas = [{
+                "title": "Generation Error",
+                "why": f"ERROR: {e}",
+                "what": [],
+                "milestones": [],
+                "rubric": [],
+                "risks": [],
+                "stretch_goals": [],
+                "resume_bullets": [],
+                "stack": [],
+                "mentor_note": "",
                 "differentiation": "",
-            }
-
-        structured = [_legacy_to_struct(i) for i in raw_list]
-        ideas = structured[:3] if pro_mode else structured[:1]
+            } for _ in range(3)]
+        else:
+            ideas = [{
+                "title": role,
+                "why": f"ERROR: {e}",
+                "what": [],
+                "milestones": [],
+                "resume_bullets": [],
+                "stack": [],
+                "differentiation": "",
+            }]
         return (ideas, False) if return_source else ideas
 
-
 # -------------------------------------------------------------------
-# Internship Analyzer — AI-only (paste-only; no scraping)
+# Internship Analyzer — (unchanged)
 # -------------------------------------------------------------------
 INTERNSHIP_ANALYZER_JSON_SCHEMA = r"""
 {
@@ -387,7 +430,6 @@ JSON Schema:
 Respond with JSON only.
 """
 
-
 def generate_internship_analysis(
     pro_mode: bool,
     *,
@@ -396,7 +438,6 @@ def generate_internship_analysis(
     return_source: bool = False,
 ) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
     from openai import OpenAI
-
     client = OpenAI()
 
     used_live_ai = False
@@ -418,10 +459,7 @@ def generate_internship_analysis(
         resp = client.chat.completions.create(
             model=OPENAI_MODEL_DEEP if pro_mode else OPENAI_MODEL_FAST,
             messages=[
-                {
-                    "role": "system",
-                    "content": "You output only valid JSON and nothing else.",
-                },
+                {"role": "system", "content": "You output only valid JSON and nothing else."},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.4 if pro_mode else 0.6,
@@ -431,25 +469,21 @@ def generate_internship_analysis(
         raw = (resp.choices[0].message.content or "").strip()
         data = json.loads(raw)
 
-        # Ensure meta exists
         meta = data.get("meta") or {}
         if "generated_at_utc" not in meta:
             meta["generated_at_utc"] = _utc_now_iso()
         if "inputs_digest" not in meta:
-            meta["inputs_digest"] = _inputs_digest(
-                {
-                    "pro_mode": pro_mode,
-                    "internship_text": (internship_text or "")[:256],
-                    "profile_keys": list((profile_json or {}).keys()),
-                }
-            )
+            meta["inputs_digest"] = _inputs_digest({
+                "pro_mode": pro_mode,
+                "internship_text": (internship_text or "")[:256],
+                "profile_keys": list((profile_json or {}).keys())
+            })
         data["meta"] = meta
 
         used_live_ai = True
         return (data, used_live_ai) if return_source else data
 
     except Exception as e:
-        # Schema-preserving error fallback (not a mock suggestion)
         if pro_mode:
             data = {
                 "mode": "pro",
@@ -460,8 +494,8 @@ def generate_internship_analysis(
                 "resume_boost": [],
                 "meta": {
                     "generated_at_utc": _utc_now_iso(),
-                    "inputs_digest": _inputs_digest({"error": True}),
-                },
+                    "inputs_digest": _inputs_digest({"error": True})
+                }
             }
         else:
             data = {
@@ -469,26 +503,21 @@ def generate_internship_analysis(
                 "summary": "ERROR: " + str(e),
                 "meta": {
                     "generated_at_utc": _utc_now_iso(),
-                    "inputs_digest": _inputs_digest({"error": True}),
-                },
+                    "inputs_digest": _inputs_digest({"error": True})
+                }
             }
         return (data, used_live_ai) if return_source else data
 
-
 # -------------------------------------------------------------------
-# Referral Trainer — AI-only (Free today; Pro templates coming soon)
+# Referral Trainer — AI-only
 # -------------------------------------------------------------------
 from helpers import referral_messages as _referral_helper
-
 
 def generate_referral_messages(
     contact: Dict[str, Any],
     candidate_profile: Dict[str, Any],
     return_source: bool = False,
 ) -> Dict[str, str] | Tuple[Dict[str, str], bool]:
-    """
-    Returns {"warm","cold","follow"} using AI; on failure returns error strings.
-    """
     try:
         data = _referral_helper(contact, candidate_profile, deep=False)
         used_live_ai = True
@@ -499,9 +528,8 @@ def generate_referral_messages(
         used_live_ai = False
         return (data, used_live_ai) if return_source else data
 
-
 # -------------------------------------------------------------------
-# SkillMapper — AI-only (Free & Pro)
+# SkillMapper — AI-only (unchanged)
 # -------------------------------------------------------------------
 SKILLMAPPER_JSON_SCHEMA = r"""
 {
@@ -667,15 +695,10 @@ JSON Schema:
 Respond with JSON only.
 """
 
-
-def build_skillmapper_messages(
-    pro_mode: bool, inputs: Dict[str, Any]
-) -> List[Dict[str, str]]:
+def build_skillmapper_messages(pro_mode: bool, inputs: Dict[str, Any]) -> List[Dict[str, str]]:
     if pro_mode:
         prompt = PRO_SKILLMAPPER_PROMPT.format(
-            profile_json=json.dumps(
-                inputs.get("profile_json") or {}, ensure_ascii=False
-            ),
+            profile_json=json.dumps(inputs.get("profile_json") or {}, ensure_ascii=False),
             json_schema=SKILLMAPPER_JSON_SCHEMA,
             freshness=FRESHNESS_NOTE,
         )
@@ -693,44 +716,25 @@ def build_skillmapper_messages(
         {"role": "user", "content": prompt},
     ]
 
-
 def _light_validate_skillmap(data: Any) -> Dict[str, Any]:
-    """
-    Tolerant validator: patch missing fields instead of throwing.
-    """
     if not isinstance(data, dict):
-        return {
-            "mode": "free",
-            "top_roles": [],
-            "hiring_now": [],
-            "call_to_action": "",
-            "meta": {},
-        }
-
+        return {"mode": "free", "top_roles": [], "hiring_now": [], "call_to_action": "", "meta": {}}
     for k in ["mode", "top_roles", "hiring_now", "call_to_action", "meta"]:
         if k not in data:
-            data[k] = (
-                [] if k in ("top_roles", "hiring_now") else {} if k == "meta" else ""
-            )
-
+            data[k] = [] if k in ("top_roles", "hiring_now") else {} if k == "meta" else ""
     if data["mode"] not in ("free", "pro"):
         data["mode"] = "free"
-
     if not isinstance(data.get("top_roles"), list):
         data["top_roles"] = []
     else:
         data["top_roles"] = data["top_roles"][:3]
-
     if not isinstance(data.get("hiring_now"), list):
         data["hiring_now"] = []
     elif len(data["hiring_now"]) > 5:
         data["hiring_now"] = data["hiring_now"][:5]
-
     if not isinstance(data.get("meta"), dict):
         data["meta"] = {}
-
     return data
-
 
 def generate_skillmap(
     pro_mode: bool,
@@ -741,7 +745,6 @@ def generate_skillmap(
     return_source: bool = False,
 ) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
     from openai import OpenAI
-
     client = OpenAI()
 
     used_live_ai = False
@@ -769,7 +772,6 @@ def generate_skillmap(
 
         data = _light_validate_skillmap(data)
 
-        # Ensure meta
         meta = data.get("meta") or {}
         if "generated_at_utc" not in meta:
             meta["generated_at_utc"] = _utc_now_iso()
@@ -781,17 +783,14 @@ def generate_skillmap(
         return (data, used_live_ai) if return_source else data
 
     except Exception as e:
-        # Schema-friendly error payload (not a mock suggestion)
-        data = _light_validate_skillmap(
-            {
-                "mode": "pro" if pro_mode else "free",
-                "top_roles": [],
-                "hiring_now": [],
-                "call_to_action": "ERROR: " + str(e),
-                "meta": {
-                    "generated_at_utc": _utc_now_iso(),
-                    "inputs_digest": _inputs_digest({"error": True}),
-                },
+        data = _light_validate_skillmap({
+            "mode": "pro" if pro_mode else "free",
+            "top_roles": [],
+            "hiring_now": [],
+            "call_to_action": "ERROR: " + str(e),
+            "meta": {
+                "generated_at_utc": _utc_now_iso(),
+                "inputs_digest": _inputs_digest({"error": True})
             }
-        )
+        })
         return (data, used_live_ai) if return_source else data
