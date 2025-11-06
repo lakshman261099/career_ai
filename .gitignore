@@ -1,3 +1,27 @@
 .venv/
 __pycache__/
 .env
+# Databases & instances
+*.db
+instance/*
+!instance/.keep
+
+# Local backups & archives
+backups/
+_archive/
+
+# Python caches
+__pycache__/
+.pytest_cache/
+
+# Env
+.env
+.env.*
+
+# Reports / dev artifacts
+repo_tree.txt
+size_report.txt
+vulture_report.txt
+flask_routes.txt
+all_templates.txt
+project_tree.txt
