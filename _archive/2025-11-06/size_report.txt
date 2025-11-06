@@ -1,0 +1,28 @@
+  0B	career_ai.db
+  0B	requirements.min.txt
+  0B	run
+  0B	size_report.txt
+4.0K	alembic.ini
+4.0K	all_templates.txt
+4.0K	flask_routes.txt
+4.0K	limits.py
+4.0K	repo_tree.txt
+4.0K	requirements.txt
+4.0K	runtime.txt
+4.0K	seed.py
+4.0K	tenent_admin.py
+4.0K	wsgi.py
+ 12K	app.py
+ 16K	models.py
+ 20K	helpers.py
+ 48K	static
+ 60K	vulture_report.txt
+ 76K	__pycache__
+ 84K	migrations
+132K	instance
+192K	_archive
+192K	templates
+240K	backups
+344K	modules
+512K	project_tree.txt
+160M	.

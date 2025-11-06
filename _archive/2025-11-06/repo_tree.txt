@@ -1,0 +1,120 @@
+.
+├── .env
+├── .gitignore
+├── alembic.ini
+├── all_templates.txt
+├── app.py
+├── career_ai.db
+├── flask_routes.txt
+├── helpers.py
+├── instance
+│   └── career_ai.db
+├── limits.py
+├── migrations
+│   ├── env.py
+│   ├── README
+│   ├── script.py.mako
+│   └── versions
+│       ├── 131d3d348caa_add_user_profile_table.py
+│       ├── 20250826_add_project_table.py.py
+│       ├── 20250905_add_text_to_resume_asset.py
+│       ├── a2626b1c1fd0_force_add_cols_portfolio_page_pg.py
+│       └── ff450f3ae804_init_schema.py
+├── models.py
+├── modules
+│   ├── auth
+│   │   └── routes.py
+│   ├── billing
+│   │   └── routes.py
+│   ├── common
+│   │   └── ai.py
+│   ├── internships
+│   │   └── routes.py
+│   ├── jobpack
+│   │   ├── routes.py
+│   │   └── utils_ats.py
+│   ├── portfolio
+│   │   └── routes.py
+│   ├── referral
+│   │   └── routes.py
+│   ├── resume
+│   │   └── routes.py
+│   ├── settings
+│   │   └── routes.py
+│   └── skillmapper
+│       ├── __init__.py
+│       └── routes.py
+├── project_tree.txt
+├── repo_tree.txt
+├── requirements.min.txt
+├── requirements.txt
+├── run
+├── runtime.txt
+├── seed.py
+├── size_report.txt
+├── static
+│   ├── app.js
+│   ├── assets
+│   │   ├── feature_internships.svg
+│   │   ├── feature_jobpack.svg
+│   │   ├── feature_portfolio.svg
+│   │   ├── feature_referrals.svg
+│   │   ├── feature_resume.svg
+│   │   └── feature_skilmapper.svg
+│   ├── css
+│   │   ├── glass.css
+│   │   └── skillmapper.css
+│   ├── favicon.ico
+│   └── js
+│       └── skillmapper.js
+├── templates
+│   ├── auth
+│   │   ├── login.html
+│   │   ├── otp_request.html
+│   │   ├── otp_verify.html
+│   │   ├── register.html
+│   │   └── verify.html
+│   ├── base.html
+│   ├── billing_success.html
+│   ├── dashboard.html
+│   ├── errors
+│   │   ├── 404.html
+│   │   └── 500.html
+│   ├── internships
+│   │   ├── index.html
+│   │   ├── results.html
+│   │   └── run.html
+│   ├── jobpack
+│   │   ├── index.html
+│   │   └── result.html
+│   ├── landing.html
+│   ├── portfolio
+│   │   ├── edit.html
+│   │   ├── free.html
+│   │   ├── index.html
+│   │   ├── new.html
+│   │   ├── public_view.html
+│   │   ├── view.html
+│   │   └── wizard.html
+│   ├── pricing.html
+│   ├── privacy.html
+│   ├── public_base.html
+│   ├── referral
+│   │   ├── index.html
+│   │   ├── result.html
+│   │   └── run.html
+│   ├── resume
+│   │   └── upload.html
+│   ├── settings
+│   │   ├── _sidebar.html
+│   │   ├── credits.html
+│   │   ├── index.html
+│   │   ├── profile.html
+│   │   └── resume.html
+│   └── skillmapper
+│       └── index.html
+├── tenent_admin.py
+├── vulture_report.txt
+└── wsgi.py
+
+29 directories, 89 files
