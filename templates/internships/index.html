@@ -1,69 +1,201 @@
 {% extends "base.html" %}
-{% block title %}Internships — CareerAI{% endblock %}
+{% block title %}Internship Analyzer — CareerAI{% endblock %}
+
 {% block content %}
 <section class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 pt-12">
-  <div class="glass-panel rounded-2xl p-6">
-    <h1 class="text-xl font-bold mb-3">Internships — Analyse</h1>
-    <form method="post" action="{{ url_for('internships.analyse') }}">
-      <label class="block text-sm mb-1">Paste role/keywords (e.g., "VR game design London")</label>
-      <textarea name="text" rows="5" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20" required></textarea>
+  <div class="glass-panel rounded-2xl p-6 border border-white/10">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-bold mb-1">Internship Analyzer</h1>
+        <p class="text-sm text-white/70">
+          Paste an internship description and see what you’ll actually learn, how it grows your skills,
+          and what roles it can lead to.
+        </p>
+      </div>
+      <div class="flex flex-col items-end gap-1 text-right">
+        {% if updated_tag %}
+          <span class="inline-flex items-center px-2 py-1 rounded-full text-[11px] bg-white/5 border border-white/20 text-white/70">
+            Updated {{ updated_tag }}
+          </span>
+        {% endif %}
+        {% if used_live_ai is not none %}
+          <span class="inline-flex items-center px-2 py-1 rounded-full text-[11px] bg-white/5 border border-white/20 {{ 'text-emerald-300' if used_live_ai else 'text-yellow-300' }}">
+            AI: {{ 'live model' if used_live_ai else 'fallback / mock' }}
+          </span>
+        {% endif %}
+      </div>
+    </div>
 
-      <div class="mt-4 flex items-center gap-3">
-        <label class="inline-flex items-center gap-2 text-sm">
-          <input type="radio" name="mode" value="basic" {% if mode != 'pro' %}checked{% endif %}> Basic
+    <form method="post" action="{{ url_for('internships.analyse') }}" class="mt-4 space-y-4">
+      <div>
+        <label class="block text-sm mb-1 font-medium flex items-center gap-1">
+          Internship description (paste)
         </label>
-        <label class="inline-flex items-center gap-2 text-sm">
-          <input type="radio" name="mode" value="pro" {% if mode == 'pro' %}checked{% endif %}> Deep (Pro ⭐)
+        <textarea
+          name="text"
+          rows="7"
+          class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+          placeholder="Paste the full internship posting here. We’ll analyze what you’ll do, learn, and where it can take you."
+          required></textarea>
+        <p class="text-[11px] text-white/60 mt-1">
+          We only use what you paste here. No scraping or external lookups.
+        </p>
+      </div>
+
+      <div class="mt-1 flex flex-wrap items-center gap-4 text-sm">
+        <label class="inline-flex items-center gap-2">
+          <input
+            type="radio"
+            name="mode"
+            value="free"
+            {% if mode != 'pro' %}checked{% endif %}
+            class="rounded border-white/40 bg-transparent text-emerald-400 focus:ring-emerald-400/60" />
+          <span>
+            Free (🪙)
+            <span class="text-xs text-white/60 block">
+              High-level learning & career impact overview.
+            </span>
+          </span>
+        </label>
+
+        <label class="inline-flex items-center gap-2">
+          <input
+            type="radio"
+            name="mode"
+            value="pro"
+            {% if mode == 'pro' %}checked{% endif %}
+            class="rounded border-white/40 bg-transparent text-emerald-400 focus:ring-emerald-400/60" />
+          <span>
+            Deep (Pro ⭐)
+            <span class="text-xs text-white/60 block">
+              Uses your Profile Portal (when available) for personalized growth paths.
+            </span>
+          </span>
         </label>
       </div>
 
-      <div class="mt-4 flex gap-2">
-        <button class="btn-primary" type="submit">Analyse</button>
-        <a class="btn-ghost" href="{{ feature_paths.billing }}">Get Pro</a>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button class="btn-primary" type="submit">
+          Analyze internship
+        </button>
+        <a class="btn-ghost" href="{{ feature_paths.billing }}">
+          Get Pro
+        </a>
       </div>
     </form>
   </div>
 
-  {% if r %}
-    {% set roles = r.roles if r.roles is defined and r.roles else [] %}
-    {% set companies = r.companies if r.companies is defined and r.companies else [] %}
-    {% set links = r.links if r.links is defined and r.links else [] %}
-    {% set notes = r.notes if r.notes is defined and r.notes else '' %}
+  {% if result %}
+    {# normalize for safety #}
+    {% set summary = result.summary or '' %}
+    {% set sg = result.skill_growth or [] %}
+    {% set se = result.skill_enhancement or [] %}
+    {% set impact = result.career_impact or '' %}
+    {% set paths = result.new_paths or [] %}
+    {% set resume_boost = result.resume_boost or [] %}
+    {% set meta = result.meta or {} %}
+    {% set generated_at = meta.generated_at_utc or '' %}
+    {% set mode_label = 'Pro (profile-aware)' if result.mode == 'pro' else 'Free' %}
 
-    <div class="glass-panel rounded-2xl p-6 mt-6">
-      <h2 class="text-lg font-semibold mb-2">Results</h2>
+    <!-- OVERVIEW -->
+    <div class="glass-panel rounded-2xl p-6 mt-6 border border-white/10">
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <h2 class="text-lg font-semibold mb-1">Internship Overview</h2>
+          <p class="text-sm text-white/80">
+            {{ summary or "No summary available for this internship." }}
+          </p>
+        </div>
+        <div class="flex flex-col items-end gap-1">
+          <span class="inline-flex items-center px-2 py-1 rounded-full text-[11px] bg-white/5 border border-white/20 text-white/70">
+            Mode: {{ mode_label }}
+          </span>
+          {% if generated_at %}
+            <span class="text-[11px] text-white/50">
+              Generated at {{ generated_at }}
+            </span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
 
-      {% if notes %}
-        <div class="text-sm text-white/80 mb-3">{{ notes }}</div>
+    <!-- WHAT YOU'LL LEARN -->
+    {% if sg %}
+    <div class="glass-panel rounded-2xl p-6 mt-4 border border-emerald-400/20 bg-emerald-900/10">
+      <h3 class="text-md font-semibold mb-2">What you’ll learn</h3>
+      <p class="text-xs text-white/60 mb-2">
+        New skills or tools you’re likely to pick up from this internship.
+      </p>
+      <ul class="list-disc pl-5 text-sm space-y-1">
+        {% for s in sg %}
+          <li>{{ s }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- HOW YOU'LL LEVEL UP -->
+    {% if se %}
+    <div class="glass-panel rounded-2xl p-6 mt-4 border border-indigo-400/20 bg-indigo-900/10">
+      <h3 class="text-md font-semibold mb-2">How you’ll level up</h3>
+      <p class="text-xs text-white/60 mb-2">
+        Skills you already have that this internship will strengthen.
+      </p>
+      <ul class="list-disc pl-5 text-sm space-y-1">
+        {% for s in se %}
+          <li>{{ s }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- CAREER IMPACT & PATHS -->
+    {% if impact or paths %}
+    <div class="glass-panel rounded-2xl p-6 mt-4 border border-white/15">
+      <h3 class="text-md font-semibold mb-2">Career impact & future paths</h3>
+      {% if impact %}
+        <p class="text-sm text-white/80 mb-3">
+          {{ impact }}
+        </p>
       {% endif %}
-
-      {% if roles %}
-        <h3 class="font-semibold">Suggested roles</h3>
-        <ul class="list-disc pl-5 text-sm mb-3">
-          {% for role in roles %}<li>{{ role }}</li>{% endfor %}
-        </ul>
-      {% endif %}
-
-      {% if companies %}
-        <h3 class="font-semibold">Companies</h3>
-        <ul class="list-disc pl-5 text-sm mb-3">
-          {% for c in companies %}<li>{{ c }}</li>{% endfor %}
-        </ul>
-      {% endif %}
-
-      {% if links %}
-        <h3 class="font-semibold">Links</h3>
-        <ul class="list-disc pl-5 text-sm">
-          {% for L in links %}
-            <li><a href="{{ L }}" target="_blank" rel="noopener">{{ L }}</a></li>
+      {% if paths %}
+        <h4 class="text-sm font-semibold mb-1">Roles or directions this can lead to:</h4>
+        <ul class="list-disc pl-5 text-sm space-y-1">
+          {% for p in paths %}
+            <li>{{ p }}</li>
           {% endfor %}
         </ul>
-      {% else %}
-        {% if not roles and not companies %}
-          <div class="text-sm text-white/60">No structured results. Try adding a city or skill to your query.</div>
-        {% endif %}
       {% endif %}
     </div>
+    {% endif %}
+
+    <!-- HOW TO TALK ABOUT THIS ON YOUR RESUME -->
+    <div class="glass-panel rounded-2xl p-6 mt-4 border border-white/15">
+      <h3 class="text-md font-semibold mb-2">How to talk about this on your resume</h3>
+      {% if resume_boost %}
+        <p class="text-xs text-white/60 mb-2">
+          Use or adapt these as bullets once you complete (or are part-way through) the internship.
+        </p>
+        <div class="space-y-2">
+          {% for line in resume_boost %}
+            <div class="flex items-center justify-between gap-2 bg-white/5 px-3 py-2 rounded-lg text-sm">
+              <span class="flex-1">{{ line }}</span>
+              <button
+                type="button"
+                onclick="navigator.clipboard.writeText(`{{ line|replace('`','\\`') }}`)"
+                class="text-[11px] text-white/60 hover:text-white/90 transition">
+                Copy
+              </button>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm text-white/60">
+          No resume phrasing suggestions were generated for this internship.
+        </p>
+      {% endif %}
+    </div>
+
   {% endif %}
 </section>
 {% endblock %}

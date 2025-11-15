@@ -25,13 +25,16 @@ FRESHNESS_NOTE = (
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
+
 def _inputs_digest(obj: Any) -> str:
     try:
         import hashlib
+
         s = json.dumps(obj, sort_keys=True)[:5000]
         return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()
     except Exception:
         return "sha256:na"
+
 
 def _coerce_skill_names(skills_list: Any) -> List[str]:
     out = []
@@ -41,6 +44,7 @@ def _coerce_skill_names(skills_list: Any) -> List[str]:
         elif isinstance(s, str) and s.strip():
             out.append(s.strip())
     return out
+
 
 def _to_sentence(s: str) -> str:
     s = (s or "").strip()
@@ -218,6 +222,7 @@ def _light_validate_portfolio_free(data: Any) -> Dict[str, Any]:
     meta = data.get("meta") or {}
     return {"mode": "free", "ideas": ideas, "meta": meta}
 
+
 def _light_validate_portfolio_pro(data: Any) -> Dict[str, Any]:
     if not isinstance(data, dict):
         return {"mode": "pro", "ideas": [], "meta": {}}
@@ -243,6 +248,7 @@ def _light_validate_portfolio_pro(data: Any) -> Dict[str, Any]:
     meta = data.get("meta") or {}
     return {"mode": "pro", "ideas": out, "meta": meta}
 
+
 def generate_project_suggestions(
     target_role: str,
     industry: str,
@@ -258,6 +264,7 @@ def generate_project_suggestions(
     - Pro:  3 distinct, level/time-budget aware ideas with rubric/risks/stretch/mentor_note.
     """
     from openai import OpenAI
+
     client = OpenAI()
 
     role = (target_role or "").strip() or "Software Engineer Intern"
@@ -295,7 +302,10 @@ def generate_project_suggestions(
         resp = client.chat.completions.create(
             model=OPENAI_MODEL_DEEP if pro_mode else OPENAI_MODEL_FAST,
             messages=[
-                {"role": "system", "content": "You output only valid JSON that exactly matches the provided schema."},
+                {
+                    "role": "system",
+                    "content": "You output only valid JSON that exactly matches the provided schema.",
+                },
                 {"role": "user", "content": prompt},
             ],
             temperature=0.5 if pro_mode else 0.7,
@@ -311,53 +321,64 @@ def generate_project_suggestions(
         if "generated_at_utc" not in meta:
             meta["generated_at_utc"] = _utc_now_iso()
         if "inputs_digest" not in meta:
-            meta["inputs_digest"] = _inputs_digest({
-                "role": role,
-                "industry": industry,
-                "level": level,
-                "skills": student_skills[:20],
-                "pro_mode": pro_mode,
-                "profile": bool(profile_json),
-            })
+            meta["inputs_digest"] = _inputs_digest(
+                {
+                    "role": role,
+                    "industry": industry,
+                    "level": level,
+                    "skills": student_skills[:20],
+                    "pro_mode": pro_mode,
+                    "profile": bool(profile_json),
+                }
+            )
         data["meta"] = meta
 
         used_live_ai = True
 
         # Light validation/trim to keep UI clean
-        clean = _light_validate_portfolio_pro(data) if pro_mode else _light_validate_portfolio_free(data)
+        clean = (
+            _light_validate_portfolio_pro(data)
+            if pro_mode
+            else _light_validate_portfolio_free(data)
+        )
         ideas = clean.get("ideas") or []
         return (ideas, used_live_ai) if return_source else ideas
 
     except Exception as e:
         # Fallback: schema-preserving minimal payload (not a mock idea)
         if pro_mode:
-            ideas = [{
-                "title": "Generation Error",
-                "why": f"ERROR: {e}",
-                "what": [],
-                "milestones": [],
-                "rubric": [],
-                "risks": [],
-                "stretch_goals": [],
-                "resume_bullets": [],
-                "stack": [],
-                "mentor_note": "",
-                "differentiation": "",
-            } for _ in range(3)]
+            ideas = [
+                {
+                    "title": "Generation Error",
+                    "why": f"ERROR: {e}",
+                    "what": [],
+                    "milestones": [],
+                    "rubric": [],
+                    "risks": [],
+                    "stretch_goals": [],
+                    "resume_bullets": [],
+                    "stack": [],
+                    "mentor_note": "",
+                    "differentiation": "",
+                }
+                for _ in range(3)
+            ]
         else:
-            ideas = [{
-                "title": role,
-                "why": f"ERROR: {e}",
-                "what": [],
-                "milestones": [],
-                "resume_bullets": [],
-                "stack": [],
-                "differentiation": "",
-            }]
+            ideas = [
+                {
+                    "title": role,
+                    "why": f"ERROR: {e}",
+                    "what": [],
+                    "milestones": [],
+                    "resume_bullets": [],
+                    "stack": [],
+                    "differentiation": "",
+                }
+            ]
         return (ideas, False) if return_source else ideas
 
 # -------------------------------------------------------------------
-# Internship Analyzer — (unchanged)
+# Internship Analyzer
 # -------------------------------------------------------------------
 INTERNSHIP_ANALYZER_JSON_SCHEMA = r"""
 {
@@ -438,6 +459,7 @@ def generate_internship_analysis(
     return_source: bool = False,
 ) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
     from openai import OpenAI
+
     client = OpenAI()
 
     used_live_ai = False
@@ -459,7 +481,10 @@ def generate_internship_analysis(
         resp = client.chat.completions.create(
             model=OPENAI_MODEL_DEEP if pro_mode else OPENAI_MODEL_FAST,
             messages=[
-                {"role": "system", "content": "You output only valid JSON and nothing else."},
+                {
+                    "role": "system",
+                    "content": "You output only valid JSON and nothing else.",
+                },
                 {"role": "user", "content": prompt},
             ],
             temperature=0.4 if pro_mode else 0.6,
@@ -473,11 +498,13 @@ def generate_internship_analysis(
         if "generated_at_utc" not in meta:
             meta["generated_at_utc"] = _utc_now_iso()
         if "inputs_digest" not in meta:
-            meta["inputs_digest"] = _inputs_digest({
-                "pro_mode": pro_mode,
-                "internship_text": (internship_text or "")[:256],
-                "profile_keys": list((profile_json or {}).keys())
-            })
+            meta["inputs_digest"] = _inputs_digest(
+                {
+                    "pro_mode": pro_mode,
+                    "internship_text": (internship_text or "")[:256],
+                    "profile_keys": list((profile_json or {}).keys()),
+                }
+            )
         data["meta"] = meta
 
         used_live_ai = True
@@ -494,8 +521,8 @@ def generate_internship_analysis(
                 "resume_boost": [],
                 "meta": {
                     "generated_at_utc": _utc_now_iso(),
-                    "inputs_digest": _inputs_digest({"error": True})
-                }
+                    "inputs_digest": _inputs_digest({"error": True}),
+                },
             }
         else:
             data = {
@@ -503,8 +530,8 @@ def generate_internship_analysis(
                 "summary": "ERROR: " + str(e),
                 "meta": {
                     "generated_at_utc": _utc_now_iso(),
-                    "inputs_digest": _inputs_digest({"error": True})
-                }
+                    "inputs_digest": _inputs_digest({"error": True}),
+                },
             }
         return (data, used_live_ai) if return_source else data
 
@@ -529,7 +556,7 @@ def generate_referral_messages(
         return (data, used_live_ai) if return_source else data
 
 # -------------------------------------------------------------------
-# SkillMapper — AI-only (unchanged)
+# SkillMapper — AI-only
 # -------------------------------------------------------------------
 SKILLMAPPER_JSON_SCHEMA = r"""
 {
@@ -654,13 +681,23 @@ Return ONLY valid JSON matching the provided JSON Schema—no markdown or code f
 
 Freshness: {freshness}
 
+Region & market emphasis:
+{region_line}
+
+Planning horizon:
+The student has a {time_horizon_months}-month time horizon.
+{horizon_text}
+
+Style rules:
+{style_rules}
+
 Context & Rules:
 - Mode: "pro".
 - The profile object is authoritative: {profile_json}
 - If resume_text is provided, prefer profile fields, then use resume_text to fill gaps.
-- Produce three DISTINCT, specialized roles (not generic).
+- Produce three DISTINCT, specialized roles (not generic reskins).
 - Match depth to the domain in profile; avoid vague titles.
-- Give a candid match_score (0–100).
+- Give a candid match_score (0–100); avoid clustering all scores together.
 - "hiring_now" is MODEL ESTIMATES (directional), not scraped; include a brief regional/sector note if relevant.
 - Gaps must be specific, prioritized, and time-bounded with weeks.
 - Micro-projects must be resume-ready with concrete deliverables.
@@ -677,6 +714,8 @@ You are SkillMapper, an expert career coach for Free users in a Flask app.
 Return ONLY valid JSON matching the provided JSON Schema—no markdown or commentary.
 
 Freshness: {freshness}
+
+{target_domain_line}
 
 Context & Rules:
 - Mode: "free".
@@ -697,31 +736,121 @@ Respond with JSON only.
 
 def build_skillmapper_messages(pro_mode: bool, inputs: Dict[str, Any]) -> List[Dict[str, str]]:
     if pro_mode:
+        profile_json = inputs.get("profile_json") or {}
+        hints = inputs.get("hints") or {}
+
+        opts: Dict[str, Any] = {}
+        if isinstance(profile_json, dict):
+            opts = profile_json.get("_skillmapper_options") or {}
+
+        def _pick(name: str, default: Any = None) -> Any:
+            if isinstance(hints, dict) and hints.get(name) not in (None, ""):
+                return hints.get(name)
+            if isinstance(opts, dict) and opts.get(name) not in (None, ""):
+                return opts.get(name)
+            return default
+
+        # Time horizon (months)
+        raw_horizon = _pick("time_horizon_months", 6)
+        try:
+            time_horizon = int(raw_horizon)
+        except Exception:
+            time_horizon = 6
+        time_horizon = max(3, min(12, time_horizon))
+
+        region_sector = str(_pick("region_sector", "") or "").strip()
+        region_line = (
+            f"Emphasize region/sector context: {region_sector}."
+            if region_sector
+            else "Emphasize global hiring context (no specific region provided)."
+        )
+
+        # Horizon narrative used in prompt
+        if time_horizon <= 4:
+            horizon_text = (
+                "Treat this as a short 3–4 month horizon: "
+                "prioritize quick wins and near-fit roles. Limit major skill gaps "
+                "and keep micro-projects small (2–4 weeks each). Avoid recommending "
+                "large pivots that would realistically take more than a few months."
+            )
+        elif time_horizon <= 8:
+            horizon_text = (
+                "Treat this as a medium 6–8 month horizon: "
+                "it's reasonable to recommend 2–3 substantial gaps and a moderate "
+                "career step up. Micro-projects can span 4–8 weeks and should build "
+                "toward a stronger role within the same lane."
+            )
+        else:
+            horizon_text = (
+                "Treat this as a longer 9–12 month horizon: "
+                "larger pivots are acceptable if justified. You may recommend more "
+                "ambitious roles with several gaps, but micro-projects and learning "
+                "plans must still be realistic for 12 months of focused work."
+            )
+
+        style_rules = "\n".join(
+            [
+                "- Use tight, recruiter-friendly language.",
+                "- Roles must be distinct; avoid duplicates and near-duplicates.",
+                "- Target level is junior/intern/entry unless the profile clearly supports mid.",
+                "- For each gap: include priority (1–5), a concrete learning step, and a realistic time_estimate_weeks.",
+                "- Micro-projects should align with the stated time horizon (shorter and simpler for 3 months, deeper for 12).",
+            ]
+        )
+
         prompt = PRO_SKILLMAPPER_PROMPT.format(
-            profile_json=json.dumps(inputs.get("profile_json") or {}, ensure_ascii=False),
+            profile_json=json.dumps(profile_json, ensure_ascii=False),
             json_schema=SKILLMAPPER_JSON_SCHEMA,
             freshness=FRESHNESS_NOTE,
+            region_line=region_line,
+            time_horizon_months=time_horizon,
+            horizon_text=horizon_text,
+            style_rules=style_rules,
         )
         resume_text = (inputs.get("resume_text") or "").strip()
         if resume_text:
-            prompt += f"\n\nAdditional resume_text:\n{resume_text}"
+            prompt += f"\n\nAdditional resume_text (truncated as needed):\n{resume_text}"
     else:
+        free_text = (inputs.get("free_text_skills") or "").strip()
+        hints = inputs.get("hints") or {}
+        target_domain = ""
+        if isinstance(hints, dict):
+            target_domain = (hints.get("target_domain") or "").strip()
+        target_domain_line = (
+            f"Target domain hint from user: {target_domain}"
+            if target_domain
+            else "No explicit domain; infer a logical domain from the text."
+        )
         prompt = FREE_SKILLMAPPER_PROMPT.format(
-            free_text_skills=(inputs.get("free_text_skills") or "").strip(),
+            free_text_skills=free_text,
             json_schema=SKILLMAPPER_JSON_SCHEMA,
             freshness=FRESHNESS_NOTE,
+            target_domain_line=target_domain_line,
         )
+
     return [
         {"role": "system", "content": "You output only valid JSON and nothing else."},
         {"role": "user", "content": prompt},
     ]
 
+
 def _light_validate_skillmap(data: Any) -> Dict[str, Any]:
     if not isinstance(data, dict):
-        return {"mode": "free", "top_roles": [], "hiring_now": [], "call_to_action": "", "meta": {}}
+        return {
+            "mode": "free",
+            "top_roles": [],
+            "hiring_now": [],
+            "call_to_action": "",
+            "meta": {},
+        }
     for k in ["mode", "top_roles", "hiring_now", "call_to_action", "meta"]:
         if k not in data:
-            data[k] = [] if k in ("top_roles", "hiring_now") else {} if k == "meta" else ""
+            if k in ("top_roles", "hiring_now"):
+                data[k] = []
+            elif k == "meta":
+                data[k] = {}
+            else:
+                data[k] = ""
     if data["mode"] not in ("free", "pro"):
         data["mode"] = "free"
     if not isinstance(data.get("top_roles"), list):
@@ -736,6 +865,7 @@ def _light_validate_skillmap(data: Any) -> Dict[str, Any]:
         data["meta"] = {}
     return data
 
+
 def generate_skillmap(
     pro_mode: bool,
     *,
@@ -743,20 +873,25 @@ def generate_skillmap(
     resume_text: str | None = None,
     free_text_skills: str | None = None,
     return_source: bool = False,
+    hints: Dict[str, Any] | None = None,
 ) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
     from openai import OpenAI
+
     client = OpenAI()
 
     used_live_ai = False
     try:
-        inputs: Dict[str, Any]
         if pro_mode:
-            inputs = {
+            inputs: Dict[str, Any] = {
                 "profile_json": profile_json or {},
-                "resume_text": resume_text or "",
+                "resume_text": (resume_text or "").strip(),
+                "hints": hints or {},
             }
         else:
-            inputs = {"free_text_skills": (free_text_skills or "").strip()}
+            inputs = {
+                "free_text_skills": (free_text_skills or "").strip(),
+                "hints": hints or {},
+            }
 
         messages = build_skillmapper_messages(pro_mode, inputs)
 
@@ -777,20 +912,47 @@ def generate_skillmap(
             meta["generated_at_utc"] = _utc_now_iso()
         if "inputs_digest" not in meta:
             meta["inputs_digest"] = _inputs_digest(inputs)
+
+        # Optional profile snapshot for Pro (used in right-rail UI)
+        try:
+            if pro_mode and isinstance(inputs.get("profile_json"), dict):
+                prof = inputs["profile_json"]
+                ident = prof.get("identity") or {}
+                skills_field = prof.get("skills") or []
+                key_skills: List[str] = []
+                if isinstance(skills_field, list):
+                    for s in skills_field:
+                        if isinstance(s, str) and s.strip():
+                            key_skills.append(s.strip())
+                        elif isinstance(s, dict):
+                            n = (s.get("name") or s.get("skill") or "").strip()
+                            if n:
+                                key_skills.append(n)
+                meta["profile_snapshot"] = {
+                    "full_name": ident.get("full_name") or "",
+                    "headline": ident.get("headline") or "",
+                    "key_skills": key_skills[:20],
+                }
+        except Exception:
+            # Snapshot is optional; never break generation
+            pass
+
         data["meta"] = meta
 
         used_live_ai = True
         return (data, used_live_ai) if return_source else data
 
     except Exception as e:
-        data = _light_validate_skillmap({
-            "mode": "pro" if pro_mode else "free",
-            "top_roles": [],
-            "hiring_now": [],
-            "call_to_action": "ERROR: " + str(e),
-            "meta": {
-                "generated_at_utc": _utc_now_iso(),
-                "inputs_digest": _inputs_digest({"error": True})
+        data = _light_validate_skillmap(
+            {
+                "mode": "pro" if pro_mode else "free",
+                "top_roles": [],
+                "hiring_now": [],
+                "call_to_action": "ERROR: " + str(e),
+                "meta": {
+                    "generated_at_utc": _utc_now_iso(),
+                    "inputs_digest": _inputs_digest({"error": True}),
+                },
             }
-        })
+        )
         return (data, used_live_ai) if return_source else data

@@ -6,6 +6,7 @@
   <div class="sm-header">
     <h1>Skill Mapper</h1>
     <p class="sm-subtitle">Discover your best-fit roles and what’s hiring now.</p>
+    {% if updated_tag %}<div class="sm-tag">Updated {{ updated_tag }}</div>{% endif %}
   </div>
 
   <div class="sm-grid">
@@ -15,23 +16,129 @@
         <h2>Free run (🪙)</h2>
         <p>Paste your skills/interests. We’ll map 3 specialized roles.</p>
       </div>
-      <textarea id="sm-free-input" class="sm-textarea" placeholder="e.g., Python, SQL, Tableau, stats, curiosity about business metrics"></textarea>
+
+      <label class="sm-label" for="sm-free-input">
+        Your skills &amp; interests
+        <span
+          class="sm-help"
+          aria-label="Explain skills and interests"
+          data-sm-tooltip="Paste what you already know (languages, tools, coursework) plus topics you enjoy. We infer roles from this snapshot."
+        >?</span>
+      </label>
+      <textarea
+        id="sm-free-input"
+        class="sm-textarea"
+        placeholder="e.g., Python, SQL, Tableau, stats, curiosity about business metrics"
+      ></textarea>
+
+      <div class="sm-inline">
+        <label class="sm-label" for="sm-free-domain">
+          Optional target domain
+          <span
+            class="sm-help"
+            aria-label="Explain target domain"
+            data-sm-tooltip="If you already have a direction (fintech, healthcare, climate, etc.), add it so we bias your roles toward that domain."
+          >?</span>
+        </label>
+        <input
+          id="sm-free-domain"
+          class="sm-input"
+          placeholder="e.g., fintech, healthcare analytics"
+        />
+      </div>
+
       <button id="sm-free-btn" class="sm-btn">Run Skill Mapper</button>
-      <div class="sm-hint">Free runs use Silver credits. Pro users get unlimited access.</div>
+      <div class="sm-hint">
+        Free runs use Silver credits. Pro users can still use Free mode (saves ⭐).
+      </div>
     </div>
 
     <!-- Pro panel -->
-    <div class="sm-card">
+    <div class="sm-card sm-pro">
+      {% if not is_pro %}
+        <div class="sm-lock">
+          <div class="sm-lock-body">
+            <div class="sm-lock-title">Skill Mapper Pro</div>
+            <div class="sm-lock-text">
+              Profile-aware mapping with scores, gaps, and “What’s hiring now”.
+            </div>
+            <a href="{{ feature_paths.billing }}" class="sm-btn sm-btn-upgrade">Upgrade to Pro</a>
+          </div>
+        </div>
+      {% endif %}
+
       <div class="sm-card-head">
         <h2>Pro analysis (⭐)</h2>
         <p>Use your Profile Portal + latest resume for a deep analysis.</p>
       </div>
+
+      <div class="sm-row">
+        <label class="sm-switch">
+          <input id="sm-pro-use-profile" type="checkbox" {% if is_pro %}checked{% endif %} />
+          <span>
+            Use Profile Portal
+            <span
+              class="sm-help"
+              aria-label="Explain Use Profile Portal"
+              data-sm-tooltip="When this is on, SkillMapper uses your saved profile (skills, projects, experience) as the main source of truth."
+            >?</span>
+          </span>
+        </label>
+      </div>
+
+      <div class="sm-inline">
+        <label class="sm-label" for="sm-pro-region">
+          Optional region/sector emphasis
+          <span
+            class="sm-help"
+            aria-label="Explain region/sector emphasis"
+            data-sm-tooltip="Tell us where and in what sector you care most about jobs, e.g., ‘US · fintech’ or ‘UK &amp; EU · SaaS’. We tilt demand estimates toward that."
+          >?</span>
+        </label>
+        <input
+          id="sm-pro-region"
+          class="sm-input"
+          placeholder="e.g., UK &amp; EU · SaaS"
+        />
+      </div>
+
+      <div class="sm-inline">
+        <label class="sm-label" for="sm-pro-horizon">
+          Time horizon
+          <span
+            class="sm-help"
+            aria-label="Explain time horizon"
+            data-sm-tooltip="How far ahead you’re planning: 3 months = quick wins, 6 months = deeper upskilling, 12 months = bigger pivots and stretch roles."
+          >?</span>
+        </label>
+        <select id="sm-pro-horizon" class="sm-input">
+          <option value="3">3 months</option>
+          <option value="6" selected>6 months</option>
+          <option value="12">12 months</option>
+        </select>
+      </div>
+
+      <label class="sm-label" for="sm-pro-resume">
+        Optional pasted resume (overrides file on profile)
+        <span
+          class="sm-help"
+          aria-label="Explain pasted resume override"
+          data-sm-tooltip="If your resume has changed since you uploaded it, paste the latest text here. We'll use this version for this run only."
+        >?</span>
+      </label>
+      <textarea
+        id="sm-pro-resume"
+        class="sm-textarea"
+        placeholder="Paste resume text to override what's on file (optional)"
+      ></textarea>
+
       {% if is_pro %}
         <button id="sm-pro-btn" class="sm-btn sm-btn-pro">Analyze from Profile</button>
-        <div class="sm-hint">We read your Profile + latest resume on file.</div>
+        <div class="sm-hint">
+          We read your Profile + latest resume on file. You can paste a resume to override.
+        </div>
       {% else %}
-        <a href="{{ feature_paths.billing }}" class="sm-btn sm-btn-upgrade">Upgrade to Pro</a>
-        <div class="sm-hint">Publishing portfolio & Skill Mapper Pro require Pro.</div>
+        <div class="sm-disabled-note">Pro analysis requires an active Pro plan.</div>
       {% endif %}
     </div>
   </div>
@@ -41,6 +148,11 @@
       <h2>Top 3 Roles</h2>
       <div id="sm-meta" class="sm-meta"></div>
     </div>
+
+    <aside id="sm-profile-snapshot" class="sm-profile hidden">
+      <!-- populated on Pro responses if meta.profile_snapshot exists -->
+    </aside>
+
     <div id="sm-roles" class="sm-roles"></div>
 
     <div class="sm-hiring">
@@ -49,7 +161,9 @@
     </div>
 
     <div class="sm-cta">
-      <button id="sm-add-portfolio" class="sm-btn-outline">Add selected micro-project to Portfolio (opens editor)</button>
+      <button id="sm-add-portfolio" class="sm-btn-outline">
+        Add selected micro-project to Portfolio (opens editor)
+      </button>
     </div>
   </div>
 

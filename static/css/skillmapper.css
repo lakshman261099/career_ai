@@ -1,72 +1,398 @@
 /* static/css/skillmapper.css */
 /* Scoped styles for Skill Mapper — avoid global overrides (e.g., .hidden) */
 
-.sm-container { max-width: 1100px; margin: 24px auto; padding: 0 16px; color: #111827; }
-.sm-header h1 { font-size: 28px; margin: 0 0 8px; color: #fff; }
-.sm-subtitle { color: #d1d5db; margin-bottom: 20px; }
+.sm-container {
+  max-width: 1100px;
+  margin: 24px auto;
+  padding: 0 16px;
+  color: #111827;
+}
 
-.sm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
-.sm-card { background: rgba(255,255,255,.08); border-radius: 16px; box-shadow: 0 6px 20px rgba(0,0,0,.06); padding: 16px; border: 1px solid rgba(255,255,255,.15); color: #fff; }
-.sm-card-head h2 { margin: 0 0 6px; color: #fff; }
+.sm-header h1 {
+  font-size: 28px;
+  margin: 0 0 8px;
+  color: #fff;
+}
 
-.sm-textarea { width: 100%; min-height: 120px; border: 1px solid rgba(255,255,255,.2); background: rgba(0,0,0,.25); color: #fff; border-radius: 12px; padding: 12px; outline: none; }
-.sm-textarea:focus { border-color: #5b9fff; box-shadow: 0 0 0 3px rgba(91,159,255,.15); }
+.sm-subtitle {
+  color: #d1d5db;
+  margin-bottom: 20px;
+}
 
-.sm-btn { display: inline-block; padding: 10px 14px; border-radius: 12px; background: #111827; color: #fff; border: none; cursor: pointer; margin-top: 10px; }
-.sm-btn:hover { filter: brightness(1.05); }
-.sm-btn:disabled { opacity: .6; cursor: not-allowed; }
-.sm-btn-pro { background: linear-gradient(135deg, #7c3aed, #4338ca); }
-.sm-btn-upgrade { background: linear-gradient(135deg, #ec4899, #f59e0b); text-decoration: none; }
-.sm-btn-outline { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.3); }
+.sm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
 
-.sm-hint { color: #e5e7eb; font-size: 12px; margin-top: 6px; }
+.sm-card {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.sm-card-head h2 {
+  margin: 0 0 6px;
+  color: #fff;
+}
+
+/* Labels + inline layout */
+
+.sm-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #e5e7eb;
+  margin-bottom: 4px;
+}
+
+.sm-inline {
+  margin-top: 10px;
+}
+
+/* Small "?" help bubble with tooltip */
+
+.sm-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  font-size: 11px;
+  font-weight: 600;
+  color: #e5e7eb;
+  cursor: default;
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.sm-help::after {
+  content: attr(data-sm-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: 150%;
+  transform: translateX(-50%) translateY(4px);
+  max-width: 260px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #020617;
+  color: #e5e7eb;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  white-space: normal;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 30;
+  transition: opacity 140ms ease-out, transform 140ms ease-out;
+}
+
+.sm-help::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 140%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: #020617 transparent transparent transparent;
+  opacity: 0;
+  transition: opacity 140ms ease-out;
+}
+
+.sm-help:hover::after,
+.sm-help:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ---------- FORM CONTROLS (dark) ---------- */
+
+.sm-textarea {
+  width: 100%;
+  min-height: 120px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  outline: none;
+  resize: vertical;
+}
+
+/* Shared input/select style */
+.sm-input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  appearance: none;
+  -webkit-appearance: none; /* Safari macOS */
+}
+
+/* Focus states */
+.sm-textarea:focus,
+.sm-input:focus {
+  border-color: #5b9fff;
+  box-shadow: 0 0 0 3px rgba(91, 159, 255, 0.15);
+}
+
+/* Placeholder text */
+.sm-textarea::placeholder,
+.sm-input::placeholder {
+  color: rgba(209, 213, 219, 0.8); /* slate-300-ish */
+}
+
+/* Options inside select (some browsers honor this, macOS may not for the popup) */
+.sm-card select.sm-input option {
+  background-color: #020617;
+  color: #e5e7eb;
+}
+
+/* ---------- Buttons ---------- */
+
+.sm-btn {
+  display: inline-block;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #111827;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.sm-btn:hover {
+  filter: brightness(1.05);
+}
+
+.sm-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sm-btn-pro {
+  background: linear-gradient(135deg, #7c3aed, #4338ca);
+}
+
+.sm-btn-upgrade {
+  background: linear-gradient(135deg, #ec4899, #f59e0b);
+  text-decoration: none;
+}
+
+.sm-btn-outline {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.sm-hint {
+  color: #e5e7eb;
+  font-size: 12px;
+  margin-top: 6px;
+}
 
 /* Results area */
-.sm-results { margin-top: 26px; }
-.sm-results-head { display: flex; justify-content: space-between; align-items: baseline; color: #fff; }
-.sm-meta { color: #e5e7eb; font-size: 13px; }
+
+.sm-results {
+  margin-top: 26px;
+}
+
+.sm-results-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: #fff;
+}
+
+.sm-meta {
+  color: #e5e7eb;
+  font-size: 13px;
+}
 
 /* Cards for roles */
-.sm-roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 14px; }
-.sm-role { background: rgba(255,255,255,.92); border: 1px solid #efefef; border-radius: 16px; padding: 14px; box-shadow: 0 10px 18px rgba(0,0,0,.08); color: #111827; }
 
-.sm-role-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-.sm-title { font-weight: 700; margin: 0; }
-.sm-badge { font-size: 11px; padding: 4px 8px; border-radius: 999px; background: #f3f4f6; color: #111827; }
+.sm-roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
 
-.sm-score { font-size: 26px; font-weight: 800; }
-.sm-score .unit { font-size: 14px; color: #6b7280; margin-left: 4px; }
+.sm-role {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #efefef;
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.08);
+  color: #111827;
+}
 
-.sm-why { color: #374151; margin: 6px 0 10px; }
+.sm-role-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
 
-.sm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.sm-chip { background: #eef2ff; color: #3730a3; padding: 4px 8px; border-radius: 10px; font-size: 12px; }
+.sm-title {
+  font-weight: 700;
+  margin: 0;
+}
 
-.sm-section { margin-top: 10px; }
-.sm-section h4 { margin: 0 0 6px; font-size: 14px; }
+.sm-badge {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #111827;
+}
 
-.sm-list { margin: 0; padding-left: 18px; }
-.sm-list li { margin: 3px 0; }
+.sm-score {
+  font-size: 26px;
+  font-weight: 800;
+}
 
-.sm-priority { height: 8px; background: #f3f4f6; border-radius: 8px; overflow: hidden; }
-.sm-priority > div { height: 100%; width: 0; background: linear-gradient(90deg, #f59e0b, #ef4444); transition: width 800ms ease; }
+.sm-score .unit {
+  font-size: 14px;
+  color: #6b7280;
+  margin-left: 4px;
+}
+
+.sm-why {
+  color: #374151;
+  margin: 6px 0 10px;
+}
+
+.sm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.sm-chip {
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 4px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.sm-section {
+  margin-top: 10px;
+}
+
+.sm-section h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.sm-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.sm-list li {
+  margin: 3px 0;
+}
+
+.sm-priority {
+  height: 8px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sm-priority > div {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+  transition: width 800ms ease;
+}
 
 /* Hiring snapshot */
-.sm-hiring { margin-top: 22px; color: #fff; }
-.sm-hiring-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
-.sm-hiring-item { border: 1px solid rgba(255,255,255,.2); border-radius: 14px; padding: 12px; background: rgba(255,255,255,.08); }
-.sm-hiring-title { font-weight: 700; margin: 0 0 4px; }
-.sm-hiring-metrics { display: flex; gap: 14px; align-items: baseline; }
-.sm-hiring-num { font-size: 22px; font-weight: 800; }
-.sm-hiring-pct { font-size: 14px; color: #e5e7eb; }
-.sm-hiring-note { color: #e5e7eb; font-size: 12px; margin-top: 4px; }
+
+.sm-hiring {
+  margin-top: 22px;
+  color: #fff;
+}
+
+.sm-hiring-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.sm-hiring-item {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sm-hiring-title {
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.sm-hiring-metrics {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+}
+
+.sm-hiring-num {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.sm-hiring-pct {
+  font-size: 14px;
+  color: #e5e7eb;
+}
+
+.sm-hiring-note {
+  color: #e5e7eb;
+  font-size: 12px;
+  margin-top: 4px;
+}
 
 /* Toast + visibility helpers (scoped) */
-.sm-toast { position: fixed; bottom: 20px; right: 20px; background: #111827; color: #fff; padding: 10px 12px; border-radius: 10px; box-shadow: 0 10px 18px rgba(0,0,0,.15); }
+
+.sm-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #111827;
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 10px;
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.15);
+}
 
 /* Use a scoped helper instead of the global Tailwind `.hidden` */
-.sm-hidden { display: none; }
-/* If you must keep the `hidden` utility for SM elements, scope it strictly: */
-.sm-container .hidden { display: none; }
+.sm-hidden {
+  display: none;
+}
 
-.sm-cta { margin-top: 18px; }
+/* If you must keep the `hidden` utility for SM elements, scope it strictly: */
+.sm-container .hidden {
+  display: none;
+}
+
+.sm-cta {
+  margin-top: 18px;
+}

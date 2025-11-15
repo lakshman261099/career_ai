@@ -170,6 +170,15 @@ You are CareerAI — a professional resume & job-fit evaluator for students and 
 CONTEXT / FRESHNESS
 - {freshness}
 
+ATS & LIMITATIONS
+- You do NOT run a real ATS scanner. All ATS-related scores are model ESTIMATES of how well the resume text aligns to the job description.
+- Do NOT claim that the resume "passed" or "failed" any external system; instead, talk about "likelihood of passing keyword filters".
+- If the resume/profile text is empty, treat this as "no resume on file": keep resume_ats_score conservative and explicitly mention the missing resume in blockers/warnings.
+- Guidance must be realistic and grounded strictly in the provided text.
+
+RESUME CONTEXT
+- {resume_hint}
+
 STRICT RULES
 - Use ONLY the provided JD and Resume/Profile text; do not invent employers or projects.
 - Be specific and grounded in the JD’s terminology. Prefer exact tokens from the JD.
@@ -275,7 +284,7 @@ def _normalize_for_template(data: Dict[str, Any]) -> Dict[str, Any]:
                 fixed.append(qa)
         data["interview_qa"] = fixed
 
-    # helper chips + counts
+    # helper chips + counts for UI
     if "detected_keywords" not in data and isinstance(data.get("skill_table"), list):
         kw = []
         for row in data["skill_table"]:
@@ -302,7 +311,8 @@ def _normalize_for_template(data: Dict[str, Any]) -> Dict[str, Any]:
 # Quality gate — detect low-value outputs to trigger repair
 # ------------------------------------------------------------------
 def _find_quality_issues(d: Dict[str, Any]) -> List[str]:
-    issues = []
+    issues: List[str] = []
+
     # Fit overview
     cats = [
         (isinstance(x, dict) and (x.get("category") or ""))
@@ -384,12 +394,25 @@ def analyze_jobpack(
     clean_jd = _clean_jd(jd_text or "")
     model = DEEP_MODEL if pro_mode else FAST_MODEL
 
+    # Resume handling
+    resume_raw = (resume_text or "")
+    resume_trimmed = resume_raw[:4000]
+    resume_missing = not bool(resume_trimmed.strip())
+
+    resume_hint = (
+        "Resume/Profile text is EMPTY — treat this as no resume on file. "
+        "Keep resume_ats_score conservative and explicitly call out the missing resume in blockers/warnings."
+        if resume_missing
+        else "Resume/Profile text is provided — use it heavily for ATS and fit analysis."
+    )
+
     # Prompt with freshness
     prompt = JOBPACK_PROMPT.format(
         freshness=FRESHNESS_NOTE,
         schema=JOBPACK_JSON_SCHEMA,
         jd=clean_jd,
-        resume=(resume_text or "")[:4000],
+        resume=resume_trimmed,
+        resume_hint=resume_hint,
     )
 
     try:
@@ -448,6 +471,10 @@ def analyze_jobpack(
             data.setdefault(k, v)
         data = _normalize_for_template(data)
 
+        # Wire resume_missing for the template (used for the yellow warning card)
+        if "resume_missing" not in data:
+            data["resume_missing"] = resume_missing
+
         # Heuristic: flag obviously old JDs
         if re.search(r"(2019|2020|2021|2022|2023)\b", clean_jd) and not re.search(
             r"\b2024\b|\b2025\b", clean_jd
@@ -495,6 +522,10 @@ def analyze_jobpack(
                 data2.setdefault(k, v)
             data = _normalize_for_template(data2)
 
+            # Keep resume_missing flag consistent after repair
+            if "resume_missing" not in data:
+                data["resume_missing"] = resume_missing
+
         # Usage (best-effort)
         usage = getattr(resp, "usage", None)
         data["_usage"] = {
@@ -514,5 +545,26 @@ def analyze_jobpack(
             "impact_summary": str(e),
             "ats_score": 0,
             "fit_overview": [],
+            "skill_table": [],
+            "rewrite_suggestions": [],
+            "next_steps": [],
+            "subscores": {},
+            "resume_ats": {
+                "resume_ats_score": 0,
+                "blockers": [],
+                "warnings": [],
+                "keyword_coverage": {
+                    "required_keywords": [],
+                    "present_keywords": [],
+                    "missing_keywords": [],
+                },
+                "resume_rewrite_actions": [],
+                "exact_phrases_to_add": [],
+            },
+            "learning_links": [],
+            "interview_qa": [],
+            "practice_plan": [],
+            "application_checklist": [],
+            "resume_missing": not bool((resume_text or "").strip()),
             "_usage": {"model": model, "error": True},
         }

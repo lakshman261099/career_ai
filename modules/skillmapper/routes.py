@@ -25,6 +25,7 @@ CAREER_AI_VERSION = os.getenv("CAREER_AI_VERSION", "2025-Q4")
 
 # Max size guardrails (avoid huge pastes)
 MAX_FREE_TEXT = int(os.getenv("SM_MAX_FREE_TEXT", "12000"))
+MAX_RESUME_TEXT = int(os.getenv("SM_MAX_RESUME_TEXT", "24000"))
 
 
 def _latest_resume_text(user_id: int) -> str:
@@ -87,6 +88,7 @@ def run_free():
 
         payload = request.get_json(silent=True) or {}
         free_text_skills = (payload.get("free_text_skills") or "").strip()
+        target_domain = (payload.get("target_domain") or "").strip()
 
         if not free_text_skills:
             return (
@@ -100,14 +102,25 @@ def run_free():
         if len(free_text_skills) > MAX_FREE_TEXT:
             free_text_skills = free_text_skills[:MAX_FREE_TEXT]
 
+        # Pass a small hint for domain to the generator while keeping API stable
+        free_hints = {}
+        if target_domain:
+            free_hints["target_domain"] = target_domain
+
         data, used_live_ai = generate_skillmap(
             pro_mode=False,
             free_text_skills=free_text_skills,
             return_source=True,
+            # Safe extension: many implementations accept **kwargs; if not,
+            # the helper will ignore embedded hints inside the data it returns.
+            hints=free_hints,
         )
 
         log.info(
-            "SM/free used_live_ai=%s text_len=%d", used_live_ai, len(free_text_skills)
+            "SM/free used_live_ai=%s text_len=%d domain_hint=%s",
+            used_live_ai,
+            len(free_text_skills),
+            bool(target_domain),
         )
 
         # Persist snapshot (best-effort)
@@ -115,7 +128,7 @@ def run_free():
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
                 source_title="Skill Mapper (Free)",
-                input_text=free_text_skills,
+                input_text=(target_domain + "\n\n" if target_domain else "") + free_text_skills,
                 skills_json=json_dumps_safe(data),
                 created_at=datetime.utcnow(),
             )
@@ -154,8 +167,20 @@ def run_pro():
                 403,
             )
 
-        profile = _profile_json(current_user.id)
-        if not profile:
+        payload = request.get_json(silent=True) or {}
+        use_profile = bool(payload.get("use_profile", True))
+        pasted_resume_text = (payload.get("resume_text") or "").strip()
+        region_sector = (payload.get("region_sector") or "").strip()
+        time_horizon = (payload.get("time_horizon_months") or 6)
+        try:
+            time_horizon = int(time_horizon)
+        except Exception:
+            time_horizon = 6
+        time_horizon = max(3, min(12, time_horizon))
+
+        profile = _profile_json(current_user.id) if use_profile else {}
+
+        if use_profile and not profile:
             return (
                 jsonify(
                     {
@@ -166,20 +191,40 @@ def run_pro():
                 400,
             )
 
-        resume_text = _latest_resume_text(current_user.id)
+        # Resume selection: pasted > latest on file
+        resume_text = pasted_resume_text or _latest_resume_text(current_user.id)
+        if len(resume_text) > MAX_RESUME_TEXT:
+            resume_text = resume_text[:MAX_RESUME_TEXT]
+
+        # Backward-compatible options pass-through:
+        # embed non-breaking SM options into the profile payload so ai.py can
+        # read them without changing generate_skillmap signature.
+        if profile is None:
+            profile = {}
+        profile = dict(profile or {})
+        profile.setdefault("_skillmapper_options", {})
+        profile["_skillmapper_options"].update(
+            {
+                "region_sector": region_sector,
+                "time_horizon_months": time_horizon,
+                "use_profile": bool(use_profile),
+            }
+        )
 
         data, used_live_ai = generate_skillmap(
             pro_mode=True,
-            profile_json=profile,
+            profile_json=profile if use_profile else None,
             resume_text=resume_text,
             return_source=True,
         )
 
         log.info(
-            "SM/pro used_live_ai=%s profile_keys=%s resume_len=%d",
+            "SM/pro used_live_ai=%s profile_keys=%s resume_len=%d horizon=%s region=%s",
             used_live_ai,
-            list(profile.keys()),
+            list((profile or {}).keys()),
             len(resume_text or ""),
+            time_horizon,
+            bool(region_sector),
         )
 
         # Persist snapshot (best-effort)
@@ -187,7 +232,7 @@ def run_pro():
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
                 source_title="Skill Mapper (Pro)",
-                input_text="profile+resume",
+                input_text=f"profile={'on' if use_profile else 'off'}; region={region_sector or '-'}; horizon={time_horizon}m",
                 skills_json=json_dumps_safe(data),
                 created_at=datetime.utcnow(),
             )
