@@ -282,30 +282,89 @@ def internships_search(role: str, location: str) -> List[Dict]:
 def referral_messages(
     contact: Dict, candidate_profile: Dict, deep: bool = False
 ) -> Dict:
-    sys = "Write concise referral outreach. Return strict JSON with keys: warm, cold, follow."
-    usr = json.dumps({"contact": contact, "candidate_profile": candidate_profile})
+    """
+    Generate 2–3 short outreach scripts:
+    - warm: you have some connection (alumni, mutuals, same college, etc.)
+    - cold: no connection, purely cold LinkedIn/email
+    - follow: polite nudge ~5–7 days later
+
+    All messages:
+    - Are written in the student's voice (first person: "I").
+    - Are concise: ~4–7 short sentences each.
+    - Sound normal, friendly, and respectful (not corporate or sales-y).
+    - Can be pasted into LinkedIn or email with minimal editing.
+    """
+    payload = {
+        "contact": contact or {},
+        "candidate_profile": candidate_profile or {},
+    }
+
+    sys = (
+        "You are ReferralCoach for students and new grads.\n"
+        "You ONLY write short outreach messages asking for advice or a possible referral.\n\n"
+        "OUTPUT RULES:\n"
+        "- Return a single JSON object with exactly these keys: warm, cold, follow.\n"
+        "- Each value is a single plain-text message (no bullets, no markdown).\n"
+        "- Write as if the student is speaking in first person (\"I\", \"my\").\n"
+        "- Keep each message concise: about 4–7 short sentences.\n"
+        "- Sound friendly and respectful, not over-formal and not salesy.\n"
+        "- Avoid buzzwords and generic flattery (no \"exceptional organization\", \"synergies\", etc.).\n"
+        "- If information is missing (e.g., no company name), just omit it naturally.\n"
+    )
+
+    usr = (
+        "Use this JSON as context. Do NOT echo it back. "
+        "Use it to personalize the messages:\n\n"
+        + json.dumps(payload, ensure_ascii=False)
+        + "\n\n"
+        "Guidance:\n"
+        "- If contact.source mentions alumni / same school, treat as a warm connection.\n"
+        "- Use candidate_profile.role as the target role.\n"
+        "- Use candidate_profile.highlights as 2–3 reasons why they might be a good fit.\n"
+        "- If candidate_profile.job_description is present, reference 1–2 specific skills or responsibilities from it.\n"
+        "- Make it easy for the student to lightly edit and send."
+    )
+
     rsp = _call_openai(
         [{"role": "system", "content": sys}, {"role": "user", "content": usr}],
         deep=deep,
-        temperature=0.5,
+        temperature=0.4,
     )
+
     if not rsp["ok"]:
         err = f"ERROR: {rsp['error'] or 'AI unavailable'}"
         return {"warm": err, "cold": err, "follow": err}
 
-    text = rsp["text"]
+    text = rsp["text"].strip()
+
+    # First try: assume model followed instructions and returned JSON.
     try:
         data = json.loads(text)
-        if all(k in data for k in ("warm", "cold", "follow")):
-            return data
+        out = {
+            "warm": str(data.get("warm", "")).strip(),
+            "cold": str(data.get("cold", "")).strip(),
+            "follow": str(data.get("follow", "")).strip(),
+        }
+        # Ensure we don't accidentally return all empties
+        if any(out.values()):
+            return out
     except Exception:
         pass
 
+    # Fallback: try to scrape sections if model added labels instead of JSON.
     def pick(section: str) -> str:
         m = re.search(rf"(?i){section}[^:]*:\s*(.+?)(?:\n\n|$)", text, re.S)
         return m.group(1).strip() if m else ""
 
-    return {"warm": pick("warm"), "cold": pick("cold"), "follow": pick("follow")}
+    warm = pick("warm") or text
+    cold = pick("cold") or ""
+    follow = pick("follow") or ""
+
+    return {
+        "warm": warm.strip(),
+        "cold": cold.strip() or warm.strip(),
+        "follow": follow.strip() or "",
+    }
 
 
 # ---------------------------------------------------------------------
@@ -328,7 +387,10 @@ def jobpack_analyze(jd_text: str, resume_text: str = "") -> Dict:
         "You are a strict JSON generator for a Job Pack. "
         "Return only JSON with keys: fit{score,gaps[],keywords[]}, ats{pass,notes[]}, cover, qna[{q,a}]."
     )
-    usr = f"JOB DESCRIPTION:\n{jd_text}\n\nRESUME (optional):\n{resume_text}\n\nBuild the Job Pack JSON."
+    usr = (
+        f"JOB DESCRIPTION:\n{jd_text}\n\nRESUME (optional):\n{resume_text}\n\n"
+        "Build the Job Pack JSON."
+    )
     rsp = _call_openai(
         [{"role": "system", "content": sys}, {"role": "user", "content": usr}],
         deep=True,

@@ -23,6 +23,7 @@ internships_bp = Blueprint(
 
 CAREER_AI_VERSION = os.getenv("CAREER_AI_VERSION", "2025-Q4")
 MAX_TEXT = int(os.getenv("INTERNSHIP_MAX_TEXT", "12000"))  # safety cap
+FEATURE_KEY = "internships"
 
 
 @internships_bp.route("/", methods=["GET"], endpoint="index")
@@ -49,7 +50,8 @@ def analyse():
     """
     Run Internship Analyzer (Free or Pro).
     - Free uses Silver (🪙) via authorize_and_consume.
-    - Pro uses Gold (⭐) via can_use_pro / consume_pro and includes Profile Portal context when available.
+    - Pro uses Gold (⭐) accounting via consume_pro, but we do NOT hard-block
+      on can_use_pro to avoid false negatives when the user is clearly Pro.
     """
     text = (request.form.get("text") or "").strip()
     mode = (request.form.get("mode") or "free").lower()
@@ -65,13 +67,30 @@ def analyse():
 
     try:
         if is_pro_run:
-            # Pro credits check
-            if not can_use_pro(current_user, "internships"):
+            # 1) Hard gate on subscription status only
+            if not current_user.is_pro:
                 flash(
-                    "Not enough Pro ⭐ credits for deep internship analysis.",
+                    "Internship Analyzer Pro requires an active Pro ⭐ plan.",
                     "warning",
                 )
                 return redirect(url_for("billing.index"))
+
+            # 2) Soft check can_use_pro for logging only (no hard block)
+            try:
+                ok = can_use_pro(current_user, FEATURE_KEY)
+                if not ok:
+                    current_app.logger.warning(
+                        "can_use_pro returned False for feature '%s' "
+                        "but user.is_pro=%s (allowing run anyway).",
+                        FEATURE_KEY,
+                        getattr(current_user, "is_pro", None),
+                    )
+            except Exception as e:
+                current_app.logger.warning(
+                    "can_use_pro check failed for feature '%s': %s",
+                    FEATURE_KEY,
+                    e,
+                )
 
             # Try to pull Profile Portal into the prompt (best-effort)
             profile_dict = {}
@@ -92,17 +111,19 @@ def analyse():
                 return_source=True,
             )
 
-            # Consume ⭐ only after a successful AI call
+            # Consume ⭐ only after a successful AI call (best-effort)
             try:
-                consume_pro(current_user, "internships")
+                consume_pro(current_user, FEATURE_KEY)
             except Exception as e:
                 current_app.logger.warning(
-                    "Pro credit consume failed after internship analysis: %s", e
+                    "Pro credit consume failed after internship analysis (%s): %s",
+                    FEATURE_KEY,
+                    e,
                 )
 
         else:
-            # Free mode → Silver credits
-            if not authorize_and_consume(current_user, "internships"):
+            # Free mode → Silver credits (hard gate)
+            if not authorize_and_consume(current_user, FEATURE_KEY):
                 flash(
                     "Not enough Silver 🪙 credits. Upgrade to Pro ⭐ for deeper, profile-aware insights.",
                     "warning",
@@ -120,7 +141,7 @@ def analyse():
             data = {}
 
         # Ensure required keys exist so template never crashes
-        data.setdefault("mode", "free" if not is_pro_run else "pro")
+        data.setdefault("mode", "pro" if is_pro_run else "free")
         data.setdefault("summary", "")
         data.setdefault("skill_growth", [])
         data.setdefault("skill_enhancement", [])

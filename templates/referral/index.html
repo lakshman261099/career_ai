@@ -1,70 +1,221 @@
 {% extends "base.html" %}
 {% block title %}Referral Trainer — CareerAI{% endblock %}
+
 {% block content %}
 <section class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pt-12">
   <div class="glass-panel rounded-2xl p-6">
-    <h1 class="text-xl font-bold mb-3">Referral Trainer <span class="text-xs text-white/60">· Free</span></h1>
-    <form method="POST">
+    <div class="flex items-baseline justify-between mb-3">
+      <div>
+        <h1 class="text-xl font-bold">Referral Trainer</h1>
+        <p class="text-xs text-white/60">
+          Turn your context into 2–3 short outreach messages you can tweak in your own voice.
+          {% if updated_tag %}<span class="ml-1">Updated {{ updated_tag }}</span>{% endif %}
+        </p>
+      </div>
+      {% if used_live_ai is not none %}
+        <span class="text-[11px] text-white/50">
+          Engine: {{ "live" if used_live_ai else "fallback" }}
+        </span>
+      {% endif %}
+    </div>
+
+    <form method="POST" class="space-y-4">
+      <!-- CONTACT DETAILS -->
       <div class="grid md:grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm mb-1">Contact Name</label>
-          <input name="contact_name" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          <label class="block text-sm mb-1">
+            Contact name
+            <span
+              class="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] rounded-full bg-white/10 text-white/70 cursor-help"
+              title="Who are you messaging? e.g. 'Ananya (Data Engineer at Swiggy)'">
+              ?
+            </span>
+          </label>
+          <input
+            name="contact_name"
+            class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+            value="{{ request.form.contact_name or '' }}"
+          >
         </div>
         <div>
-          <label class="block text-sm mb-1">Contact Role</label>
-          <input name="contact_role" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          <label class="block text-sm mb-1">Contact role</label>
+          <input
+            name="contact_role"
+            class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+            value="{{ request.form.contact_role or '' }}"
+          >
         </div>
         <div>
           <label class="block text-sm mb-1">Company</label>
-          <input name="contact_company" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          <input
+            name="contact_company"
+            class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+            value="{{ request.form.contact_company or '' }}"
+          >
         </div>
         <div>
           <label class="block text-sm mb-1">Email (optional)</label>
-          <input name="contact_email" type="email" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          <input
+            name="contact_email"
+            type="email"
+            class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+            value="{{ request.form.contact_email or '' }}"
+          >
         </div>
       </div>
 
-      <label class="block text-sm mt-4 mb-1">Where did you find them? (LinkedIn, alumni, etc.)</label>
-      <input name="contact_source" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-
-      <label class="block text-sm mt-4 mb-1">Your target role & highlights</label>
-      <textarea name="highlights" rows="5" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
-        placeholder="Target role + 2–3 bullet highlights to mention..."></textarea>
-
-      <div class="mt-4 flex gap-2">
-        <button class="btn-primary">Generate Messages</button>
+      <!-- HOW YOU FOUND THEM -->
+      <div>
+        <label class="block text-sm mb-1">
+          Where did you find them?
+          <span
+            class="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] rounded-full bg-white/10 text-white/70 cursor-help"
+            title="Example: LinkedIn alumni, Discord community, college group, mutual connection, etc.">
+            ?
+          </span>
+        </label>
+        <input
+          name="contact_source"
+          class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+          placeholder="e.g., LinkedIn alumni, college seniors group"
+          value="{{ request.form.contact_source or '' }}"
+        >
       </div>
 
-      <div class="text-xs text-white/60 mt-3">
-        Deep tone-tuning is <strong>coming soon</strong>.
+      <!-- STUDENT CONTEXT -->
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm mb-1">
+            Target role
+            <span
+              class="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] rounded-full bg-white/10 text-white/70 cursor-help"
+              title="What do you want a referral for? e.g., 'Data Analyst Intern', 'SWE Intern (Backend)'">
+              ?
+            </span>
+          </label>
+          <input
+            name="target_role"
+            class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+            placeholder="e.g., Data Analyst Intern"
+            value="{{ request.form.target_role or '' }}"
+          >
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm mt-2 mb-1">
+          Your highlights
+          <span
+            class="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] rounded-full bg-white/10 text-white/70 cursor-help"
+            title="2–3 bullets that show why you’re a good fit: key skills, one project, one internship or course.">
+            ?
+          </span>
+        </label>
+        <textarea
+          name="highlights"
+          rows="4"
+          class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+          placeholder="- Built a dashboard in Tableau for college fest metrics
+- Completed Google Data Analytics Certificate"
+        >{{ request.form.highlights or '' }}</textarea>
+      </div>
+
+      <div>
+        <label class="block text-sm mt-2 mb-1">
+          Job description (optional)
+          <span
+            class="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] rounded-full bg-white/10 text-white/70 cursor-help"
+            title="Paste the job / internship description so the message can reference specific tools or responsibilities. Optional but useful.">
+            ?
+          </span>
+        </label>
+        <textarea
+          name="job_description"
+          rows="4"
+          class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+          placeholder="Paste the job/internship description here (optional)"
+        >{{ request.form.job_description or '' }}</textarea>
+      </div>
+
+      <div class="mt-4 flex gap-2 items-center">
+        <button class="btn-primary" type="submit">Generate messages</button>
+      </div>
+
+      <div class="text-xs text-white/60 mt-2">
+        Tip: after generating, always tweak the **first line** to mention something specific about the person (their project, talk, or post). That makes it feel like <em>you</em>, not AI.
       </div>
     </form>
   </div>
 
   {% if msgs and (msgs.warm or msgs.cold or msgs.follow) %}
     <div class="glass-panel rounded-2xl p-6 mt-6">
-      <h2 class="text-lg font-semibold mb-2">Messages</h2>
+      <h2 class="text-lg font-semibold mb-2">Your outreach pack</h2>
+      <p class="text-xs text-white/60 mb-3">
+        These are short starting points. Edit them to match your voice before sending.
+      </p>
+
       <div class="space-y-3 text-sm">
         {% if msgs.warm %}
-          <div class="glass-card p-3 rounded-xl">
-            <div class="font-semibold mb-1">Warm</div>
-            <div class="whitespace-pre-wrap">{{ msgs.warm }}</div>
+          <div class="glass-card p-3 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex justify-between items-center mb-1">
+              <div class="font-semibold">Warm message</div>
+              <button
+                type="button"
+                class="text-[11px] px-2 py-1 rounded bg-white/10 hover:bg-white/20 copy-btn"
+                data-msg="{{ msgs.warm | replace('\n','\\n') | replace('\"','\\\"') }}"
+              >
+                Copy
+              </button>
+            </div>
+            <div class="whitespace-pre-wrap text-white/90">{{ msgs.warm }}</div>
           </div>
         {% endif %}
+
         {% if msgs.cold %}
-          <div class="glass-card p-3 rounded-xl">
-            <div class="font-semibold mb-1">Cold</div>
-            <div class="whitespace-pre-wrap">{{ msgs.cold }}</div>
+          <div class="glass-card p-3 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex justify-between items-center mb-1">
+              <div class="font-semibold">Cold outreach</div>
+              <button
+                type="button"
+                class="text-[11px] px-2 py-1 rounded bg-white/10 hover:bg-white/20 copy-btn"
+                data-msg="{{ msgs.cold | replace('\n','\\n') | replace('\"','\\\"') }}"
+              >
+                Copy
+              </button>
+            </div>
+            <div class="whitespace-pre-wrap text-white/90">{{ msgs.cold }}</div>
           </div>
         {% endif %}
+
         {% if msgs.follow %}
-          <div class="glass-card p-3 rounded-xl">
-            <div class="font-semibold mb-1">Follow-up</div>
-            <div class="whitespace-pre-wrap">{{ msgs.follow }}</div>
+          <div class="glass-card p-3 rounded-xl bg-white/5 border border-white/10">
+            <div class="flex justify-between items-center mb-1">
+              <div class="font-semibold">Follow-up</div>
+              <button
+                type="button"
+                class="text-[11px] px-2 py-1 rounded bg-white/10 hover:bg-white/20 copy-btn"
+                data-msg="{{ msgs.follow | replace('\n','\\n') | replace('\"','\\\"') }}"
+              >
+                Copy
+              </button>
+            </div>
+            <div class="whitespace-pre-wrap text-white/90">{{ msgs.follow }}</div>
           </div>
         {% endif %}
       </div>
     </div>
   {% endif %}
 </section>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const raw = btn.getAttribute('data-msg') || '';
+        const text = raw.replace(/\\n/g, '\n');
+        navigator.clipboard.writeText(text).catch(err => console.error('Copy failed', err));
+      });
+    });
+  });
+</script>
 {% endblock %}
