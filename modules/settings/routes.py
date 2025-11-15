@@ -18,6 +18,10 @@ from werkzeug.utils import secure_filename
 
 from models import Project, ResumeAsset, UserProfile, db
 
+# NEW: import resume helpers
+from modules.resume.utils import extract_text_from_pdf
+from modules.resume.parser import parse_resume_to_profile
+
 settings_bp = Blueprint(
     "settings", __name__, template_folder="../../templates/settings"
 )
@@ -262,7 +266,7 @@ def index():
 @settings_bp.route("/profile", methods=["GET", "POST"], endpoint="profile")
 @login_required
 def profile():
-    # ✅ HARD GATE: Pro only (per your existing rule)
+    # ✅ HARD GATE: Pro only
     if getattr(current_user, "subscription_status", "free") != "pro":
         flash(
             "Profile Portal is a Pro feature. Upgrade to unlock auto-scan and editing.",
@@ -289,7 +293,7 @@ def profile():
     if request.method == "POST":
         action = (request.form.get("action") or "").lower()
 
-        # Upload resume (Pro resume upload stays as-is)
+        # Upload resume (Pro resume upload with autofill)
         if action == "upload":
             file = request.files.get("file")
             if not file or not file.filename:
@@ -300,19 +304,121 @@ def profile():
                 return redirect(url_for("settings.profile"))
 
             filename = secure_filename(file.filename)
+
             try:
+                # 1) Extract text from PDF
+                resume_text = extract_text_from_pdf(file)
+                if not resume_text:
+                    flash(
+                        "We couldn't read text from that PDF. "
+                        "Please try another file or paste your resume.",
+                        "error",
+                    )
+                    return redirect(url_for("settings.profile"))
+
+                # 2) Store resume asset (for Job Pack + future use)
                 asset = ResumeAsset(
                     user_id=current_user.id,
                     filename=filename,
-                    text=f"[PDF uploaded: {filename}]",
+                    text=resume_text,
                 )
                 db.session.add(asset)
+
+                # Ensure profile exists
+                prof = _ensure_profile()
+                if not prof:
+                    db.session.commit()
+                    flash("Resume uploaded, but profile could not be loaded.", "warning")
+                    return redirect(url_for("settings.profile"))
+
+                # 3) Call AI parser to suggest profile fields
+                parsed = parse_resume_to_profile(resume_text) or {}
+
+                applied_any = False  # track whether we actually changed something
+
+                # 4) Apply parsed fields non-destructively
+
+                # Simple scalar fields: only fill if empty
+                if not prof.full_name and parsed.get("full_name"):
+                    prof.full_name = parsed["full_name"].strip()
+                    applied_any = True
+
+                if not prof.headline and parsed.get("headline"):
+                    prof.headline = parsed["headline"].strip()
+                    applied_any = True
+
+                if not prof.summary and parsed.get("summary"):
+                    prof.summary = parsed["summary"].strip()
+                    applied_any = True
+
+                if not prof.location and parsed.get("location"):
+                    prof.location = parsed["location"].strip()
+                    applied_any = True
+
+                if not prof.phone and parsed.get("phone"):
+                    prof.phone = parsed["phone"].strip()
+                    applied_any = True
+
+                # Links: merge, but do not overwrite existing keys
+                existing_links = prof.links or {}
+                parsed_links = parsed.get("links") or {}
+                if isinstance(parsed_links, dict):
+                    for k, v in parsed_links.items():
+                        k2 = (k or "").strip()
+                        v2 = (v or "").strip()
+                        if not k2 or not v2:
+                            continue
+                        if k2 not in existing_links or not existing_links.get(k2):
+                            existing_links[k2] = v2
+                            applied_any = True
+                prof.links = existing_links
+
+                # Skills / education / certifications / experience:
+                # if user has nothing yet, seed from parsed
+                if not (prof.skills or []) and parsed.get("skills"):
+                    prof.skills = parsed["skills"]
+                    applied_any = True
+
+                if not (prof.education or []) and parsed.get("education"):
+                    prof.education = parsed["education"]
+                    applied_any = True
+
+                if not (prof.certifications or []) and parsed.get("certifications"):
+                    prof.certifications = parsed["certifications"]
+                    applied_any = True
+
+                if not (prof.experience or []) and parsed.get("experience"):
+                    prof.experience = parsed["experience"]
+                    applied_any = True
+
+                prof.updated_at = datetime.utcnow()
+
                 db.session.commit()
-                flash("Resume uploaded. We’ll auto-fill what we can.", "success")
+
+                if applied_any:
+                    flash(
+                        "Resume uploaded and profile auto-filled. "
+                        "Review and edit any fields before saving.",
+                        "success",
+                    )
+                else:
+                    flash(
+                        "Resume uploaded, but we couldn't auto-fill any fields. "
+                        "You can still edit your profile manually.",
+                        "warning",
+                    )
+
             except Exception:
-                current_app.logger.exception("Resume save failed")
+                current_app.logger.exception("Resume upload/parse failed")
                 db.session.rollback()
-                flash("Could not save resume file.", "error")
+                flash(
+                    "We saved your resume, but could not auto-fill your profile. "
+                    "You can still edit fields manually.",
+                    "error",
+                )
+
+            return redirect(url_for("settings.profile"))
+
 
         # Save profile edits (identity + links + skills + education + certs + experience)
         if action == "save":
@@ -510,6 +616,6 @@ def profile():
         certifications=view["certifications"],
         links=view["links"],
         experience=view["experience"],
-        projects=view["projects"],  # <-- pass projects to the template
+        projects=view["projects"],
         latest_resume=latest_resume,
     )

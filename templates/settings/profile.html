@@ -10,7 +10,9 @@
       <p class="text-white/70 text-sm">Upload your resume to auto-fill, or edit manually. This powers Portfolio, Job Packs, Skill Mapper, and Internships.</p>
     </div>
     <div class="flex items-center gap-3 text-sm">
-      <span class="px-3 py-1 rounded-full bg-white/10 border border-white/20">Plan: {{ 'Pro ⭐' if is_pro() else 'Free 🪙' }}</span>
+      <span class="px-3 py-1 rounded-full bg-white/10 border border-white/20">
+        Plan: {{ 'Pro ⭐' if current_user.is_pro else 'Free 🪙' }}
+      </span>
     </div>
   </div>
 
@@ -121,14 +123,21 @@
       </div>
     </section>
 
-    <!-- Right: Upload + Edit + Projects (Pro-only page by routing) -->
+    <!-- Right: Upload + Edit + Projects -->
     <section class="lg:col-span-2 space-y-6">
       <!-- Upload Card -->
       <div class="glass-panel rounded-2xl p-6">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-lg font-semibold">Resume Upload</h3>
-            <p class="text-white/70 text-sm">Upload a PDF to auto-fill fields below. Scanning uses ⭐ Pro credits.</p>
+            <p class="text-white/70 text-sm">
+              Upload a PDF to auto-fill fields below. Scanning uses ⭐ Pro credits.
+            </p>
+            {% if latest_resume %}
+              <p class="text-white/50 text-xs mt-1">
+                Last uploaded: {{ latest_resume.filename }} on {{ latest_resume.created_at.strftime("%Y-%m-%d") }}
+              </p>
+            {% endif %}
           </div>
         </div>
         <form method="post" enctype="multipart/form-data" class="mt-4">
@@ -264,7 +273,7 @@
             </div>
             <div id="exp-container" class="mt-2 space-y-3">
               {% for job in experience or [] %}
-              <div class="border border-white/10 rounded-xl p-3 space-y-2">
+              <div class="border border-white/10 rounded-xl p-3 space-y-2" data-exp-card="1">
                 <div class="grid md:grid-cols-2 gap-2">
                   <input name="exp_role[]" value="{{ job.role }}" placeholder="Role" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
                   <input name="exp_company[]" value="{{ job.company }}" placeholder="Company" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
@@ -403,8 +412,16 @@
 </section>
 
 <script>
-function removeRow(btn){ const row = btn.closest('.grid, .flex'); if(row) row.remove(); }
-function removeCard(btn){ const card = btn.closest('.border'); if(card) card.remove(); }
+function removeRow(btn) {
+  const row = btn.closest('.grid, .flex');
+  if (row) row.remove();
+}
+
+function removeCard(btn) {
+  // Only remove the experience card, not any other .border elements
+  const card = btn.closest('[data-exp-card]');
+  if (card) card.remove();
+}
 
 function addSkill() {
   document.getElementById("skills-container").insertAdjacentHTML("beforeend",
@@ -414,6 +431,7 @@ function addSkill() {
       <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
     </div>`);
 }
+
 function addEducation() {
   document.getElementById("education-container").insertAdjacentHTML("beforeend",
     `<div class="grid md:grid-cols-3 gap-2 items-start">
@@ -425,6 +443,7 @@ function addEducation() {
       </div>
     </div>`);
 }
+
 function addCert() {
   document.getElementById("cert-container").insertAdjacentHTML("beforeend",
     `<div class="grid md:grid-cols-2 gap-2 items-start">
@@ -435,6 +454,7 @@ function addCert() {
       </div>
     </div>`);
 }
+
 function addLink() {
   document.getElementById("links-container").insertAdjacentHTML("beforeend",
     `<div class="grid md:grid-cols-2 gap-2 items-start">
@@ -445,9 +465,10 @@ function addLink() {
       </div>
     </div>`);
 }
+
 function addExperience() {
   document.getElementById("exp-container").insertAdjacentHTML("beforeend",
-    `<div class="border border-white/10 rounded-xl p-3 space-y-2">
+    `<div class="border border-white/10 rounded-xl p-3 space-y-2" data-exp-card="1">
       <div class="grid md:grid-cols-2 gap-2">
         <input name="exp_role[]" placeholder="Role" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
         <input name="exp_company[]" placeholder="Company" class="rounded-xl px-3 py-2 bg-white/10 border border-white/20">
@@ -462,6 +483,7 @@ function addExperience() {
       </div>
     </div>`);
 }
+
 function addLinkRow(containerId){
   const el = document.getElementById(containerId);
   el.insertAdjacentHTML('beforeend', `
