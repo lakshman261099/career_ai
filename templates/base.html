@@ -35,9 +35,14 @@
 
   <style>
     /* Global textured layer */
-    body::before{
+    body::before {
       content:"";
-      position:fixed; inset:0; z-index:-2; pointer-events:none; opacity:.20; mix-blend-mode:soft-light;
+      position:fixed;
+      inset:0;
+      z-index:-2;
+      pointer-events:none;
+      opacity:.20;
+      mix-blend-mode:soft-light;
       background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='table' tableValues='0 0.16'/></feComponentTransfer></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
       background-size: 240px 240px;
     }
@@ -61,7 +66,7 @@
       border-radius: 999px;
       transition: opacity 140ms ease-out, background-color 140ms ease-out, color 140ms ease-out;
     }
-    .nav-link::after{
+    .nav-link::after {
       content:"";
       position:absolute;
       left:18%;
@@ -84,18 +89,22 @@
       color:#fff;
       background-color:rgba(15,23,42,.75);
     }
-    .nav-active::after{
+    .nav-active::after {
       opacity:1;
       transform:scaleX(1);
     }
 
     /* Buttons (no @apply so CDN Tailwind works) */
     .btn-primary {
-      display:inline-flex; align-items:center; gap:.5rem;
+      display:inline-flex;
+      align-items:center;
+      gap:.5rem;
       padding:.5rem 1rem;
       border-radius:999px;
       background:linear-gradient(135deg,#4f46e5,#6366f1,#f97316);
-      color:#fff; font-weight:600; font-size:.875rem;
+      color:#fff;
+      font-weight:600;
+      font-size:.875rem;
       box-shadow:0 10px 30px rgba(79,70,229,.7);
       border:1px solid rgba(191,219,254,.5);
       transition:transform 140ms ease-out, box-shadow 140ms ease-out, filter 140ms ease-out;
@@ -108,7 +117,9 @@
     }
 
     .btn-ghost {
-      display:inline-flex; align-items:center; gap:.45rem;
+      display:inline-flex;
+      align-items:center;
+      gap:.45rem;
       padding:.4rem .9rem;
       border-radius:999px;
       border:1px solid rgba(255,255,255,.2);
@@ -143,6 +154,58 @@
       background:linear-gradient(90deg,transparent,#4f46e5,#6366f1,#f97316,transparent);
       opacity:.9;
       filter:blur(.2px);
+    }
+
+    /* ---------- Pro lock helpers (used by features) ---------- */
+
+    /* Wrapper: add class 'pro-locked' to show blur + overlay for Free users */
+    .pro-lock-wrapper {
+      position: relative;
+      border-radius: 0.9rem;
+      overflow: hidden;
+    }
+
+    /* Content that should blur when locked */
+    .pro-lock-blur {
+      transition: filter 160ms ease-out, opacity 160ms ease-out;
+    }
+
+    /* Overlay panel that appears when locked */
+    .pro-lock-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 1.5rem;
+      text-align: center;
+      background: radial-gradient(circle at top, rgba(15,23,42,0.2), rgba(15,23,42,0.96));
+      backdrop-filter: blur(6px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 160ms ease-out;
+    }
+
+    .pro-lock-overlay h3 {
+      font-size: .9rem;
+      font-weight: 600;
+      margin-bottom: .35rem;
+    }
+    .pro-lock-overlay p {
+      font-size: .75rem;
+      opacity: .8;
+      max-width: 260px;
+    }
+
+    /* When wrapper has 'pro-locked' class, activate blur + overlay */
+    .pro-locked .pro-lock-blur {
+      filter: blur(4px) grayscale(0.1);
+      pointer-events: none;
+    }
+    .pro-locked .pro-lock-overlay {
+      opacity: 1;
+      pointer-events: auto;
     }
   </style>
 </head>
@@ -193,18 +256,14 @@
           </div>
 
           {% if current_user.is_authenticated %}
-            {% if subscription_status|default('free') == 'pro' %}
-              <a href="{{ feature_paths.profile }}"
-                 class="btn-ghost hidden sm:inline {% if request.endpoint=='settings.profile' %}nav-active{% endif %}">
-                Profile Portal
-              </a>
-            {% else %}
-              <a href="{{ feature_paths.billing }}" class="btn-ghost hidden sm:inline">
-                Profile Portal <span class="opacity-60">🔒</span>
-              </a>
-            {% endif %}
+            <!-- Profile Portal is now the central base input for all tools -->
+            <a href="{{ feature_paths.profile }}"
+               class="btn-ghost hidden sm:inline {% if request.endpoint=='settings.profile' %}nav-active{% endif %}">
+              <span>Profile Portal</span>
+              <span class="hidden md:inline text-[10px] opacity-70">· powers all tools</span>
+            </a>
             <a href="{{ feature_paths.settings }}"
-               class="btn-ghost hidden sm:inline {% if request.endpoint and request.endpoint.startswith('settings.') %}nav-active{% endif %}">
+               class="btn-ghost hidden sm:inline {% if request.endpoint and request.endpoint.startswith('settings.') and request.endpoint != 'settings.profile' %}nav-active{% endif %}">
               Settings
             </a>
             <a href="{{ feature_paths.logout }}" class="btn-primary">Logout</a>

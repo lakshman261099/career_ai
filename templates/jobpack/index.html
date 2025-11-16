@@ -5,15 +5,34 @@
 <section class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 pt-12 space-y-6">
   <div class="glass-panel rounded-2xl p-6">
     <div class="flex items-center justify-between mb-3">
-      <h1 class="text-xl font-bold">Job Pack</h1>
+      <div>
+        <h1 class="text-xl font-bold">Job Pack</h1>
+        <p class="text-sm text-white/70">
+          Paste a job description. We’ll combine it with your Profile Portal to analyze fit, ATS score, and exact fixes.
+        </p>
+      </div>
       <a href="{{ url_for('jobpack.history') }}"
          class="text-xs text-white/70 hover:text-white underline">
         View past Job Packs
       </a>
     </div>
-    <p class="text-sm text-white/70 mb-4">
-      Paste a job description and (optionally) your resume. We’ll analyze fit, ATS score, and give exact fixes.
-    </p>
+
+    {% if profile_snapshot %}
+      <div class="mt-3 mb-4 text-xs text-white/70 flex flex-wrap items-center gap-2">
+        <span class="px-2 py-1 rounded-full bg-white/5 border border-white/15">
+          Profile Portal: {{ profile_snapshot.profile_strength_score or 0 }}% complete
+        </span>
+        {% if profile_snapshot.missing_sections %}
+          <span class="text-white/60">
+            Missing: {{ profile_snapshot.missing_sections | join(', ') }}
+          </span>
+        {% endif %}
+        <a href="{{ url_for('settings.profile') }}"
+           class="text-[11px] underline hover:text-white ml-auto">
+          Update Profile Portal →
+        </a>
+      </div>
+    {% endif %}
 
     <form method="POST">
       <label class="block text-sm mb-1">Job Description (paste)</label>
@@ -21,12 +40,10 @@
         class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-400/70"
         required></textarea>
 
-      <label class="block text-sm mt-4 mb-1">
-        Resume (optional, paste text)
-      </label>
-      <textarea name="resume" rows="6"
-        class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-400/70"
-        placeholder="If empty, Pro runs will try to use your Profile Portal resume on file."></textarea>
+      <p class="text-[11px] text-white/50 mt-2">
+        We automatically use your Profile Portal / latest uploaded resume as the candidate profile.
+        You don’t need to paste your resume here.
+      </p>
 
       <div class="mt-4 flex items-center gap-3 text-sm">
         <label class="inline-flex items-center gap-2">
@@ -45,67 +62,5 @@
       </div>
     </form>
   </div>
-
-  {% if result %}
-    {# normalize locals so template never crashes #}
-    {% set fit = result.fit if result.fit is defined and result.fit else {'score':'-','gaps':[],'keywords':[]} %}
-    {% set cover = result.cover if result.cover is defined and result.cover else '' %}
-    {% set qna = result.qna if result.qna is defined and result.qna else [] %}
-    {% set notes = result.notes if result.notes is defined and result.notes else '' %}
-
-    <div class="glass-panel rounded-2xl p-6">
-      <h2 class="text-lg font-semibold mb-2">Results</h2>
-
-      {% if notes %}
-        <div class="text-xs text-white/70 mb-3">{{ notes }}</div>
-      {% endif %}
-
-      <div class="text-sm text-white/80">
-        <div><strong>Fit Score:</strong> {{ fit.score if fit.score is defined else '-' }}</div>
-        <div class="mt-1">
-          <strong>Gaps:</strong>
-          {% if fit.gaps is defined and fit.gaps %}{{ fit.gaps|join(', ') }}{% else %}-{% endif %}
-        </div>
-        <div class="mt-1">
-          <strong>Keywords:</strong>
-          {% if fit.keywords is defined and fit.keywords %}{{ fit.keywords|join(', ') }}{% else %}-{% endif %}
-        </div>
-      </div>
-
-      <div class="mt-4">
-        <h3 class="font-semibold">Cover Letter</h3>
-        {% if cover %}
-          <pre class="mt-1 whitespace-pre-wrap text-sm">{{ cover }}</pre>
-        {% else %}
-          <div class="text-sm text-white/60 mt-1">No cover letter generated.</div>
-        {% endif %}
-      </div>
-
-      <div class="mt-4">
-        <h3 class="font-semibold">Interview Q&A</h3>
-        {% if qna %}
-          <ul class="list-disc pl-5 text-sm">
-            {% for qa in qna %}
-              <li class="mb-2">
-                <div><strong>Q:</strong> {{ qa.q if qa.q is defined else '' }}</div>
-                <div><strong>A:</strong> {{ qa.a if qa.a is defined else '' }}</div>
-              </li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <div class="text-sm text-white/60 mt-1">No Q&A generated.</div>
-        {% endif %}
-      </div>
-
-      {% if current_user.is_pro or (current_user.subscription_status|default('free') == 'pro') %}
-        <form method="POST" action="{{ url_for('jobpack.export_pdf') }}" class="mt-4">
-          <input type="hidden" name="data" value='{{ result | tojson }}'>
-          <button class="btn-ghost" type="submit">Export PDF ⭐</button>
-        </form>
-      {% else %}
-        <div class="text-xs text-white/60 mt-3">Export is a Pro feature.</div>
-      {% endif %}
-    </div>
-  {% endif %}
 </section>
 {% endblock %}

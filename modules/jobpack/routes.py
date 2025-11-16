@@ -21,8 +21,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 from limits import authorize_and_consume, can_use_pro, consume_pro
-from models import JobPackReport, ResumeAsset, db
+from models import JobPackReport, db
 from modules.jobpack.utils_ats import analyze_jobpack
+from modules.common.profile_loader import load_profile_snapshot
 
 jobpack_bp = Blueprint("jobpack", __name__, template_folder="../../templates/jobpack")
 
@@ -92,75 +93,6 @@ def _coerce_skill_names(skills_any: Any) -> List[str]:
     return out
 
 
-def _profile_to_resume_text(profile) -> str:
-    if not profile:
-        return ""
-    lines: List[str] = []
-    if profile.full_name:
-        lines.append(profile.full_name)
-    if profile.headline:
-        lines.append(profile.headline)
-    if profile.location:
-        lines.append(f"Location: {profile.location}")
-    skills = _coerce_skill_names(profile.skills)
-    if skills:
-        lines.append("Skills: " + ", ".join(skills))
-    if profile.experience:
-        lines.append("\nExperience:")
-        for item in profile.experience[:8]:
-            if not isinstance(item, dict):
-                continue
-            role = item.get("role", "")
-            company = item.get("company", "")
-            dates = " • ".join(
-                filter(None, [item.get("start", ""), item.get("end", "")])
-            )
-            if role or company:
-                lines.append(f"- {role} at {company} ({dates})")
-            for b in (item.get("bullets") or [])[:5]:
-                if isinstance(b, str) and b.strip():
-                    lines.append(f"  • {b.strip()}")
-    projects = (
-        getattr(profile.user, "projects", []) if getattr(profile, "user", None) else []
-    )
-    if projects:
-        lines.append("\nProjects:")
-        for p in projects[:5]:
-            title = getattr(p, "title", "")
-            desc = getattr(p, "short_desc", "")
-            stack = ", ".join(p.tech_stack or [])
-            lines.append(f"- {title}")
-            if desc:
-                lines.append(f"  • {desc}")
-            if stack:
-                lines.append(f"  • Stack: {stack}")
-    if profile.education:
-        lines.append("\nEducation:")
-        for e in profile.education[:4]:
-            if not isinstance(e, dict):
-                continue
-            school = e.get("school", "")
-            degree = e.get("degree", "")
-            year = str(e.get("year", ""))
-            lines.append(" - " + " — ".join(filter(None, [school, degree, year])))
-    return "\n".join(lines)[:6000]
-
-
-def _get_latest_profile_resume_text(user) -> str:
-    try:
-        asset = (
-            ResumeAsset.query.filter(ResumeAsset.user_id == user.id)
-            .order_by(ResumeAsset.created_at.desc())
-            .first()
-        )
-        if asset and asset.text:
-            return asset.text
-    except Exception as e:
-        current_app.logger.warning("ResumeAsset lookup failed: %s", e)
-    profile = getattr(user, "profile", None)
-    return _profile_to_resume_text(profile)
-
-
 # ---------------------- main route ----------------------
 
 
@@ -170,19 +102,27 @@ def index():
     """
     Job Pack — AI-powered ATS + Resume Evaluator
     Free: standard match analysis (gpt-4o-mini).
-    Pro: CareerAI Deep Evaluation (gpt-4o; uses profile portal if resume not provided).
+    Pro: CareerAI Deep Evaluation (gpt-4o).
+    Profile Portal is the main resume source for ALL runs.
     """
     mode = (request.form.get("mode") or "basic").lower()
     is_pro_run = mode == "pro"
     result = None
 
+    profile_snapshot = load_profile_snapshot(current_user)
+    profile_resume_text = profile_snapshot.get("resume_text") or ""
+
     if request.method == "POST":
         jd_text = (request.form.get("jd") or "").strip()
-        resume_text = (request.form.get("resume") or "").strip()
 
         if not jd_text:
             flash("Please paste a job description.", "warning")
-            return render_template("jobpack/index.html", result=None, mode=mode)
+            return render_template(
+                "jobpack/index.html",
+                result=None,
+                mode=mode,
+                profile_snapshot=profile_snapshot,
+            )
 
         # Credits
         if is_pro_run:
@@ -197,16 +137,15 @@ def index():
                 )
                 return redirect(url_for("billing.index"))
 
-        # Auto-load resume from Profile Portal for Pro runs if empty
-        if is_pro_run and not resume_text:
-            resume_text = _get_latest_profile_resume_text(current_user)
-            if resume_text:
-                flash("Loaded your Profile Portal data for deep analysis.", "info")
-            else:
-                flash(
-                    "No resume found on file. You can paste one above for a better ATS analysis.",
-                    "warning",
-                )
+        # Resume is always sourced from Profile Portal / ResumeAsset
+        resume_text = profile_resume_text
+        if not resume_text:
+            flash(
+                "We couldn’t find resume data in your Profile Portal yet. "
+                "You’ll still get JD insights, but ATS results will be limited. "
+                "Fill your Profile Portal for deeper analysis.",
+                "warning",
+            )
 
         # Run AI
         try:
@@ -216,7 +155,12 @@ def index():
             flash(
                 "An error occurred during analysis. Please try again later.", "danger"
             )
-            return render_template("jobpack/index.html", result=None, mode=mode)
+            return render_template(
+                "jobpack/index.html",
+                result=None,
+                mode=mode,
+                profile_snapshot=profile_snapshot,
+            )
 
         result = _safe_result(raw)
 
@@ -275,7 +219,12 @@ def index():
             return render_template_string(html), 200
 
     # GET
-    return render_template("jobpack/index.html", result=None, mode=mode)
+    return render_template(
+        "jobpack/index.html",
+        result=None,
+        mode=mode,
+        profile_snapshot=profile_snapshot,
+    )
 
 
 # ---------------------- history + single report ----------------------
@@ -287,6 +236,8 @@ def history():
     """
     List past Job Pack reports for the current user (most recent first).
     """
+    from models import JobPackReport  # re-import for clarity if needed
+
     page = request.args.get("page", 1, type=int)
     per_page = 10
     pagination = (
@@ -308,6 +259,8 @@ def report(report_id: int):
     """
     Reopen a previously saved Job Pack report without re-running AI.
     """
+    from models import JobPackReport  # re-import for clarity if needed
+
     report = (
         JobPackReport.query.filter_by(id=report_id, user_id=current_user.id)
         .first_or_404()

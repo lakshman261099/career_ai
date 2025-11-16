@@ -18,7 +18,7 @@ from werkzeug.utils import secure_filename
 
 from models import Project, ResumeAsset, UserProfile, db
 
-# NEW: import resume helpers
+# Resume helpers
 from modules.resume.utils import extract_text_from_pdf
 from modules.resume.parser import parse_resume_to_profile
 
@@ -261,23 +261,16 @@ def index():
 
 
 # ---------------------------
-# Profile Portal (Pro only) + Projects CRUD
+# Profile Portal (FREE for all) + Projects CRUD
 # ---------------------------
 @settings_bp.route("/profile", methods=["GET", "POST"], endpoint="profile")
 @login_required
 def profile():
-    # ✅ HARD GATE: Pro only
-    if getattr(current_user, "subscription_status", "free") != "pro":
-        flash(
-            "Profile Portal is a Pro feature. Upgrade to unlock auto-scan and editing.",
-            "warning",
-        )
-        return redirect(url_for("billing.index"))
-
+    # Profile Portal is available to all users (Free + Pro).
     prof = _ensure_profile()
     if not prof:
         flash("Could not load your profile. Please reload.", "error")
-        return redirect(url_for("billing.index"))
+        return redirect(url_for("settings.index"))
 
     # Projects list for this user
     try:
@@ -293,7 +286,7 @@ def profile():
     if request.method == "POST":
         action = (request.form.get("action") or "").lower()
 
-        # Upload resume (Pro resume upload with autofill)
+        # Upload resume (PDF; AI parse)
         if action == "upload":
             file = request.files.get("file")
             if not file or not file.filename:
@@ -316,7 +309,7 @@ def profile():
                     )
                     return redirect(url_for("settings.profile"))
 
-                # 2) Store resume asset (for Job Pack + future use)
+                # 2) Store resume asset (for Job Pack + other features)
                 asset = ResumeAsset(
                     user_id=current_user.id,
                     filename=filename,
@@ -337,8 +330,6 @@ def profile():
                 applied_any = False  # track whether we actually changed something
 
                 # 4) Apply parsed fields non-destructively
-
-                # Simple scalar fields: only fill if empty
                 if not prof.full_name and parsed.get("full_name"):
                     prof.full_name = parsed["full_name"].strip()
                     applied_any = True
@@ -419,8 +410,7 @@ def profile():
 
             return redirect(url_for("settings.profile"))
 
-
-        # Save profile edits (identity + links + skills + education + certs + experience)
+        # Save profile edits
         if action == "save":
             try:
                 prof.full_name = (

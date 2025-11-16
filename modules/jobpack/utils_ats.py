@@ -49,7 +49,8 @@ JOBPACK_JSON_SCHEMA = r"""
     "summary","role_detected","fit_overview","ats_score",
     "skill_table","rewrite_suggestions","next_steps",
     "impact_summary","subscores","resume_ats",
-    "learning_links","interview_qa","practice_plan","application_checklist"
+    "learning_links","interview_qa","practice_plan","application_checklist",
+    "role_intel"
   ],
   "properties": {
     "summary": {"type":"string","minLength": 20},
@@ -155,7 +156,19 @@ JOBPACK_JSON_SCHEMA = r"""
         }
       }
     },
-    "application_checklist":{"type":"array","minItems":6,"items":{"type":"string","minLength":6}}
+    "application_checklist":{"type":"array","minItems":6,"items":{"type":"string","minLength":6}},
+    "role_intel": {
+      "type":"object",
+      "required":["seniority","difficulty","market_notes"],
+      "properties": {
+        "seniority":{"type":"string"},
+        "difficulty":{"type":"string"},
+        "salary_band":{"type":"string"},
+        "geo_focus":{"type":"string"},
+        "market_notes":{"type":"string"},
+        "typical_companies":{"type":"array","items":{"type":"string"}}
+      }
+    }
   }
 }
 """
@@ -175,6 +188,15 @@ ATS & LIMITATIONS
 - Do NOT claim that the resume "passed" or "failed" any external system; instead, talk about "likelihood of passing keyword filters".
 - If the resume/profile text is empty, treat this as "no resume on file": keep resume_ats_score conservative and explicitly mention the missing resume in blockers/warnings.
 - Guidance must be realistic and grounded strictly in the provided text.
+
+ROLE INTELLIGENCE
+- Fill role_intel with realistic, JD-grounded information:
+  - seniority: e.g. "Intern / Fresher", "Junior", "Mid-level", etc.
+  - difficulty: short label like "High competition", "Moderate competition", etc.
+  - salary_band: a short, human string. If you cannot safely estimate, say "Varies by company — check latest bands for similar roles in your region."
+  - geo_focus: e.g. "India — Bangalore / NCR", "Remote-friendly", etc. If unclear, say "Not specified".
+  - market_notes: 1–3 sentences about the current hiring trend. If you’re unsure, end with "Check latest".
+  - typical_companies: list of realistic company *types* or example companies (no guarantees).
 
 RESUME CONTEXT
 - {resume_hint}
@@ -214,6 +236,7 @@ CURRENT JSON (fix this; keep keys):
 TASK
 - Repair low-quality fields. Replace placeholders such as "Overall" categories, "Resource" labels, empty links, sparse practice plans, and generic Q&A.
 - Ensure everything is grounded in the JD and Resume text.
+- Keep role_intel filled with realistic, JD-grounded values.
 - Return a FULL corrected JSON object (not a diff), valid per the same schema. Output JSON only.
 """
 
@@ -222,89 +245,100 @@ TASK
 # Normalizers (template safety)
 # ------------------------------------------------------------------
 def _normalize_for_template(data: Dict[str, Any]) -> Dict[str, Any]:
-    # fit_overview items: ensure "category" + "match" + "comment"
-    fo = data.get("fit_overview")
-    if isinstance(fo, list):
-        for item in fo:
-            if not isinstance(item, dict):
-                continue
-            item["category"] = (
-                item.get("category")
-                or item.get("name")
-                or item.get("area")
-                or "Technical Skills"
-            )
-            if "match" not in item and "score" in item:
-                try:
-                    item["match"] = int(item["score"])
-                except Exception:
-                    item["match"] = 0
-            item["match"] = int(item.get("match") or 0)
-            item["comment"] = item.get("comment", "")
+  # fit_overview items: ensure "category" + "match" + "comment"
+  fo = data.get("fit_overview")
+  if isinstance(fo, list):
+      for item in fo:
+          if not isinstance(item, dict):
+              continue
+          item["category"] = (
+              item.get("category")
+              or item.get("name")
+              or item.get("area")
+              or "Technical Skills"
+          )
+          if "match" not in item and "score" in item:
+              try:
+                  item["match"] = int(item["score"])
+              except Exception:
+                  item["match"] = 0
+          item["match"] = int(item.get("match") or 0)
+          item["comment"] = item.get("comment", "")
 
-    # resume_ats defaults
-    ra = data.get("resume_ats") or {}
-    if isinstance(ra, dict):
-        ra.setdefault("resume_ats_score", data.get("ats_score", 0))
-        ra.setdefault("blockers", [])
-        ra.setdefault("warnings", [])
-        ra.setdefault(
-            "keyword_coverage",
-            {"required_keywords": [], "present_keywords": [], "missing_keywords": []},
-        )
-        ra.setdefault("resume_rewrite_actions", [])
-        ra.setdefault("exact_phrases_to_add", [])
-        data["resume_ats"] = ra
+  # resume_ats defaults
+  ra = data.get("resume_ats") or {}
+  if isinstance(ra, dict):
+      ra.setdefault("resume_ats_score", data.get("ats_score", 0))
+      ra.setdefault("blockers", [])
+      ra.setdefault("warnings", [])
+      ra.setdefault(
+          "keyword_coverage",
+          {"required_keywords": [], "present_keywords": [], "missing_keywords": []},
+      )
+      ra.setdefault("resume_rewrite_actions", [])
+      ra.setdefault("exact_phrases_to_add", [])
+      data["resume_ats"] = ra
 
-    # learning_links: drop empty; forbid "Resource" without url
-    ll = data.get("learning_links")
-    if isinstance(ll, list):
-        cleaned = []
-        for item in ll:
-            if isinstance(item, dict):
-                label = (item.get("label") or "").strip()
-                url = (item.get("url") or "").strip()
-                why = (item.get("why") or "").strip()
-                if url.startswith("http") and label and label.lower() != "resource":
-                    cleaned.append(
-                        {"label": label, "url": url, "why": why or "Good primer."}
-                    )
-        data["learning_links"] = cleaned
+  # learning_links: drop empty; forbid "Resource" without url
+  ll = data.get("learning_links")
+  if isinstance(ll, list):
+      cleaned = []
+      for item in ll:
+          if isinstance(item, dict):
+              label = (item.get("label") or "").strip()
+              url = (item.get("url") or "").strip()
+              why = (item.get("why") or "").strip()
+              if url.startswith("http") and label and label.lower() != "resource":
+                  cleaned.append(
+                      {"label": label, "url": url, "why": why or "Good primer."}
+                  )
+      data["learning_links"] = cleaned
 
-    # interview_qa: ensure keys exist
-    iqa = data.get("interview_qa")
-    if isinstance(iqa, list):
-        fixed: List[Dict[str, Any]] = []
-        for qa in iqa:
-            if isinstance(qa, dict):
-                qa["q"] = qa.get("q") or qa.get("question") or ""
-                qa.setdefault("a_outline", [])
-                qa.setdefault("why_it_matters", "")
-                qa.setdefault("followup", "")
-                fixed.append(qa)
-        data["interview_qa"] = fixed
+  # interview_qa: ensure keys exist
+  iqa = data.get("interview_qa")
+  if isinstance(iqa, list):
+      fixed: List[Dict[str, Any]] = []
+      for qa in iqa:
+          if isinstance(qa, dict):
+              qa["q"] = qa.get("q") or qa.get("question") or ""
+              qa.setdefault("a_outline", [])
+              qa.setdefault("why_it_matters", "")
+              qa.setdefault("followup", "")
+              fixed.append(qa)
+      data["interview_qa"] = fixed
 
-    # helper chips + counts for UI
-    if "detected_keywords" not in data and isinstance(data.get("skill_table"), list):
-        kw = []
-        for row in data["skill_table"]:
-            if isinstance(row, dict) and "skill" in row:
-                kw.append(str(row["skill"]))
-        data["detected_keywords"] = kw
-        data["matched_count"] = sum(
-            1
-            for r in data["skill_table"]
-            if isinstance(r, dict) and r.get("status") == "Matched"
-        )
-        data["missing_count"] = sum(
-            1
-            for r in data["skill_table"]
-            if isinstance(r, dict) and r.get("status") == "Missing"
-        )
+  # helper chips + counts for UI
+  if "detected_keywords" not in data and isinstance(data.get("skill_table"), list):
+      kw = []
+      for row in data["skill_table"]:
+          if isinstance(row, dict) and "skill" in row:
+              kw.append(str(row["skill"]))
+      data["detected_keywords"] = kw
+      data["matched_count"] = sum(
+          1
+          for r in data["skill_table"]
+          if isinstance(r, dict) and r.get("status") == "Matched"
+      )
+      data["missing_count"] = sum(
+          1
+          for r in data["skill_table"]
+          if isinstance(r, dict) and r.get("status") == "Missing"
+      )
 
-    data.setdefault("report_tier", "CareerAI Deep Evaluation")
-    data.setdefault("resume_missing", False)
-    return data
+  # role_intel defaults
+  ri = data.get("role_intel") or {}
+  if isinstance(ri, dict):
+      ri.setdefault("seniority", "Not specified")
+      ri.setdefault("difficulty", "Not specified")
+      ri.setdefault("salary_band", "Varies by company — check latest bands for similar roles in your region.")
+      ri.setdefault("geo_focus", "Not specified")
+      ri.setdefault("market_notes", "")
+      ri.setdefault("typical_companies", [])
+      data["role_intel"] = ri
+
+  data.setdefault("report_tier", "CareerAI Deep Evaluation")
+  data.setdefault("resume_missing", False)
+  return data
 
 
 # ------------------------------------------------------------------
@@ -386,6 +420,16 @@ def analyze_jobpack(
             "impact_summary": "Missing OPENAI_API_KEY",
             "ats_score": 0,
             "fit_overview": [],
+            "skill_table": [],
+            "rewrite_suggestions": [],
+            "next_steps": [],
+            "subscores": {},
+            "resume_ats": {},
+            "learning_links": [],
+            "interview_qa": [],
+            "practice_plan": [],
+            "application_checklist": [],
+            "role_intel": {},
             "_usage": {"model": None, "error": True},
         }
 
@@ -466,6 +510,7 @@ def analyze_jobpack(
             "interview_qa": [],
             "practice_plan": [],
             "application_checklist": [],
+            "role_intel": {},
         }
         for k, v in defaults.items():
             data.setdefault(k, v)
@@ -565,6 +610,7 @@ def analyze_jobpack(
             "interview_qa": [],
             "practice_plan": [],
             "application_checklist": [],
+            "role_intel": {},
             "resume_missing": not bool((resume_text or "").strip()),
             "_usage": {"model": model, "error": True},
         }

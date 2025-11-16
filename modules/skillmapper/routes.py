@@ -57,6 +57,60 @@ def _profile_json(user_id: int) -> dict:
     }
 
 
+def _profile_snapshot_text(profile: dict) -> str:
+    """
+    Turn the Profile Portal JSON into a compact text snapshot that can be fed
+    into the free SkillMapper prompt. This lets free mode still be
+    profile-driven without changing the AI schema.
+    """
+    if not isinstance(profile, dict) or not profile:
+        return ""
+
+    ident = profile.get("identity") or {}
+    pieces = []
+
+    name = (ident.get("full_name") or "").strip()
+    headline = (ident.get("headline") or "").strip()
+    summary = (ident.get("summary") or "").strip()
+
+    if headline:
+        pieces.append(headline)
+    if summary:
+        pieces.append(summary)
+
+    # Flatten skills into simple names
+    skills_field = profile.get("skills") or []
+    skill_names: list[str] = []
+    if isinstance(skills_field, list):
+        for s in skills_field:
+            if isinstance(s, str) and s.strip():
+                skill_names.append(s.strip())
+            elif isinstance(s, dict):
+                n = (s.get("name") or s.get("skill") or "").strip()
+                if n:
+                    skill_names.append(n)
+    if skill_names:
+        pieces.append("Core skills: " + ", ".join(skill_names[:30]))
+
+    # Light-touch experience labels (no huge text)
+    exp = profile.get("experience") or []
+    if isinstance(exp, list) and exp:
+        roles = []
+        for item in exp[:4]:
+            if not isinstance(item, dict):
+                continue
+            title = (item.get("title") or item.get("role") or "").strip()
+            company = (item.get("company") or "").strip()
+            if title and company:
+                roles.append(f"{title} @ {company}")
+            elif title:
+                roles.append(title)
+        if roles:
+            pieces.append("Experience: " + "; ".join(roles))
+
+    return (name + " — " if name else "") + " | ".join(pieces)
+
+
 @bp.route("", methods=["GET"])
 @login_required
 def index():
@@ -73,12 +127,13 @@ def index():
 @login_required
 def run_free():
     """
-    Free Skill Mapper:
-    - Uses pasted skills/interests text only.
-    - Biased toward India · early-career roles via hints.
-    - Still returns the full JSON, but UI will show:
-      - Basic panel (full)
-      - Pro-style preview panel (blurred) for Free users.
+    Free Skill Mapper (basic run):
+    - Uses Profile Portal + latest resume as the main source.
+    - Optional extra skills/interests text nudges the roadmap.
+    - India-first, early-career bias via hints.
+    - Returns full JSON, but UI shows:
+        - Basic panel (fully visible)
+        - Pro-style preview panel (blurred) for Free users.
     """
     try:
         # Silver credit check for non-Pro users
@@ -96,41 +151,71 @@ def run_free():
                 )
 
         payload = request.get_json(silent=True) or {}
-        free_text_skills = (payload.get("free_text_skills") or "").strip()
+        extra_text = (payload.get("free_text_skills") or "").strip()
         target_domain = (payload.get("target_domain") or "").strip()
 
-        if not free_text_skills:
+        profile = _profile_json(current_user.id)
+        resume_text = _latest_resume_text(current_user.id)
+
+        profile_text = _profile_snapshot_text(profile)
+        if len(resume_text) > MAX_RESUME_TEXT:
+            resume_text = resume_text[:MAX_RESUME_TEXT]
+
+        # Build a single compact text blob for the free prompt
+        chunks: list[str] = []
+
+        if profile_text:
+            chunks.append("Profile snapshot:\n" + profile_text)
+
+        if resume_text:
+            # Only a slice — free mode doesn’t need the full resume
+            chunks.append("Resume excerpt:\n" + resume_text[:3000])
+
+        if extra_text:
+            if len(extra_text) > MAX_FREE_TEXT:
+                extra_text = extra_text[:MAX_FREE_TEXT]
+            chunks.append("Extra skills & interests:\n" + extra_text)
+
+        combined_text = "\n\n".join(chunks).strip()
+
+        # Guard: if everything is empty, tell the user instead of calling AI
+        if not combined_text:
             return (
                 jsonify(
-                    {"ok": False, "error": "Please paste your skills/interests text."}
+                    {
+                        "ok": False,
+                        "error": (
+                            "We couldn’t find any data to map. "
+                            "Please fill your Profile Portal or add a few skills/interests."
+                        ),
+                    }
                 ),
                 400,
             )
 
-        # Cap size to keep prompts bounded
-        if len(free_text_skills) > MAX_FREE_TEXT:
-            free_text_skills = free_text_skills[:MAX_FREE_TEXT]
-
         # Hints for the AI generator (non-breaking)
         free_hints = {
-            # Emphasize India + current snapshot use case
             "region_focus": "India · early-career tech roles",
             "focus": "current_snapshot",
+            "using_profile": bool(profile),
+            "using_resume": bool(resume_text),
         }
         if target_domain:
             free_hints["target_domain"] = target_domain
 
         data, used_live_ai = generate_skillmap(
             pro_mode=False,
-            free_text_skills=free_text_skills,
+            free_text_skills=combined_text,
             return_source=True,
             hints=free_hints,
         )
 
         log.info(
-            "SM/free used_live_ai=%s text_len=%d domain_hint=%s",
+            "SM/free used_live_ai=%s combined_len=%d profile=%s resume=%s domain_hint=%s",
             used_live_ai,
-            len(free_text_skills),
+            len(combined_text),
+            bool(profile),
+            bool(resume_text),
             bool(target_domain),
         )
 
@@ -139,8 +224,7 @@ def run_free():
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
                 source_title="Skill Mapper (Free)",
-                input_text=(target_domain + "\n\n" if target_domain else "")
-                + free_text_skills,
+                input_text=combined_text,
                 skills_json=json_dumps_safe(data),
                 created_at=datetime.utcnow(),
             )

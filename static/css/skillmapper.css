@@ -444,10 +444,12 @@
   margin-top: 0.5rem;
 }
 
-.sm-role-section h4 {
-  margin: 0 0 0.3rem;
-  font-size: 0.86rem;
-  font-weight: 600;
+/* For the three-column role details inside a role card */
+.sm-role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.4rem;
 }
 
 .sm-role-skills {
@@ -701,4 +703,16 @@
 
 .sm-container .hidden {
   display: none !important;
+}
+
+/* Profile snapshot section */
+
+.sm-profile {
+  border-top: 1px solid rgba(148,163,184,0.6);
+  padding-top: 0.7rem;
+  margin-top: 0.8rem;
+}
+
+.sm-profile-skills {
+  margin-top: 0.4rem;
 }

@@ -138,7 +138,7 @@ class UserProfile(db.Model):
 
 
 # ---------------------------------------------------------------------
-# NEW: Projects (stored in Profile Portal; used by Portfolio Publish)
+# Projects (stored in Profile Portal; used by Portfolio Publish)
 # ---------------------------------------------------------------------
 class Project(db.Model):
     __tablename__ = "project"
@@ -383,7 +383,7 @@ class AgentJob(db.Model):
 
 
 # ---------------------------------------------------------------------
-# Resume (Pro-only profile upload/parsing)
+# Resume assets (PDF text extracted, used by Profile Portal + features)
 # ---------------------------------------------------------------------
 class ResumeAsset(db.Model):
     __tablename__ = "resume_asset"

@@ -380,6 +380,44 @@
     );
   }
 
+  function renderProfileSnapshot(meta) {
+    if (!meta || typeof meta !== "object") return "";
+    var snap = meta.profile_snapshot;
+    if (!snap || typeof snap !== "object") return "";
+
+    var name = escapeHtml(snap.full_name || "");
+    var headline = escapeHtml(snap.headline || "");
+    var skills = safeArray(snap.key_skills).slice(0, 12);
+
+    var chips = skills
+      .map(function (s) {
+        return (
+          '<span class="sm-chip sm-chip-nice">' +
+          escapeHtml(String(s)) +
+          "</span>"
+        );
+      })
+      .join("");
+
+    return (
+      '<section class="sm-section sm-profile">' +
+      "  <h3>Your profile snapshot</h3>" +
+      (name || headline
+        ? '  <p class="sm-section-sub">' +
+          (name ? "<strong>" + name + "</strong>" : "") +
+          (name && headline ? " · " : "") +
+          (headline || "") +
+          "</p>"
+        : "") +
+      (chips
+        ? '  <div class="sm-profile-skills">' +
+          chips +
+          "</div>"
+        : "") +
+      "</section>"
+    );
+  }
+
   function renderFullSkillmapHTML(data) {
     var roles = getRolesFromData(data);
     var roleCards = roles.map(renderRoleCard).join("");
@@ -392,6 +430,7 @@
     var usingProfile = !!meta.using_profile;
     var region = escapeHtml(meta.region_focus || meta.region || "India");
     var version = escapeHtml(meta.version || "");
+    var callToAction = escapeHtml(data.call_to_action || "");
 
     var metaBits = [];
     if (source) metaBits.push(source === "pro" ? "Pro run" : "Free run");
@@ -400,6 +439,18 @@
     if (version) metaBits.push("Model version: " + version);
 
     var metaLine = metaBits.join(" · ");
+    var profileSnapHTML = renderProfileSnapshot(meta);
+
+    var ctaHTML = "";
+    if (callToAction) {
+      ctaHTML =
+        '<section class="sm-section">' +
+        "  <h3>What to do next</h3>" +
+        '  <p class="sm-section-sub">' +
+        callToAction +
+        "</p>" +
+        "</section>";
+    }
 
     return (
       '<div class="sm-panel-full">' +
@@ -414,9 +465,11 @@
           roleCards +
           "  </div>" +
           "</section>"
-        : '<section class="sm-section"><p>No roles returned. Try adding more detail about your skills/interests.</p></section>') +
+        : '<section class="sm-section"><p>No roles returned. Try adding more detail about your skills or profile.</p></section>') +
       hiringNowHTML +
       highPaidHTML +
+      ctaHTML +
+      profileSnapHTML +
       "</div>"
     );
   }
@@ -429,7 +482,7 @@
       return (
         '<div class="sm-panel-basic">' +
         "  <h2>Basic view (Free)</h2>" +
-        '  <p class="sm-section-sub">We could not infer a clear role. Try adding more detail about your skills and interests.</p>' +
+        '  <p class="sm-section-sub">We couldn’t infer a clear role yet. Try topping up your Profile Portal or adding a few skills/interests.</p>' +
         "</div>"
       );
     }
@@ -511,7 +564,7 @@
       '      <div class="sm-pro-blur-content">' +
       '        <div class="sm-pro-lock-icon">🔒</div>' +
       '        <div class="sm-pro-lock-title">Skill Mapper Pro (preview)</div>' +
-      '        <p class="sm-pro-lock-text">Pro shows full 3-role roadmap, India salary bands, and “What’s hiring now” in detail.</p>' +
+      '        <p class="sm-pro-lock-text">Pro shows full 3-role roadmap, India salary bands, “What’s hiring now”, and a deeper plan just for your profile.</p>' +
       '        <a href="' +
       href +
       '" class="sm-btn sm-btn-upgrade">Unlock with Pro ⭐</a>' +
@@ -583,11 +636,6 @@
     freeBtn.addEventListener("click", function () {
       var text = (freeInput && freeInput.value) || "";
       var domain = (freeDomain && freeDomain.value) || "";
-
-      if (!text.trim()) {
-        showToast("Please paste your skills/interests text.", "error");
-        return;
-      }
 
       freeBtn.disabled = true;
       freeBtn.textContent = "Running…";

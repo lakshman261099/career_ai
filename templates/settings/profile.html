@@ -7,7 +7,9 @@
   <div class="glass-panel rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
     <div>
       <h1 class="text-2xl font-extrabold tracking-tight">Your Profile Portal</h1>
-      <p class="text-white/70 text-sm">Upload your resume to auto-fill, or edit manually. This powers Portfolio, Job Packs, Skill Mapper, and Internships.</p>
+      <p class="text-white/70 text-sm">
+        Upload your resume to auto-fill, or edit manually. This is the main base input CareerAI uses across Job Packs, Skill Mapper, Portfolio, and Internships.
+      </p>
     </div>
     <div class="flex items-center gap-3 text-sm">
       <span class="px-3 py-1 rounded-full bg-white/10 border border-white/20">
@@ -131,7 +133,7 @@
           <div>
             <h3 class="text-lg font-semibold">Resume Upload</h3>
             <p class="text-white/70 text-sm">
-              Upload a PDF to auto-fill fields below. Scanning uses ⭐ Pro credits.
+              Upload a PDF to auto-fill fields below. Scanning uses your CareerAI AI credits.
             </p>
             {% if latest_resume %}
               <p class="text-white/50 text-xs mt-1">
@@ -418,7 +420,6 @@ function removeRow(btn) {
 }
 
 function removeCard(btn) {
-  // Only remove the experience card, not any other .border elements
   const card = btn.closest('[data-exp-card]');
   if (card) card.remove();
 }

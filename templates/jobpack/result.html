@@ -18,6 +18,10 @@
           Viewing a saved report from your Job Pack history.
         </p>
       {% endif %}
+      <p class="text-xs text-white/50 mt-1">
+        Powered by your <a href="{{ url_for('settings.profile') }}" class="underline hover:no-underline">Profile Portal</a> +
+        this job description. Update your profile to get sharper results.
+      </p>
     </div>
     <div class="flex flex-col items-end gap-1">
       {% if is_pro %}
@@ -42,6 +46,9 @@
   <div class="glass-card p-4 rounded-2xl bg-gradient-to-r from-emerald-600/10 to-emerald-400/10 border border-emerald-400/30">
     <p class="text-sm font-semibold text-emerald-300">
       {{ result.report_tier }}
+      {% if not is_pro %}
+        · Deep insights are available with Pro.
+      {% endif %}
     </p>
   </div>
   {% endif %}
@@ -49,25 +56,75 @@
   {% if result.resume_missing %}
   <div class="glass-card p-4 rounded-2xl border border-yellow-400/40 bg-yellow-500/10">
     <p class="text-sm">
-      ⚠️ <strong>Heads up:</strong> No resume was provided. We extracted key insights from your Profile Portal or the job description.
+      ⚠️ <strong>Heads up:</strong> No resume was provided. We leaned more on your Profile Portal and the job description.
       Your ATS score may be limited.
+    </p>
+    <p class="text-xs text-white/70 mt-1">
+      Tip: Upload a resume in <a href="{{ url_for('settings.profile') }}" class="underline hover:no-underline">Profile Portal</a> for stronger matching.
     </p>
   </div>
   {% endif %}
 
-  <!-- SUMMARY -->
-  <div class="glass-card p-6 rounded-2xl">
-    <h2 class="text-lg font-semibold mb-2">Role Summary</h2>
-    <p class="text-white/80 leading-relaxed">{{ result.summary or "No summary available." }}</p>
-    <p class="text-sm text-white/60 mt-2">
-      Detected Role: <span class="font-semibold">{{ result.role_detected or "—" }}</span>
-    </p>
+  <!-- TOP ROW: Role Summary + Role Intelligence -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <!-- SUMMARY -->
+    <div class="glass-card p-6 rounded-2xl md:col-span-2">
+      <h2 class="text-lg font-semibold mb-2">Role Summary</h2>
+      <p class="text-white/80 leading-relaxed">{{ result.summary or "No summary available." }}</p>
+      <p class="text-sm text-white/60 mt-2">
+        Detected Role:
+        <span class="font-semibold">{{ result.role_detected or "—" }}</span>
+      </p>
+      <p class="text-xs text-white/50 mt-1">
+        Based on your Profile Portal + this JD.
+      </p>
+    </div>
+
+    <!-- ROLE INTELLIGENCE -->
+    <div class="glass-card p-6 rounded-2xl border border-indigo-400/30 bg-indigo-600/10">
+      {% set ri = result.role_intel or {} %}
+      <h2 class="text-lg font-semibold mb-2">Role Intelligence</h2>
+      <dl class="space-y-1 text-sm text-white/80">
+        <div class="flex justify-between gap-2">
+          <dt class="text-white/60">Seniority</dt>
+          <dd class="font-semibold text-right">{{ ri.seniority or "Not specified" }}</dd>
+        </div>
+        <div class="flex justify-between gap-2">
+          <dt class="text-white/60">Difficulty</dt>
+          <dd class="font-semibold text-right">{{ ri.difficulty or "Not specified" }}</dd>
+        </div>
+        <div class="flex justify-between gap-2">
+          <dt class="text-white/60">Salary band</dt>
+          <dd class="text-right">{{ ri.salary_band or "Varies — check latest bands." }}</dd>
+        </div>
+        <div class="flex justify-between gap-2">
+          <dt class="text-white/60">Geo focus</dt>
+          <dd class="text-right">{{ ri.geo_focus or "Not specified" }}</dd>
+        </div>
+      </dl>
+      {% if ri.typical_companies %}
+        <p class="text-xs text-white/60 mt-2">
+          Typical companies:
+          <span class="font-medium text-white/80">
+            {{ ri.typical_companies | join(', ') }}
+          </span>
+        </p>
+      {% endif %}
+      {% if ri.market_notes %}
+        <p class="text-xs text-white/60 mt-2">
+          {{ ri.market_notes }}
+        </p>
+      {% endif %}
+    </div>
   </div>
 
-  <!-- FIT OVERVIEW -->
+  <!-- FIT OVERVIEW (always visible) -->
   {% if result.fit_overview %}
   <div class="glass-card p-6 rounded-2xl">
     <h2 class="text-lg font-semibold mb-4">Fit Overview</h2>
+    <p class="text-xs text-white/60 mb-2">
+      High-level match between your Profile Portal + resume vs this job.
+    </p>
     <table class="w-full text-sm border-separate border-spacing-y-2">
       <thead class="text-white/60">
         <tr><th class="text-left">Category</th><th class="text-left">Match</th><th class="text-left">Comment</th></tr>
@@ -87,137 +144,309 @@
   </div>
   {% endif %}
 
-  <!-- ATS SCORE -->
+  <!-- ATS SCORE + SUBSCORES + RADAR -->
   <div class="glass-card p-6 rounded-2xl">
-    <h2 class="text-lg font-semibold mb-3">ATS Score</h2>
-    <div class="bg-white/10 h-3 rounded-full overflow-hidden">
-      <div class="h-3 bg-emerald-500 rounded-full transition-all duration-500" style="width: {{ result.ats_score }}%"></div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+      <div>
+        <h2 class="text-lg font-semibold mb-3">ATS Score</h2>
+        <div class="bg-white/10 h-3 rounded-full overflow-hidden">
+          <div
+            id="ats-main-bar"
+            class="h-3 bg-emerald-500 rounded-full transition-all duration-700"
+            style="width: 0%"
+            data-target="{{ result.ats_score or 0 }}"></div>
+        </div>
+        <div class="flex justify-between mt-2 items-center">
+          <p class="text-sm text-white/70">
+            ATS Compatibility:
+            <span
+              id="ats-main-number"
+              class="font-semibold {% if result.ats_score >= 80 %}text-emerald-400{% elif result.ats_score >= 60 %}text-yellow-400{% else %}text-red-400{% endif %}"
+              data-target="{{ result.ats_score or 0 }}">
+              0%
+            </span>
+          </p>
+          {% if result.resume_missing %}
+            <span class="text-xs px-2 py-1 rounded bg-yellow-500/20 border border-yellow-500/30 text-yellow-300">Resume Missing ⚠</span>
+          {% endif %}
+        </div>
+
+        {% set subs = result.subscores or {} %}
+
+        <!-- Subscores: partially Pro-locked -->
+        <div class="mt-4 pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+          <div class="pro-lock-blur grid grid-cols-2 gap-3 text-xs">
+            <div class="space-y-1">
+              <div class="flex justify-between">
+                <span class="text-white/60">Keyword relevance</span>
+                <span id="sub-kw-num" data-target="{{ subs.keyword_relevance or 0 }}">0%</span>
+              </div>
+              <div class="bg-white/10 h-2 rounded-full overflow-hidden">
+                <div id="sub-kw-bar" class="h-2 bg-white/80" style="width:0%"></div>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <div class="flex justify-between">
+                <span class="text-white/60">Quantifiable impact</span>
+                <span id="sub-impact-num" data-target="{{ subs.quantifiable_impact or 0 }}">0%</span>
+              </div>
+              <div class="bg-white/10 h-2 rounded-full overflow-hidden">
+                <div id="sub-impact-bar" class="h-2 bg-white/80" style="width:0%"></div>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <div class="flex justify-between">
+                <span class="text-white/60">Formatting clarity</span>
+                <span id="sub-format-num" data-target="{{ subs.formatting_clarity or 0 }}">0%</span>
+              </div>
+              <div class="bg-white/10 h-2 rounded-full overflow-hidden">
+                <div id="sub-format-bar" class="h-2 bg-white/80" style="width:0%"></div>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <div class="flex justify-between">
+                <span class="text-white/60">Professional tone</span>
+                <span id="sub-tone-num" data-target="{{ subs.professional_tone or 0 }}">0%</span>
+              </div>
+              <div class="bg-white/10 h-2 rounded-full overflow-hidden">
+                <div id="sub-tone-bar" class="h-2 bg-white/80" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+
+          {% if not is_pro %}
+          <div class="pro-lock-overlay">
+            <h3>ATS breakdown is Pro-only 🔒</h3>
+            <p>We’ve scored your resume vs this JD using your Profile Portal. Upgrade to see exactly where you’re losing points and how to fix it.</p>
+            <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">Unlock full ATS breakdown</a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Radar chart (Pro-locked visual) -->
+      <div class="pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+        <div class="pro-lock-blur flex flex-col items-center">
+          <h3 class="text-sm font-semibold mb-2 text-white/80">
+            ATS Breakdown Radar
+          </h3>
+          <canvas id="atsRadar" width="260" height="260"
+                  class="bg-white/5 rounded-full p-2"></canvas>
+          <p class="mt-2 text-[11px] text-white/60 text-center">
+            Visual model estimate of your ATS alignment across key dimensions.
+          </p>
+        </div>
+        {% if not is_pro %}
+        <div class="pro-lock-overlay">
+          <h3>Visual ATS radar is Pro-only 🔒</h3>
+          <p>See a radar view of how your profile and resume perform on keywords, impact, formatting, and tone for each job.</p>
+          <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">Upgrade for deep visualization</a>
+        </div>
+        {% endif %}
+      </div>
     </div>
-    <div class="flex justify-between mt-2 items-center">
-      <p class="text-sm text-white/70">
-        ATS Compatibility:
-        <span class="font-semibold {% if result.ats_score >= 80 %}text-emerald-400{% elif result.ats_score >= 60 %}text-yellow-400{% else %}text-red-400{% endif %}">
-          {{ result.ats_score }}%
-        </span>
+  </div>
+
+  <!-- RESUME ATS AUDIT (mostly Pro-locked) -->
+  <div class="glass-card p-6 rounded-2xl border border-emerald-400/30 bg-emerald-600/5 pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+    <div class="pro-lock-blur">
+      <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+        Resume ATS Audit
+        <span class="text-xs text-emerald-400 font-normal">(Structure, keywords, exact fixes)</span>
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white/5 rounded-xl p-4">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm font-semibold">Resume ATS Score</span>
+            <span
+              id="resume-ats-number"
+              class="text-sm font-bold"
+              data-target="{{ result.resume_ats.resume_ats_score or 0 }}">
+              0%
+            </span>
+          </div>
+          <div class="bg-white/10 h-2 rounded-full overflow-hidden">
+            <div
+              id="resume-ats-bar"
+              class="h-2 bg-emerald-500 transition-all duration-700"
+              style="width:0%"
+              data-target="{{ (result.resume_ats.resume_ats_score or 0) | int }}"></div>
+          </div>
+        </div>
+
+        <div class="bg-white/5 rounded-xl p-4">
+          <h3 class="text-sm font-semibold mb-2">Must Fix (Blockers)</h3>
+          <ul class="list-disc pl-5 text-xs space-y-1">
+            {% for b in result.resume_ats.blockers %}
+              <li>{{ b }}</li>
+            {% else %}
+              <li>None</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <div class="bg-white/5 rounded-xl p-4">
+          <h3 class="text-sm font-semibold mb-2">Should Fix (Warnings)</h3>
+          <ul class="list-disc pl-5 text-xs space-y-1">
+            {% for w in result.resume_ats.warnings %}
+              <li>{{ w }}</li>
+            {% else %}
+              <li>None</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div class="bg-white/5 rounded-xl p-4">
+          <h3 class="text-sm font-semibold mb-2">Missing Keywords</h3>
+          <div class="flex flex-wrap gap-2">
+            {% for k in result.resume_ats.keyword_coverage.missing_keywords[:24] %}
+              <span class="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-xs">{{ k }}</span>
+            {% else %}
+              <span class="text-xs text-white/60">None</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="bg-white/5 rounded-xl p-4">
+          <h3 class="text-sm font-semibold mb-2">Exact Fixes</h3>
+          <ul id="ats-fixes" class="text-xs space-y-1">
+            {% for a in result.resume_ats.resume_rewrite_actions %}
+              <li>• {{ a }}</li>
+            {% else %}
+              <li>No specific fixes generated.</li>
+            {% endfor %}
+          </ul>
+          <button onclick="copyFixes()" class="mt-2 text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20">
+            Copy ATS Fixes
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {% if not is_pro %}
+    <div class="pro-lock-overlay">
+      <h3>Full resume audit is Pro-only 🔒</h3>
+      <p>Your Profile Portal + resume are already scanned. Upgrade to see blockers, missing keywords, and copy-paste fixes for this job.</p>
+      <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">Unlock resume ATS audit</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- RESUME DELTA: JD vs Resume skills (Pro-locked) -->
+  {% if result.skill_table %}
+  <div class="glass-card p-6 rounded-2xl pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+    <div class="pro-lock-blur">
+      <h2 class="text-lg font-semibold mb-3">JD → Resume Delta</h2>
+      <p class="text-xs text-white/60 mb-2">
+        How well your resume talks in the same language as the job description.
       </p>
-      {% if result.resume_missing %}
-        <span class="text-xs px-2 py-1 rounded bg-yellow-500/20 border border-yellow-500/30 text-yellow-300">Resume Missing ⚠</span>
-      {% endif %}
+      <table class="w-full text-sm border-separate border-spacing-y-1">
+        <thead class="text-white/60">
+          <tr>
+            <th class="text-left px-2 py-1">Skill / Keyword</th>
+            <th class="text-left px-2 py-1">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.skill_table %}
+            <tr class="bg-white/5 rounded-lg">
+              <td class="px-2 py-1">{{ row.skill }}</td>
+              <td class="px-2 py-1">
+                {% if row.status == "Matched" %}
+                  <span class="text-emerald-300 text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40">
+                    Matched
+                  </span>
+                {% elif row.status == "Weak Mention" %}
+                  <span class="text-yellow-300 text-xs px-2 py-0.5 rounded-full bg-yellow-500/15 border border-yellow-400/40">
+                    Weak mention
+                  </span>
+                {% else %}
+                  <span class="text-red-300 text-xs px-2 py-0.5 rounded-full bg-red-500/20 border border-red-400/40">
+                    Missing
+                  </span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
+    {% if not is_pro %}
+    <div class="pro-lock-overlay">
+      <h3>Matched vs missing skills is Pro-only 🔒</h3>
+      <p>See exactly which tools, frameworks, and skills are already on your Profile Portal + resume vs missing for this JD.</p>
+      <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">Unlock JD → resume delta</a>
+    </div>
+    {% endif %}
   </div>
+  {% endif %}
 
-  <!-- RESUME ATS AUDIT -->
-  <div class="glass-card p-6 rounded-2xl border border-emerald-400/30 bg-emerald-600/5">
-    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-      Resume ATS Audit
-      <span class="text-xs text-emerald-400 font-normal">(Structure, keywords, exact fixes)</span>
-    </h2>
-
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div class="bg-white/5 rounded-xl p-4">
-        <div class="flex justify-between items-center mb-1">
-          <span class="text-sm font-semibold">Resume ATS Score</span>
-          <span class="text-sm font-bold">{{ result.resume_ats.resume_ats_score or 0 }}%</span>
-        </div>
-        <div class="bg-white/10 h-2 rounded-full overflow-hidden">
-          <div class="h-2 bg-emerald-500 transition-all duration-500" style="width: {{ (result.resume_ats.resume_ats_score or 0) | int }}%"></div>
-        </div>
-      </div>
-
-      <div class="bg-white/5 rounded-xl p-4">
-        <h3 class="text-sm font-semibold mb-2">Must Fix (Blockers)</h3>
-        <ul class="list-disc pl-5 text-xs space-y-1">
-          {% for b in result.resume_ats.blockers %}
-            <li>{{ b }}</li>
-          {% else %}
-            <li>None</li>
-          {% endfor %}
-        </ul>
-      </div>
-
-      <div class="bg-white/5 rounded-xl p-4">
-        <h3 class="text-sm font-semibold mb-2">Should Fix (Warnings)</h3>
-        <ul class="list-disc pl-5 text-xs space-y-1">
-          {% for w in result.resume_ats.warnings %}
-            <li>{{ w }}</li>
-          {% else %}
-            <li>None</li>
-          {% endfor %}
-        </ul>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-      <div class="bg-white/5 rounded-xl p-4">
-        <h3 class="text-sm font-semibold mb-2">Missing Keywords</h3>
-        <div class="flex flex-wrap gap-2">
-          {% for k in result.resume_ats.keyword_coverage.missing_keywords[:24] %}
-            <span class="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-xs">{{ k }}</span>
-          {% else %}
-            <span class="text-xs text-white/60">None</span>
-          {% endfor %}
-        </div>
-      </div>
-      <div class="bg-white/5 rounded-xl p-4">
-        <h3 class="text-sm font-semibold mb-2">Exact Fixes</h3>
-        <ul id="ats-fixes" class="text-xs space-y-1">
-          {% for a in result.resume_ats.resume_rewrite_actions %}
-            <li>• {{ a }}</li>
-          {% else %}
-            <li>No specific fixes generated.</li>
-          {% endfor %}
-        </ul>
-        <button onclick="copyFixes()" class="mt-2 text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20">Copy ATS Fixes</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- LEARNING LINKS -->
+  <!-- LEARNING LINKS (Pro-locked) -->
   {% if result.learning_links %}
-  <div class="glass-card p-6 rounded-2xl">
-    <h2 class="text-lg font-semibold mb-3">Learning Resources</h2>
-    <ul class="list-disc pl-5 text-sm space-y-1">
-      {% for link in result.learning_links %}
-        <li>
-          <a class="underline hover:no-underline" href="{{ link.url }}" target="_blank" rel="noopener nofollow">
-            {{ link.label }}
-          </a>
-          {% if link.why %}
-            <span class="text-xs text-white/60"> — {{ link.why }}</span>
-          {% endif %}
-        </li>
-      {% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-
-  <!-- INTERVIEW Q&A -->
-  {% if result.interview_qa %}
-  <div class="glass-card p-6 rounded-2xl">
-    <h2 class="text-lg font-semibold mb-3">Interview Q&A (Practice)</h2>
-    <div class="space-y-3">
-      {% for qa in result.interview_qa %}
-        <div class="bg-white/5 rounded-lg p-3">
-          <p class="text-sm font-semibold">Q: {{ qa.q }}</p>
-          {% if qa.a_outline %}
-            <p class="text-xs text-white/70 mt-1">Answer outline:</p>
-            <ul class="list-disc pl-5 text-xs text-white/80">
-              {% for pt in qa.a_outline %}<li>{{ pt }}</li>{% endfor %}
-            </ul>
-          {% endif %}
-          {% if qa.why_it_matters %}
-            <p class="text-xs text-white/60 mt-1"><em>Why it matters:</em> {{ qa.why_it_matters }}</p>
-          {% endif %}
-          {% if qa.followup %}
-            <p class="text-xs text-white/60"><em>Follow-up:</em> {{ qa.followup }}</p>
-          {% endif %}
-        </div>
-      {% endfor %}
+  <div class="glass-card p-6 rounded-2xl pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+    <div class="pro-lock-blur">
+      <h2 class="text-lg font-semibold mb-3">Learning Resources</h2>
+      <ul class="list-disc pl-5 text-sm space-y-1">
+        {% for link in result.learning_links %}
+          <li>
+            <a class="underline hover:no-underline" href="{{ link.url }}" target="_blank" rel="noopener nofollow">
+              {{ link.label }}
+            </a>
+            {% if link.why %}
+              <span class="text-xs text-white/60"> — {{ link.why }}</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
     </div>
+    {% if not is_pro %}
+    <div class="pro-lock-overlay">
+      <h3>Curated learning path is Pro-only 🔒</h3>
+      <p>Get hand-picked links mapped to the exact gaps detected from your Profile Portal vs this job.</p>
+      <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">Unlock learning plan</a>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
-  <!-- DETECTED KEYWORDS -->
+  <!-- INTERVIEW Q&A (Pro-locked) -->
+  {% if result.interview_qa %}
+  <div class="glass-card p-6 rounded-2xl pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+    <div class="pro-lock-blur">
+      <h2 class="text-lg font-semibold mb-3">Interview Q&A (Practice)</h2>
+      <div class="space-y-3">
+        {% for qa in result.interview_qa %}
+          <div class="bg-white/5 rounded-lg p-3">
+            <p class="text-sm font-semibold">Q: {{ qa.q }}</p>
+            {% if qa.a_outline %}
+              <p class="text-xs text-white/70 mt-1">Answer outline:</p>
+              <ul class="list-disc pl-5 text-xs text-white/80">
+                {% for pt in qa.a_outline %}<li>{{ pt }}</li>{% endfor %}
+              </ul>
+            {% endif %}
+            {% if qa.why_it_matters %}
+              <p class="text-xs text-white/60 mt-1"><em>Why it matters:</em> {{ qa.why_it_matters }}</p>
+            {% endif %}
+            {% if qa.followup %}
+              <p class="text-xs text-white/60"><em>Follow-up:</em> {{ qa.followup }}</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% if not is_pro %}
+    <div class="pro-lock-overlay">
+      <h3>Interview drill pack is Pro-only 🔒</h3>
+      <p>Get JD-specific questions and answer outlines based on your Profile Portal, so you can practice what *you* will be asked.</p>
+      <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">Unlock interview drills</a>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- DETECTED KEYWORDS (always visible) -->
   {% if result.detected_keywords %}
   <div class="glass-card p-6 rounded-2xl">
     <div class="flex items-center justify-between mb-3">
@@ -231,72 +460,111 @@
         <span class="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-xs">{{ kw }}</span>
       {% endfor %}
     </div>
+    <p class="text-[11px] text-white/60 mt-2">
+      We scan both your Profile Portal and resume text to detect these.
+    </p>
   </div>
   {% endif %}
 
-  <!-- REWRITE SUGGESTIONS -->
-  <div class="glass-card p-6 rounded-2xl">
-    <h2 class="text-lg font-semibold mb-3">Resume Rewrite Suggestions</h2>
-    {% if result.rewrite_suggestions %}
-      {% for line in result.rewrite_suggestions %}
-        <div class="text-sm mb-1 flex justify-between items-center bg-white/5 px-3 py-2 rounded-lg hover:bg-white/10 transition">
-          <span>{{ line }}</span>
-          <button onclick="navigator.clipboard.writeText(`{{ line }}`)" class="text-xs text-white/60 hover:text-white/90 transition">Copy</button>
-        </div>
-      {% endfor %}
-    {% else %}
-      <p class="text-sm text-white/60">No rewrite suggestions were generated for this job.</p>
+  <!-- REWRITE SUGGESTIONS (Pro-locked) -->
+  <div class="glass-card p-6 rounded-2xl pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+    <div class="pro-lock-blur">
+      <h2 class="text-lg font-semibold mb-3">Resume Rewrite Suggestions</h2>
+      {% if result.rewrite_suggestions %}
+        {% for line in result.rewrite_suggestions %}
+          <div class="text-sm mb-1 flex justify-between items-center bg-white/5 px-3 py-2 rounded-lg hover:bg-white/10 transition">
+            <span>{{ line }}</span>
+            <button onclick="navigator.clipboard.writeText(`{{ line }}`)" class="text-xs text-white/60 hover:text-white/90 transition">Copy</button>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-sm text-white/60">No rewrite suggestions were generated for this job.</p>
+      {% endif %}
+    </div>
+    {% if not is_pro %}
+    <div class="pro-lock-overlay">
+      <h3>Exact resume lines are Pro-only 🔒</h3>
+      <p>Turn your Profile Portal + resume into copy-paste bullet suggestions tailored to this JD.</p>
+      <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">Unlock rewrite suggestions</a>
+    </div>
     {% endif %}
   </div>
 
-  <!-- NEXT STEPS -->
+  <!-- NEXT STEPS (Pro-locked) -->
   {% if result.next_steps %}
-  <div class="glass-card p-6 rounded-2xl">
-    <h2 class="text-lg font-semibold mb-3">Next Steps</h2>
-    <ul class="list-disc pl-5 text-sm text-white/80 space-y-1">
-      {% for step in result.next_steps %}
-        <li>{{ step }}</li>
-      {% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-
-  <!-- PRACTICE PLAN -->
-  {% if result.practice_plan %}
-  <div class="glass-card p-6 rounded-2xl">
-    <h2 class="text-lg font-semibold mb-3">Practice Plan</h2>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-      {% for blk in result.practice_plan %}
-        <div class="bg-white/5 rounded-lg p-3">
-          <p class="text-sm font-semibold">{{ blk.period }}</p>
-          <p class="text-xs text-white/70">Goals: {{ blk.goals }}</p>
-          {% if blk.tasks %}
-          <ul class="list-disc pl-5 text-xs text-white/80 mt-1">
-            {% for t in blk.tasks %}<li>{{ t }}</li>{% endfor %}
-          </ul>
-          {% endif %}
-          {% if blk.output %}
-            <p class="text-xs text-white/60 mt-1"><em>Output:</em> {{ blk.output }}</p>
-          {% endif %}
-        </div>
-      {% endfor %}
+  <div class="glass-card p-6 rounded-2xl pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+    <div class="pro-lock-blur">
+      <h2 class="text-lg font-semibold mb-3">Next Steps</h2>
+      <ul class="list-disc pl-5 text-sm text-white/80 space-y-1">
+        {% for step in result.next_steps %}
+          <li>{{ step }}</li>
+        {% endfor %}
+      </ul>
     </div>
+    {% if not is_pro %}
+    <div class="pro-lock-overlay">
+      <h3>Personalized action plan is Pro-only 🔒</h3>
+      <p>We build a short checklist from your Profile Portal to help you move from “apply” to “interview-ready”.</p>
+      <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">Unlock next steps</a>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
-  <!-- APPLICATION CHECKLIST -->
+  <!-- PRACTICE PLAN (Pro-locked) -->
+  {% if result.practice_plan %}
+  <div class="glass-card p-6 rounded-2xl pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+    <div class="pro-lock-blur">
+      <h2 class="text-lg font-semibold mb-3">Practice Plan</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {% for blk in result.practice_plan %}
+          <div class="bg-white/5 rounded-lg p-3">
+            <p class="text-sm font-semibold">{{ blk.period }}</p>
+            <p class="text-xs text-white/70">Goals: {{ blk.goals }}</p>
+            {% if blk.tasks %}
+            <ul class="list-disc pl-5 text-xs text-white/80 mt-1">
+              {% for t in blk.tasks %}<li>{{ t }}</li>{% endfor %}
+            </ul>
+            {% endif %}
+            {% if blk.output %}
+              <p class="text-xs text-white/60 mt-1"><em>Output:</em> {{ blk.output }}</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% if not is_pro %}
+    <div class="pro-lock-overlay">
+      <h3>7–14 day practice plan is Pro-only 🔒</h3>
+      <p>Short daily tasks built from your Profile Portal & this JD to get you interview-ready.</p>
+      <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">Unlock practice plan</a>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- APPLICATION CHECKLIST (Pro-locked but could be lightly previewed) -->
   {% if result.application_checklist %}
-  <div class="glass-card p-6 rounded-2xl">
-    <h2 class="text-lg font-semibold mb-3">Application Checklist</h2>
-    <ul class="list-disc pl-5 text-sm text-white/80 space-y-1">
-      {% for item in result.application_checklist %}
-        <li>{{ item }}</li>
-      {% endfor %}
-    </ul>
+  <div class="glass-card p-6 rounded-2xl pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+    <div class="pro-lock-blur">
+      <h2 class="text-lg font-semibold mb-3">Application Checklist</h2>
+      <ul class="list-disc pl-5 text-sm text-white/80 space-y-1">
+        {% for item in result.application_checklist %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% if not is_pro %}
+    <div class="pro-lock-overlay">
+      <h3>Full checklist is Pro-only 🔒</h3>
+      <p>We turn this Job Pack into a checklist across your resume, Profile Portal, and LinkedIn.</p>
+      <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">Unlock checklist</a>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
-  <!-- IMPACT SUMMARY -->
+  <!-- IMPACT SUMMARY (visible; keeps it satisfying even for Free) -->
   <div class="glass-card p-6 rounded-2xl text-center text-sm text-white/70 italic border border-emerald-400/20">
     {{ result.impact_summary or "Evaluation complete. Thank you for using CareerAI." }}
   </div>
@@ -316,7 +584,7 @@
       </form>
     {% else %}
       <a href="{{ url_for('billing.index') }}"
-         class="btn-upgrade px-5 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500 transition text-white shadow-lg">
+         class="btn-primary px-5 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500 transition text-white shadow-lg">
         Upgrade to Deep Evaluation ⭐
       </a>
     {% endif %}
@@ -339,12 +607,96 @@
   {% endif %}
 
 </div>
+{% endblock %}
 
+{% block scripts %}
+<!-- Chart.js for the radar (CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
+function animateValue(el, target){
+  if(!el) return;
+  const end = Number(el.dataset.target || target || 0);
+  let start = 0;
+  const dur = 900;
+  const t0 = performance.now();
+  function frame(now){
+    const p = Math.min(1, (now - t0)/dur);
+    const val = Math.round(start + (end - start)*p);
+    el.textContent = val + "%";
+    if(p < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+function animateBar(el){
+  if(!el) return;
+  const end = Number(el.dataset.target || 0);
+  requestAnimationFrame(()=>{ el.style.width = end + "%"; });
+}
+
 function copyFixes(){
-  const text = [...document.querySelectorAll('#ats-fixes li')].map(li=>li.innerText).join('\\n');
+  const text = [...document.querySelectorAll('#ats-fixes li')].map(li=>li.innerText).join('\n');
   navigator.clipboard.writeText(text);
 }
-</script>
 
+document.addEventListener("DOMContentLoaded", function(){
+  // animated numbers / bars
+  animateValue(document.getElementById("ats-main-number"));
+  animateBar(document.getElementById("ats-main-bar"));
+
+  animateValue(document.getElementById("sub-kw-num"));
+  animateBar(document.getElementById("sub-kw-bar"));
+  animateValue(document.getElementById("sub-impact-num"));
+  animateBar(document.getElementById("sub-impact-bar"));
+  animateValue(document.getElementById("sub-format-num"));
+  animateBar(document.getElementById("sub-format-bar"));
+  animateValue(document.getElementById("sub-tone-num"));
+  animateBar(document.getElementById("sub-tone-bar"));
+
+  animateValue(document.getElementById("resume-ats-number"));
+  animateBar(document.getElementById("resume-ats-bar"));
+
+  // Radar chart
+  const ctx = document.getElementById("atsRadar");
+  {% set subs = result.subscores or {} %}
+  if(ctx && window.Chart){
+    const kw = Number({{ (subs.keyword_relevance or 0)|int }});
+    const impact = Number({{ (subs.quantifiable_impact or 0)|int }});
+    const fmt = Number({{ (subs.formatting_clarity or 0)|int }});
+    const tone = Number({{ (subs.professional_tone or 0)|int }});
+    new Chart(ctx, {
+      type: "radar",
+      data: {
+        labels: ["Keywords","Impact","Formatting","Tone"],
+        datasets: [{
+          label: "ATS Breakdown",
+          data: [kw, impact, fmt, tone],
+          fill: true,
+          backgroundColor: "rgba(129,140,248,0.3)",
+          borderColor: "rgba(129,140,248,1)",
+          pointBackgroundColor: "rgba(248,250,252,1)",
+          pointRadius: 3
+        }]
+      },
+      options: {
+        responsive: false,
+        scales: {
+          r: {
+            suggestedMin: 0,
+            suggestedMax: 100,
+            angleLines: { color: "rgba(148,163,184,0.4)" },
+            grid: { color: "rgba(148,163,184,0.25)" },
+            ticks: { display:false },
+            pointLabels: {
+              color: "rgba(248,250,252,0.8)",
+              font: { size: 11 }
+            }
+          }
+        },
+        plugins: { legend: { display:false } }
+      }
+    });
+  }
+});
+</script>
 {% endblock %}
