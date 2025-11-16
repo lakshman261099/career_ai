@@ -2,185 +2,215 @@
 {% block title %}Skill Mapper{% endblock %}
 
 {% block content %}
-<div class="sm-container">
-  <div class="sm-header">
-    <h1>Skill Mapper</h1>
-    <p class="sm-subtitle">Discover your best-fit roles and what’s hiring now.</p>
-    {% if updated_tag %}<div class="sm-tag">Updated {{ updated_tag }}</div>{% endif %}
+<section class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-10 pb-12">
+  <!-- Subtle animated background specific to this page -->
+  <div class="pointer-events-none absolute inset-0 -z-10">
+    <div class="w-full h-full opacity-50 animate-caGradient-sm
+                bg-[radial-gradient(circle_at_top_left,#4f46e5_0,transparent_55%),radial-gradient(circle_at_bottom_right,#f97316_0,transparent_55%)]">
+    </div>
   </div>
 
-  <div class="sm-grid">
-    <!-- Free panel -->
-    <div class="sm-card">
-      <div class="sm-card-head">
-        <h2>Free run (🪙)</h2>
-        <p>Paste your skills/interests. We’ll map 3 specialized roles.</p>
+  <div
+    class="sm-container glass-panel rounded-2xl p-6 md:p-7 relative z-0"
+    id="sm-root"
+    data-is-pro="{{ 'true' if is_pro else 'false' }}"
+    data-billing-path="{{ url_for('billing.index') }}"
+  >
+    <!-- Header -->
+    <header class="sm-header flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+      <div>
+        <p class="text-xs text-white/60 uppercase tracking-[0.16em] mb-1">
+          Skill Mapper
+        </p>
+        <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+          See your best-fit roles in India.
+        </h1>
+        <p class="sm-subtitle text-sm text-white/70 mt-1 max-w-xl">
+          Paste your skills or use your Profile Portal. We’ll map roles, skills to build, and what’s hiring right now in the Indian market.
+        </p>
       </div>
-
-      <label class="sm-label" for="sm-free-input">
-        Your skills &amp; interests
-        <span
-          class="sm-help"
-          aria-label="Explain skills and interests"
-          data-sm-tooltip="Paste what you already know (languages, tools, coursework) plus topics you enjoy. We infer roles from this snapshot."
-        >?</span>
-      </label>
-      <textarea
-        id="sm-free-input"
-        class="sm-textarea"
-        placeholder="e.g., Python, SQL, Tableau, stats, curiosity about business metrics"
-      ></textarea>
-
-      <div class="sm-inline">
-        <label class="sm-label" for="sm-free-domain">
-          Optional target domain
-          <span
-            class="sm-help"
-            aria-label="Explain target domain"
-            data-sm-tooltip="If you already have a direction (fintech, healthcare, climate, etc.), add it so we bias your roles toward that domain."
-          >?</span>
-        </label>
-        <input
-          id="sm-free-domain"
-          class="sm-input"
-          placeholder="e.g., fintech, healthcare analytics"
-        />
-      </div>
-
-      <button id="sm-free-btn" class="sm-btn">Run Skill Mapper</button>
-      <div class="sm-hint">
-        Free runs use Silver credits. Pro users can still use Free mode (saves ⭐).
-      </div>
-    </div>
-
-    <!-- Pro panel -->
-    <div class="sm-card sm-pro">
-      {% if not is_pro %}
-        <div class="sm-lock">
-          <div class="sm-lock-body">
-            <div class="sm-lock-title">Skill Mapper Pro</div>
-            <div class="sm-lock-text">
-              Profile-aware mapping with scores, gaps, and “What’s hiring now”.
-            </div>
-            <a href="{{ feature_paths.billing }}" class="sm-btn sm-btn-upgrade">Upgrade to Pro</a>
-          </div>
+      <div class="flex flex-col items-start md:items-end gap-2 text-xs text-white/70">
+        {% if updated_tag %}
+        <div class="sm-tag inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Updated {{ updated_tag }}
         </div>
-      {% endif %}
-
-      <div class="sm-card-head">
-        <h2>Pro analysis (⭐)</h2>
-        <p>Use your Profile Portal + latest resume for a deep analysis.</p>
+        {% endif %}
+        <p class="text-[11px] text-white/55">
+          Free runs show a basic view + blurred Pro preview. Upgrade to unlock the full roadmap.
+        </p>
       </div>
+    </header>
 
-      <div class="sm-row">
-        <label class="sm-switch">
-          <input id="sm-pro-use-profile" type="checkbox" {% if is_pro %}checked{% endif %} />
-          <span>
-            Use Profile Portal
+    <!-- Input panels -->
+    <div class="sm-grid grid md:grid-cols-2 gap-5 mb-6">
+      <!-- Free panel -->
+      <section class="sm-card sm-card-free rounded-2xl p-4 md:p-5 relative overflow-hidden">
+        <div class="absolute -top-10 -right-10 w-32 h-32 bg-gradient-to-br from-indigo-500/25 to-sky-400/20 rounded-full blur-2xl pointer-events-none"></div>
+        <div class="sm-card-head relative">
+          <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+            Free run <span class="text-sm">🪙</span>
+          </h2>
+          <p class="text-xs text-slate-200/80 mt-1">
+            Paste your skills/interests. We’ll map roles and show Indian market hints.
+          </p>
+        </div>
+
+        <div class="mt-4 space-y-3 relative">
+          <label class="sm-label" for="sm-free-input">
+            Your skills &amp; interests
             <span
               class="sm-help"
-              aria-label="Explain Use Profile Portal"
-              data-sm-tooltip="When this is on, SkillMapper uses your saved profile (skills, projects, experience) as the main source of truth."
+              aria-label="Explain skills and interests"
+              data-sm-tooltip="Paste what you already know (languages, tools, coursework) plus topics you enjoy. We infer roles from this snapshot."
             >?</span>
-          </span>
-        </label>
-      </div>
+          </label>
+          <textarea
+            id="sm-free-input"
+            class="sm-textarea"
+            placeholder="e.g., Python, SQL, data structures, web dev, ML basics, interested in product-based companies"
+          ></textarea>
 
-      <div class="sm-inline">
-        <label class="sm-label" for="sm-pro-region">
-          Optional region/sector emphasis
-          <span
-            class="sm-help"
-            aria-label="Explain region/sector emphasis"
-            data-sm-tooltip="Tell us where and in what sector you care most about jobs, e.g., ‘US · fintech’ or ‘UK &amp; EU · SaaS’. We tilt demand estimates toward that."
-          >?</span>
-        </label>
-        <input
-          id="sm-pro-region"
-          class="sm-input"
-          placeholder="e.g., UK &amp; EU · SaaS"
-        />
-      </div>
+          <div class="sm-inline">
+            <label class="sm-label" for="sm-free-domain">
+              Optional target domain
+              <span
+                class="sm-help"
+                aria-label="Explain target domain"
+                data-sm-tooltip="If you already have a direction (fintech, cloud, data analytics, etc.), add it so we bias your roles toward that domain. Focus stays on the Indian market."
+              >?</span>
+            </label>
+            <input
+              id="sm-free-domain"
+              class="sm-input"
+              placeholder="e.g., Bangalore · product companies, fintech, cloud data roles"
+            />
+          </div>
 
-      <div class="sm-inline">
-        <label class="sm-label" for="sm-pro-horizon">
-          Time horizon
-          <span
-            class="sm-help"
-            aria-label="Explain time horizon"
-            data-sm-tooltip="How far ahead you’re planning: 3 months = quick wins, 6 months = deeper upskilling, 12 months = bigger pivots and stretch roles."
-          >?</span>
-        </label>
-        <select id="sm-pro-horizon" class="sm-input">
-          <option value="3">3 months</option>
-          <option value="6" selected>6 months</option>
-          <option value="12">12 months</option>
-        </select>
-      </div>
-
-      <label class="sm-label" for="sm-pro-resume">
-        Optional pasted resume (overrides file on profile)
-        <span
-          class="sm-help"
-          aria-label="Explain pasted resume override"
-          data-sm-tooltip="If your resume has changed since you uploaded it, paste the latest text here. We'll use this version for this run only."
-        >?</span>
-      </label>
-      <textarea
-        id="sm-pro-resume"
-        class="sm-textarea"
-        placeholder="Paste resume text to override what's on file (optional)"
-      ></textarea>
-
-      {% if is_pro %}
-        <button id="sm-pro-btn" class="sm-btn sm-btn-pro">Analyze from Profile</button>
-        <div class="sm-hint">
-          We read your Profile + latest resume on file. You can paste a resume to override.
+          <button id="sm-free-btn" class="sm-btn sm-btn-main mt-3">
+            Run Skill Mapper (Free)
+          </button>
+          <p class="sm-hint mt-2">
+            Free runs use Silver coins. Pro users can still use Free mode to save Gold ⭐.
+          </p>
         </div>
-      {% else %}
-        <div class="sm-disabled-note">Pro analysis requires an active Pro plan.</div>
-      {% endif %}
+      </section>
+
+      <!-- Pro panel -->
+      <section class="sm-card sm-card-pro rounded-2xl p-4 md:p-5 relative overflow-hidden">
+        <div class="absolute -bottom-14 -left-12 w-36 h-36 bg-gradient-to-tr from-fuchsia-500/25 via-rose-400/20 to-orange-400/20 rounded-full blur-2xl pointer-events-none"></div>
+
+        {% if not is_pro %}
+        <div class="sm-lock">
+          <div class="sm-lock-body">
+            <h3 class="sm-lock-title">Skill Mapper Pro</h3>
+            <p class="sm-lock-text">
+              Unlock 3-role roadmaps, India salary bands, and detailed learning paths tuned to your profile.
+            </p>
+            <a href="{{ url_for('billing.index') }}" class="sm-btn sm-btn-upgrade">
+              Upgrade to Pro ⭐
+            </a>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="sm-card-head relative">
+          <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+            Pro analysis <span class="text-sm">⭐</span>
+          </h2>
+          <p class="text-xs text-slate-200/80 mt-1">
+            Use your Profile Portal + latest resume for a deeper India-focused roadmap.
+          </p>
+        </div>
+
+        <div class="mt-4 space-y-3 relative">
+          <div class="sm-row">
+            <label class="sm-switch">
+              <input id="sm-pro-use-profile" type="checkbox" {% if is_pro %}checked{% endif %} />
+              <span>
+                Use Profile Portal
+                <span
+                  class="sm-help"
+                  aria-label="Explain Use Profile Portal"
+                  data-sm-tooltip="When this is on, Skill Mapper uses your saved profile (skills, projects, experience) plus resume as the main source of truth."
+                >?</span>
+              </span>
+            </label>
+          </div>
+
+          <div class="sm-inline">
+            <label class="sm-label" for="sm-pro-region">
+              Optional region/sector emphasis
+              <span
+                class="sm-help"
+                aria-label="Explain region/sector emphasis"
+                data-sm-tooltip="By default we focus on the Indian job market for students &amp; new grads. Add something like ‘Bangalore · data engineer’ or ‘India · product analytics’ to nudge demand estimates."
+              >?</span>
+            </label>
+            <input
+              id="sm-pro-region"
+              class="sm-input"
+              placeholder="e.g., Bangalore · product data roles"
+            />
+          </div>
+
+          <div>
+            <label class="sm-label" for="sm-pro-resume">
+              Optional pasted resume (overrides file on profile)
+              <span
+                class="sm-help"
+                aria-label="Explain pasted resume override"
+                data-sm-tooltip="If your resume has changed since upload, paste the latest version here. We only use it for this run."
+              >?</span>
+            </label>
+            <textarea
+              id="sm-pro-resume"
+              class="sm-textarea"
+              placeholder="Paste resume text to override what's on file (optional)"
+            ></textarea>
+          </div>
+
+          {% if is_pro %}
+          <button id="sm-pro-btn" class="sm-btn sm-btn-pro mt-2">
+            Analyze from Profile
+          </button>
+          <p class="sm-hint mt-2">
+            We read your Profile + latest resume on file. You can paste a newer resume above.
+          </p>
+          {% else %}
+          <p class="sm-disabled-note mt-2 text-xs text-slate-200/80">
+            Pro analysis requires an active Pro plan.
+          </p>
+          {% endif %}
+        </div>
+      </section>
     </div>
+
+    <!-- Results: populated by JS -->
+    <section id="sm-results" class="sm-results hidden mt-6">
+      <div id="sm-results-inner"></div>
+    </section>
+
+    <!-- Toast -->
+    <div id="sm-toast" class="sm-toast hidden"></div>
   </div>
-
-  <div id="sm-results" class="sm-results hidden">
-    <div class="sm-results-head">
-      <h2>Top 3 Roles</h2>
-      <div id="sm-meta" class="sm-meta"></div>
-    </div>
-
-    <aside id="sm-profile-snapshot" class="sm-profile hidden">
-      <!-- populated on Pro responses if meta.profile_snapshot exists -->
-    </aside>
-
-    <div id="sm-roles" class="sm-roles"></div>
-
-    <div class="sm-hiring">
-      <h3>What’s hiring now</h3>
-      <div id="sm-hiring-strip" class="sm-hiring-strip"></div>
-    </div>
-
-    <div class="sm-cta">
-      <button id="sm-add-portfolio" class="sm-btn-outline">
-        Add selected micro-project to Portfolio (opens editor)
-      </button>
-    </div>
-  </div>
-
-  <div id="sm-toast" class="sm-toast hidden"></div>
-</div>
+</section>
 {% endblock %}
 
 {% block scripts %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/skillmapper.css') }}">
 
-<!-- Safer JSON export for VS Code (no red squiggles) -->
-<script type="application/json" id="sm-config">
-  {
-    "is_pro": {{ is_pro | tojson }},
-    "settings_path": {{ (feature_paths.settings ~ '#projects') | tojson }}
+<style>
+  /* small, slower gradient just for Skill Mapper */
+  @keyframes caGradient-sm {
+    0%   { transform: translate3d(0,0,0) scale(1); }
+    50%  { transform: translate3d(-4%, -3%, 0) scale(1.03); }
+    100% { transform: translate3d(0,0,0) scale(1); }
   }
-</script>
+  .animate-caGradient-sm {
+    animation: caGradient-sm 28s ease-in-out infinite;
+  }
+</style>
 
 <script src="{{ url_for('static', filename='js/skillmapper.js') }}"></script>
 {% endblock %}

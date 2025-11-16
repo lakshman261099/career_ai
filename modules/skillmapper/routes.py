@@ -60,6 +60,7 @@ def _profile_json(user_id: int) -> dict:
 @bp.route("", methods=["GET"])
 @login_required
 def index():
+    # feature_paths is likely injected via a context processor elsewhere
     return render_template(
         "skillmapper/index.html",
         is_pro=current_user.is_pro,
@@ -71,6 +72,14 @@ def index():
 @bp.route("/free", methods=["POST"])
 @login_required
 def run_free():
+    """
+    Free Skill Mapper:
+    - Uses pasted skills/interests text only.
+    - Biased toward India · early-career roles via hints.
+    - Still returns the full JSON, but UI will show:
+      - Basic panel (full)
+      - Pro-style preview panel (blurred) for Free users.
+    """
     try:
         # Silver credit check for non-Pro users
         if not current_user.is_pro:
@@ -102,8 +111,12 @@ def run_free():
         if len(free_text_skills) > MAX_FREE_TEXT:
             free_text_skills = free_text_skills[:MAX_FREE_TEXT]
 
-        # Pass a small hint for domain to the generator while keeping API stable
-        free_hints = {}
+        # Hints for the AI generator (non-breaking)
+        free_hints = {
+            # Emphasize India + current snapshot use case
+            "region_focus": "India · early-career tech roles",
+            "focus": "current_snapshot",
+        }
         if target_domain:
             free_hints["target_domain"] = target_domain
 
@@ -111,8 +124,6 @@ def run_free():
             pro_mode=False,
             free_text_skills=free_text_skills,
             return_source=True,
-            # Safe extension: many implementations accept **kwargs; if not,
-            # the helper will ignore embedded hints inside the data it returns.
             hints=free_hints,
         )
 
@@ -128,7 +139,8 @@ def run_free():
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
                 source_title="Skill Mapper (Free)",
-                input_text=(target_domain + "\n\n" if target_domain else "") + free_text_skills,
+                input_text=(target_domain + "\n\n" if target_domain else "")
+                + free_text_skills,
                 skills_json=json_dumps_safe(data),
                 created_at=datetime.utcnow(),
             )
@@ -155,6 +167,12 @@ def run_free():
 @bp.route("/pro", methods=["POST"])
 @login_required
 def run_pro():
+    """
+    Pro Skill Mapper:
+    - Uses Profile Portal + latest resume (or pasted override).
+    - Focus is “current snapshot” (no more time horizon).
+    - Region is biased to India by default, with optional region/sector text.
+    """
     try:
         if not current_user.is_pro:
             return (
@@ -171,12 +189,6 @@ def run_pro():
         use_profile = bool(payload.get("use_profile", True))
         pasted_resume_text = (payload.get("resume_text") or "").strip()
         region_sector = (payload.get("region_sector") or "").strip()
-        time_horizon = (payload.get("time_horizon_months") or 6)
-        try:
-            time_horizon = int(time_horizon)
-        except Exception:
-            time_horizon = 6
-        time_horizon = max(3, min(12, time_horizon))
 
         profile = _profile_json(current_user.id) if use_profile else {}
 
@@ -196,18 +208,18 @@ def run_pro():
         if len(resume_text) > MAX_RESUME_TEXT:
             resume_text = resume_text[:MAX_RESUME_TEXT]
 
-        # Backward-compatible options pass-through:
-        # embed non-breaking SM options into the profile payload so ai.py can
-        # read them without changing generate_skillmap signature.
+        # Embed SM options into the profile payload so ai.py can read them without
+        # changing generate_skillmap signature.
         if profile is None:
             profile = {}
         profile = dict(profile or {})
         profile.setdefault("_skillmapper_options", {})
         profile["_skillmapper_options"].update(
             {
-                "region_sector": region_sector,
-                "time_horizon_months": time_horizon,
+                # Bias to India + allow extra hint from UI
+                "region_sector": region_sector or "India · early-career tech roles",
                 "use_profile": bool(use_profile),
+                "focus": "current_snapshot",
             }
         )
 
@@ -219,12 +231,11 @@ def run_pro():
         )
 
         log.info(
-            "SM/pro used_live_ai=%s profile_keys=%s resume_len=%d horizon=%s region=%s",
+            "SM/pro used_live_ai=%s profile_keys=%s resume_len=%d region=%s",
             used_live_ai,
             list((profile or {}).keys()),
             len(resume_text or ""),
-            time_horizon,
-            bool(region_sector),
+            region_sector or "India-default",
         )
 
         # Persist snapshot (best-effort)
@@ -232,7 +243,10 @@ def run_pro():
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
                 source_title="Skill Mapper (Pro)",
-                input_text=f"profile={'on' if use_profile else 'off'}; region={region_sector or '-'}; horizon={time_horizon}m",
+                input_text=(
+                    f"profile={'on' if use_profile else 'off'}; "
+                    f"region={region_sector or 'India-default'}"
+                ),
                 skills_json=json_dumps_safe(data),
                 created_at=datetime.utcnow(),
             )

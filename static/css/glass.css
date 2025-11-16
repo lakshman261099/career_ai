@@ -1,140 +1,335 @@
 :root{
-  --glass-bg: rgba(255,255,255,0.06);
-  --glass-brd: rgba(255,255,255,0.12);
-  --glass-brd-strong: rgba(255,255,255,0.22);
-  --glass-shadow: 0 10px 30px rgba(0,0,0,.35);
+  --glass-bg: rgba(15,23,42,0.75);
+  --glass-bg-soft: rgba(15,23,42,0.85);
+  --glass-brd: rgba(148,163,184,0.55);
+  --glass-brd-soft: rgba(148,163,184,0.35);
+  --glass-brd-strong: rgba(191,219,254,0.85);
+  --glass-shadow: 0 18px 45px rgba(2,6,23,.90);
+
+  --accent-amber: rgba(249,115,22,0.9);
+  --accent-amber-soft: rgba(251,146,60,0.4);
+  --accent-indigo: rgba(99,102,241,0.9);
+  --accent-fuchsia: rgba(217,70,239,0.9);
 }
 
-*{ box-sizing:border-box; }
-body{ font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial; }
+*{
+  box-sizing:border-box;
+}
+
+body{
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+  color:#f9fafb;
+}
+
+/* ===========================================================
+   Core Glass Surfaces
+   =========================================================== */
 
 .glass-panel{
-  background: linear-gradient(180deg, var(--glass-bg), rgba(255,255,255,0.03));
+  background:
+    radial-gradient(circle at top left, rgba(129,140,248,0.28), transparent 55%),
+    radial-gradient(circle at bottom right, rgba(249,115,22,0.22), transparent 50%),
+    var(--glass-bg-soft);
   border: 1px solid var(--glass-brd);
   box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-radius: 1.1rem;
 }
 
 .glass-card{
-  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-  border: 1px solid var(--glass-brd);
-  backdrop-filter: blur(8px);
+  background:
+    radial-gradient(circle at top left, rgba(129,140,248,0.22), transparent 60%),
+    radial-gradient(circle at bottom right, rgba(248,113,113,0.18), transparent 50%),
+    var(--glass-bg);
+  border: 1px solid var(--glass-brd-soft);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 1rem;
+  box-shadow: 0 14px 40px rgba(15,23,42,.85);
+  transition:
+    transform .16s ease-out,
+    box-shadow .16s ease-out,
+    border-color .16s ease-out,
+    background .16s ease-out;
+}
+
+.glass-card:hover{
+  transform: translateY(-2px);
+  border-color: var(--glass-brd-strong);
+  box-shadow: 0 22px 60px rgba(15,23,42,.95);
+  background:
+    radial-gradient(circle at top left, rgba(129,140,248,0.34), transparent 62%),
+    radial-gradient(circle at bottom right, rgba(248,113,113,0.22), transparent 52%),
+    rgba(15,23,42,0.92);
 }
 
 .glass-bar{
-  background: linear-gradient(120deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+  background:
+    linear-gradient(120deg, rgba(15,23,42,.96), rgba(15,23,42,.90));
   border: 1px solid var(--glass-brd);
-  backdrop-filter: blur(8px);
-  box-shadow: var(--glass-shadow);
+  box-shadow: 0 10px 40px rgba(15,23,42,1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
-/* Nav links / buttons */
-.nav-link{ color:rgba(255,255,255,0.8); transition:150ms ease; }
-.nav-link:hover{ color:#fff; }
+/* ===========================================================
+   Nav links / buttons
+   =========================================================== */
 
+.nav-link{
+  color:rgba(226,232,240,0.9);
+  transition:150ms ease;
+}
+
+.nav-link:hover{
+  color:#fff;
+}
+
+/* Note: .btn-primary / .btn-ghost are also defined inline in base.html;
+   this file just provides sane defaults for pages that don’t rely on Tailwind. */
 .btn-primary{
-  display:inline-flex;align-items:center;justify-content:center;
-  padding:.65rem 1rem;border-radius:.9rem;
-  background: linear-gradient(135deg, rgba(249,115,22,.85), rgba(251,146,60,.85));
-  border:1px solid var(--glass-brd-strong);
-  color:#fff;font-weight:700;
-  box-shadow:0 6px 18px rgba(249,115,22,.35);
-  transition: transform .12s ease, filter .12s ease;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:.65rem 1rem;
+  border-radius:999px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.9), rgba(79,70,229,0.95), rgba(249,115,22,.95));
+  border:1px solid rgba(191,219,254,.9);
+  color:#fff;
+  font-weight:700;
+  font-size:.875rem;
+  box-shadow:0 10px 32px rgba(79,70,229,.85);
+  transition:
+    transform .12s ease,
+    filter .12s ease,
+    box-shadow .12s ease;
+  text-decoration:none;
 }
-.btn-primary:hover{ filter:brightness(1.05); transform:translateY(-1px); }
+
+.btn-primary:hover{
+  filter:brightness(1.06);
+  transform:translateY(-1px);
+  box-shadow:0 16px 44px rgba(79,70,229,.95);
+}
 
 .btn-ghost{
-  display:inline-flex;align-items:center;justify-content:center;
-  padding:.6rem .9rem;border-radius:.9rem;
-  background: rgba(255,255,255,0.06);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:.6rem .9rem;
+  border-radius:999px;
+  background: rgba(15,23,42,0.8);
   border:1px solid var(--glass-brd);
-  color:#fff;font-weight:600;
+  color:rgba(248,250,252,.85);
+  font-weight:600;
+  font-size:.8rem;
   transition:120ms ease;
+  text-decoration:none;
 }
-.btn-ghost:hover{ background: rgba(255,255,255,0.1); }
 
-/* Inputs */
+.btn-ghost:hover{
+  background: rgba(15,23,42,0.95);
+  border-color: rgba(248,250,252,.55);
+  color:#fff;
+}
+
+/* ===========================================================
+   Inputs
+   =========================================================== */
+
 .input{
-  width:100%;padding:.7rem .9rem;border-radius:.8rem;
-  background: rgba(0,0,0,0.35);color:#fff;border:1px solid var(--glass-brd);
+  width:100%;
+  padding:.70rem .9rem;
+  border-radius:.9rem;
+  background: rgba(15,23,42,0.9);
+  color:#e5e7eb;
+  border:1px solid var(--glass-brd-soft);
   outline:none;
+  font-size:.9rem;
+  transition:border-color .14s ease, box-shadow .14s ease, background .14s ease;
 }
+
+.input::placeholder{
+  color:rgba(148,163,184,0.7);
+}
+
 .input:focus{
-  border-color: rgba(251,146,60,.7);
-  box-shadow: 0 0 0 3px rgba(251,146,60,.25);
+  border-color: rgba(251,146,60,.9);
+  box-shadow: 0 0 0 3px rgba(251,146,60,.35);
+  background: rgba(15,23,42,0.98);
 }
 
-/* Coins pill */
+/* Native selects / checkboxes used in some forms */
+select,
+input[type=text],
+input[type=checkbox]{
+  accent-color: var(--accent-amber);
+}
+
+/* ===========================================================
+   Coins pill
+   =========================================================== */
+
 .coins-pill{
-  display:flex;align-items:center;gap:.35rem;
-  padding:.35rem .6rem;border-radius:1rem;
-  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-  border:1px solid var(--glass-brd); backdrop-filter: blur(6px);
+  display:flex;
+  align-items:center;
+  gap:.35rem;
+  padding:.35rem .6rem;
+  border-radius:999px;
+  background:
+    linear-gradient(180deg, rgba(15,23,42,.9), rgba(15,23,42,.9));
+  border:1px solid var(--glass-brd);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   font-weight:700;
+  font-size: .72rem;
+  box-shadow:0 12px 28px rgba(15,23,42,.8);
 }
-.coins-chip{ font-size:.95rem; }
-.coins-sep{ opacity:.55; }
 
-/* Feature cards */
+.coins-chip{ font-size:.9rem; }
+.coins-sep{ opacity:.6; }
+
+/* ===========================================================
+   Landing Feature cards
+   =========================================================== */
+
 .feature-card{
-  position:relative; padding:1rem; border-radius:1.1rem;
-  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-  border:1px solid var(--glass-brd); backdrop-filter: blur(8px);
+  position:relative;
+  padding:1.05rem;
+  border-radius:1.1rem;
+  background:
+    radial-gradient(circle at top left, rgba(129,140,248,.25), transparent 60%),
+    radial-gradient(circle at bottom right, rgba(249,115,22,.22), transparent 55%),
+    rgba(15,23,42,.96);
+  border:1px solid var(--glass-brd);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   box-shadow: var(--glass-shadow);
-  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  overflow:hidden;
+  transition:
+    transform .18s ease,
+    box-shadow .18s ease,
+    border-color .18s ease,
+    background .18s ease;
 }
+
+/* Shimmer beam on hover */
+.feature-card::before{
+  content:"";
+  position:absolute;
+  inset:-30%;
+  background:linear-gradient(120deg, transparent, rgba(244,244,245,.28), transparent);
+  transform:translateX(-80%);
+  opacity:0;
+  pointer-events:none;
+}
+
 .feature-card:hover{
   transform: translateY(-3px);
   border-color: var(--glass-brd-strong);
-  box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  box-shadow: 0 24px 60px rgba(15,23,42,.95);
+  background:
+    radial-gradient(circle at top left, rgba(129,140,248,.32), transparent 62%),
+    radial-gradient(circle at bottom right, rgba(249,115,22,.26), transparent 55%),
+    rgba(15,23,42,.98);
+}
+
+.feature-card:hover::before{
+  opacity:.9;
+  animation: glassSweep 0.8s ease-out forwards;
+}
+
+@keyframes glassSweep{
+  from{ transform:translateX(-90%); }
+  to{   transform:translateX(40%); }
 }
 
 .feature-img{
-  width:100%; height:150px; object-fit:cover;
-  border-radius:.9rem; border:1px solid var(--glass-brd);
-  background: rgba(0,0,0,.25);
+  width:100%;
+  height:150px;
+  object-fit:cover;
+  border-radius:.9rem;
+  border:1px solid var(--glass-brd-soft);
+  background: radial-gradient(circle at center, rgba(15,23,42,.9), rgba(15,23,42,1));
 }
 
-.feature-title{ font-size:1.1rem; font-weight:800; }
+.feature-title{
+  font-size:1.05rem;
+  font-weight:800;
+}
 
 .feature-cta{
-  display:inline-block; margin-top:.8rem; font-weight:700;
-  color:#fff; padding:.4rem .65rem; border-radius:.7rem;
-  background: linear-gradient(135deg, rgba(249,115,22,.32), rgba(251,146,60,.18));
-  border:1px solid rgba(255,255,255,.12);
+  display:inline-block;
+  margin-top:.8rem;
+  font-weight:700;
+  font-size:.8rem;
+  color:#f9fafb;
+  padding:.35rem .7rem;
+  border-radius:.9rem;
+  background: linear-gradient(135deg, rgba(249,115,22,.36), rgba(251,146,60,.22));
+  border:1px solid rgba(248,250,252,.18);
 }
 
 /* Tiers */
 .tier{ margin-top:.55rem; }
+
 .tier-badge{
-  display:inline-block; font-size:.7rem; letter-spacing:.1em;
-  text-transform:uppercase; padding:.15rem .45rem; border-radius:.5rem;
-  border:1px solid var(--glass-brd); background: rgba(255,255,255,.06);
+  display:inline-block;
+  font-size:.7rem;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  padding:.15rem .45rem;
+  border-radius:.5rem;
+  border:1px solid var(--glass-brd);
+  background: rgba(15,23,42,.9);
 }
-.tier-badge.free{ color:#e5e7eb; }
-.tier-badge.pro{ color:#ffd89b; border-color: rgba(255,255,255,.22); background: rgba(255,184,77,.12); }
-.tier-list{ margin-top:.35rem; padding-left:1rem; color:rgba(255,255,255,.8); font-size:.9rem; }
-.tier-list li{ list-style:disc; margin:.15rem 0; }
+
+.tier-badge.free{
+  color:#e5e7eb;
+}
+
+.tier-badge.pro{
+  color:#fef9c3;
+  border-color: rgba(253,224,71,.85);
+  background: rgba(250,204,21,.16);
+}
+
+.tier-list{
+  margin-top:.35rem;
+  padding-left:1rem;
+  color:rgba(248,250,252,.86);
+  font-size:.9rem;
+}
+
+.tier-list li{
+  list-style:disc;
+  margin:.15rem 0;
+}
+
 .tier-cta{
-  display:inline-block; margin-top:.8rem; font-weight:700;
-  color:#fff; padding:.4rem .65rem; border-radius:.7rem;
+  display:inline-block;
+  margin-top:.8rem;
+  font-weight:700;
+  color:#fff;
+  padding:.4rem .65rem;
+  border-radius:.7rem;
   background: linear-gradient(135deg, rgba(249,115,22,.32), rgba(251,146,60,.18));
   border:1px solid rgba(255,255,255,.12);
 }
 
 /* ===========================================================
-   Portfolio Wizard Enhancements (Free vs Pro)
+   Portfolio / Wizard Enhancements (Free vs Pro)
    =========================================================== */
 
-/* Grid and layout helpers */
+/* Simple grid helpers where Tailwind not used directly */
 .grid { display: grid; }
 .gap-6 { gap: 1.5rem; }
 .space-y-4 > * + * { margin-top: 1rem; }
 
-/* Input alignment & form styling */
-label { font-weight: 600; color: rgba(255,255,255,0.85); }
-select, input[type=text], input[type=checkbox] {
-  accent-color: rgba(249,115,22,.9);
+label {
+  font-weight: 600;
+  color: rgba(248,250,252,0.88);
 }
 
 /* Chips (Focus Areas) */
@@ -144,67 +339,138 @@ select, input[type=text], input[type=checkbox] {
   gap: .5rem;
   margin-top: .25rem;
 }
+
 .chip {
   display: inline-flex;
   align-items: center;
   gap: .4rem;
   padding: .35rem .6rem;
   border-radius: 9999px;
-  background: rgba(255,255,255,.07);
-  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(15,23,42,.9);
+  border: 1px solid rgba(148,163,184,.8);
   font-size: .85rem;
   cursor: pointer;
   user-select: none;
   transition: 120ms ease;
 }
-.chip:hover { background: rgba(255,255,255,.1); }
+
+.chip:hover {
+  background: rgba(15,23,42,1);
+  border-color: rgba(191,219,254,1);
+}
+
 .chip input {
   appearance: none;
-  width: 14px; height: 14px;
-  border: 1px solid rgba(255,255,255,.4);
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(148,163,184,.9);
   border-radius: 3px;
   display: inline-block;
   position: relative;
 }
+
 .chip input:checked {
-  background: rgba(249,115,22,.9);
-  border-color: rgba(249,115,22,1);
+  background: var(--accent-amber);
+  border-color: var(--accent-amber);
 }
 
-/* Lock overlay for Pro users */
+/* Lock overlay for Pro content previews */
 .lock-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: radial-gradient(circle at center, rgba(15,23,42,0.92), rgba(15,23,42,0.96));
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   z-index: 10;
 }
+
 .lock-card {
   width: 100%;
   max-width: 360px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(20,20,28,.8);
+  border: 1px solid rgba(191,219,254,.75);
+  background: radial-gradient(circle at top, rgba(37,99,235,.25), rgba(15,23,42,.96));
   border-radius: 16px;
   padding: 20px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  box-shadow: 0 18px 40px rgba(15,23,42,.95);
   text-align: center;
 }
+
 .lock-card h4 {
   font-size: 1.1rem;
   font-weight: 700;
   margin-bottom: .3rem;
 }
+
 .lock-card p {
   font-size: .9rem;
-  color: rgba(255,255,255,.7);
+  color: rgba(226,232,240,.9);
   margin-bottom: .75rem;
 }
 
-/* Utility spacing */
+/* ===========================================================
+   Suggestion cards / small cards
+   =========================================================== */
+
+.suggestion-card {
+  border: 1px solid rgba(148,163,184,.65);
+  background:
+    radial-gradient(circle at top left, rgba(56,189,248,.15), transparent 60%),
+    rgba(15,23,42,.96);
+  border-radius: 1rem;
+  padding: 1rem;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+  box-shadow: 0 12px 30px rgba(15,23,42,.9);
+}
+
+.suggestion-card:hover {
+  border-color: var(--glass-brd-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 20px 42px rgba(15,23,42,1);
+}
+
+/* ===========================================================
+   Typography helpers
+   =========================================================== */
+
+.text-xs { font-size: .75rem; }
+.text-sm { font-size: .875rem; }
+
+.text-white\/50 { color: rgba(248,250,252,.5); }
+.text-white\/60 { color: rgba(248,250,252,.6); }
+.text-white\/70 { color: rgba(248,250,252,.7); }
+.text-white\/80 { color: rgba(248,250,252,.8); }
+
+/* Selects: ensure dropdown options are readable */
+.select {
+  color: #e5e7eb;
+  background: rgba(15,23,42,0.95);
+  border: 1px solid var(--glass-brd);
+}
+
+.select:focus {
+  border-color: rgba(251,146,60,.9);
+  box-shadow: 0 0 0 3px rgba(251,146,60,.35);
+}
+
+select option {
+  color: #020617;
+  background: #f9fafb;
+}
+
+@supports (-webkit-appearance:none) {
+  select option {
+    color: #020617;
+    background: #f9fafb;
+  }
+}
+
+/* Utilities */
 .mt-3 { margin-top: .75rem; }
 .mt-4 { margin-top: 1rem; }
 .mt-6 { margin-top: 1.5rem; }
@@ -212,44 +478,4 @@ select, input[type=text], input[type=checkbox] {
 .rounded-xl { border-radius: 1rem; }
 .rounded-2xl { border-radius: 1.25rem; }
 
-/* Improve visual balance for suggestion cards */
-.suggestion-card {
-  border: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.03);
-  border-radius: 1rem;
-  padding: 1rem;
-  backdrop-filter: blur(6px);
-  transition: border-color .15s ease, transform .15s ease;
-}
-.suggestion-card:hover {
-  border-color: var(--glass-brd-strong);
-  transform: translateY(-2px);
-}
-
-/* Smaller typography for stack / metadata lines */
-.text-xs { font-size: .75rem; color: rgba(255,255,255,.6); }
-.text-sm { font-size: .875rem; color: rgba(255,255,255,.85); }
-.text-white\/60 { color: rgba(255,255,255,.6); }
-.text-white\/70 { color: rgba(255,255,255,.7); }
-.text-white\/50 { color: rgba(255,255,255,.5); }
-.text-white\/80 { color: rgba(255,255,255,.8); }
-
-/* Selects: ensure dropdown options are readable */
-.select {
-  color: #fff; background: rgba(255,255,255,0.06);
-  border: 1px solid var(--glass-brd);
-}
-.select:focus {
-  border-color: rgba(251,146,60,.7);
-  box-shadow: 0 0 0 3px rgba(251,146,60,.25);
-}
-select option {
-  color: #000;
-  background: #fff;
-}
-@supports (-webkit-appearance:none) {
-  select option { color: #000; background: #fff; }
-}
-
-/* show/hide helper */
-.hidden { display: none; }
+.hidden { display:none; }

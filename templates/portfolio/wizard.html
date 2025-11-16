@@ -1,58 +1,97 @@
 {% extends "base.html" %}
 {% block title %}Portfolio Wizard — CareerAI{% endblock %}
+
 {% block content %}
-<section class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-10 space-y-6">
+<section class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-10 pb-16 space-y-8">
 
   <!-- Header -->
-  <div class="glass-panel rounded-2xl p-6">
-    <div class="flex items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-extrabold">Portfolio Wizard</h1>
-        <p class="text-white/70 text-sm">
-          Get tailored, career-ready project ideas. Free gives 1 idea. Pro unlocks 3 deeply analyzed ideas that use your Profile Portal.
+  <header class="glass-panel rounded-2xl p-6 relative overflow-hidden">
+    <div class="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-gradient-to-br from-indigo-500/40 to-fuchsia-400/30 blur-3xl"></div>
+    <div class="pointer-events-none absolute -left-10 -bottom-10 h-40 w-40 rounded-full bg-gradient-to-tr from-amber-500/40 to-rose-400/30 blur-3xl"></div>
+
+    <div class="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div class="space-y-2">
+        <p class="text-[11px] uppercase tracking-[0.18em] text-white/60">
+          Portfolio Builder
         </p>
-      </div>
-      <div class="text-xs shrink-0">
-        {% set _is_pro = (subscription_status|default('free')|lower == 'pro') %}
-        {% if _is_pro %}
-          <span class="px-2 py-1 rounded-full bg-white/10 border border-white/20">Pro ⭐</span>
-        {% else %}
-          <span class="px-2 py-1 rounded-full bg-white/10 border border-white/20">Free 🪙</span>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">
+          Turn your skills into recruiter-ready projects.
+        </h1>
+        <p class="text-sm text-white/70 max-w-2xl">
+          Free gives you 1 strong project idea. Pro unlocks 3 deep, profile-aware ideas with stack,
+          milestones, resume bullets, and stretch goals designed for Indian student job hunts.
+        </p>
+        {% if updated_tag %}
+          <p class="text-[11px] text-white/50">
+            Updated {{ updated_tag }}
+          </p>
         {% endif %}
       </div>
+      <div class="flex flex-col items-end gap-2 text-xs">
+        {% set _is_pro = (subscription_status|default('free')|lower == 'pro') %}
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/20">
+          <span class="text-white/70">Plan:</span>
+          {% if _is_pro %}
+            <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-300/70 text-emerald-100">Pro ⭐</span>
+          {% else %}
+            <span class="px-2 py-0.5 rounded-full bg-white/10 border border-white/30 text-white/80">Free 🪙</span>
+          {% endif %}
+        </div>
+        <p class="text-[11px] text-white/50">
+          Free: 1 idea. Pro: 3 deep ideas + publishing.
+        </p>
+      </div>
     </div>
-  </div>
+  </header>
 
-  <!-- Two columns: Free vs Pro -->
+  <!-- Two-column layout -->
   <div class="grid md:grid-cols-2 gap-6">
 
     <!-- FREE COLUMN -->
-    <section class="glass-panel rounded-2xl p-6">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-bold">Free (🪙)</h2>
-        <div class="text-xs text-white/60">You have: {{ user_free|default(0) }} 🪙</div>
+    <section class="glass-panel rounded-2xl p-6 flex flex-col gap-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-bold flex items-center gap-2">
+            <span class="inline-flex h-7 w-7 rounded-lg bg-sky-500/20 border border-sky-300/60 items-center justify-center text-sky-100 text-sm">F</span>
+            Free (🪙)
+          </h2>
+          <p class="text-xs text-white/70 mt-1">
+            Quick single project idea from your target role + industry.
+          </p>
+        </div>
+        <div class="text-xs text-white/60 text-right">
+          <div>You have: {{ user_free|default(0) }} 🪙</div>
+        </div>
       </div>
 
-      <form method="POST" action="{{ url_for('portfolio.wizard') }}" class="space-y-4 mt-4">
+      <form method="POST" action="{{ url_for('portfolio.wizard') }}" class="space-y-4 mt-2">
         <input type="hidden" name="action" value="suggest_free">
 
         <div class="grid sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-sm mb-1">Target Role</label>
-            <input name="target_role_free" value="{{ target_role|default('') }}" placeholder="e.g., Backend Engineer"
-                   class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+            <label class="block text-sm mb-1">Target role</label>
+            <input
+              name="target_role_free"
+              value="{{ target_role|default('') }}"
+              placeholder="e.g., Backend Engineer"
+              class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/70">
           </div>
           <div>
             <label class="block text-sm mb-1">Industry</label>
-            <input name="industry_free" value="{{ industry|default('') }}" placeholder="e.g., Fintech"
-                   class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+            <input
+              name="industry_free"
+              value="{{ industry|default('') }}"
+              placeholder="e.g., Fintech, SaaS"
+              class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/70">
           </div>
         </div>
 
         <div>
-          <label class="block text-sm mb-1">Experience Level</label>
+          <label class="block text-sm mb-1">Experience level</label>
           {% set _lvl = experience_level|default('') %}
-          <select name="experience_level_free" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+          <select
+            name="experience_level_free"
+            class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/70">
             <option value=""        {% if _lvl=='' %}selected{% endif %}>Select…</option>
             <option value="student" {% if _lvl=='student' %}selected{% endif %}>Student</option>
             <option value="junior"  {% if _lvl=='junior' %}selected{% endif %}>Junior</option>
@@ -61,81 +100,115 @@
           </select>
         </div>
 
-        <button type="submit" class="btn-primary w-full">Get 1 Suggestion</button>
+        <button type="submit" class="btn-primary w-full">
+          Get 1 suggestion
+        </button>
+        <p class="text-[11px] text-white/60">
+          Free uses a small number of tokens per run. Good for quick validation.
+        </p>
       </form>
 
       {% if free_suggestions and free_suggestions|length %}
-      <div class="mt-6 space-y-3">
-        {% for s in free_suggestions %}
-          <div class="suggestion-card">
-            <div class="font-semibold">{{ s.title }}</div>
-            {% if s.why %}<div class="text-white/70 text-sm mt-1">{{ s.why }}</div>{% endif %}
+        <div class="mt-5 space-y-3">
+          {% for s in free_suggestions %}
+            <article class="suggestion-card">
+              <h3 class="font-semibold text-sm">{{ s.title }}</h3>
+              {% if s.why %}
+                <p class="text-white/70 text-xs mt-1">
+                  {{ s.why }}
+                </p>
+              {% endif %}
 
-            {% if s.what %}
-              <div class="mt-2">
-                <div class="font-medium text-sm">What you’ll build</div>
-                <ul class="list-disc pl-6 text-sm space-y-1 mt-1">
-                  {% for w in s.what %}<li>{{ w }}</li>{% endfor %}
-                </ul>
-              </div>
-            {% endif %}
+              {% if s.what %}
+                <div class="mt-3">
+                  <div class="font-medium text-xs uppercase tracking-wide text-white/70 mb-1">
+                    What you’ll build
+                  </div>
+                  <ul class="list-disc pl-5 text-sm space-y-1">
+                    {% for w in s.what %}<li>{{ w }}</li>{% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
 
-            {% if s.milestones %}
-              <div class="mt-2">
-                <div class="font-medium text-sm">Milestones (≈2 weeks)</div>
-                <ul class="list-disc pl-6 text-sm space-y-1 mt-1">
-                  {% for m in s.milestones %}<li>{{ m }}</li>{% endfor %}
-                </ul>
-              </div>
-            {% endif %}
+              {% if s.milestones %}
+                <div class="mt-3">
+                  <div class="font-medium text-xs uppercase tracking-wide text-white/70 mb-1">
+                    Milestones (~2 weeks)
+                  </div>
+                  <ul class="list-disc pl-5 text-sm space-y-1">
+                    {% for m in s.milestones %}<li>{{ m }}</li>{% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
 
-            {% if s.stack and s.stack|length %}
-              <div class="text-xs text-white/60 mt-2">Stack: {{ s.stack | join(', ') }}</div>
-            {% endif %}
+              {% if s.stack and s.stack|length %}
+                <p class="text-[11px] text-white/60 mt-2">
+                  Stack: {{ s.stack | join(', ') }}
+                </p>
+              {% endif %}
 
-            {% if s.resume_bullets %}
-              <div class="mt-2">
-                <div class="font-medium text-sm">Resume Bullets</div>
-                <ul class="list-disc pl-6 text-sm space-y-1 mt-1">
-                  {% for b in s.resume_bullets %}<li>{{ b }}</li>{% endfor %}
-                </ul>
-              </div>
-            {% endif %}
-          </div>
-        {% endfor %}
-      </div>
+              {% if s.resume_bullets %}
+                <div class="mt-3">
+                  <div class="font-medium text-xs uppercase tracking-wide text-white/70 mb-1">
+                    Resume bullets
+                  </div>
+                  <ul class="list-disc pl-5 text-sm space-y-1">
+                    {% for b in s.resume_bullets %}<li>{{ b }}</li>{% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
       {% endif %}
     </section>
 
     <!-- PRO COLUMN -->
     <section class="glass-panel rounded-2xl p-0 overflow-hidden relative">
       {% set _is_pro = (subscription_status|default('free')|lower == 'pro') %}
-      <div class="p-6">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-bold">Pro (⭐) — Deep</h2>
-          <div class="text-xs text-white/60">You have: {{ user_pro|default(0) }} ⭐</div>
+      <div class="p-6 space-y-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold flex items-center gap-2">
+              <span class="inline-flex h-7 w-7 rounded-lg bg-violet-500/25 border border-violet-300/70 items-center justify-center text-violet-100 text-sm">P</span>
+              Pro (⭐) — Deep Builder
+            </h2>
+            <p class="text-xs text-white/70 mt-1 max-w-md">
+              3 fully fleshed project ideas with milestones, rubric, risks, and resume bullets.
+              Uses your Profile Portal when enabled.
+            </p>
+          </div>
+          <div class="text-xs text-white/60 text-right">
+            <div>You have: {{ user_pro|default(0) }} ⭐</div>
+          </div>
         </div>
 
-        <form method="POST" action="{{ url_for('portfolio.wizard') }}" class="space-y-4 mt-4">
+        <form method="POST" action="{{ url_for('portfolio.wizard') }}" class="space-y-4">
           <input type="hidden" name="action" value="suggest_pro">
 
           <div class="grid sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-sm mb-1">Target Role</label>
-              <input name="target_role_pro" placeholder="e.g., Backend Engineer"
-                     class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              <label class="block text-sm mb-1">Target role</label>
+              <input
+                name="target_role_pro"
+                placeholder="e.g., Backend Engineer"
+                class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400/70">
             </div>
             <div>
               <label class="block text-sm mb-1">Industry</label>
-              <input name="industry_pro" placeholder="e.g., Fintech"
-                     class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              <input
+                name="industry_pro"
+                placeholder="e.g., Fintech, SaaS"
+                class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400/70">
             </div>
           </div>
 
           <div class="grid sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-sm mb-1">Experience Level</label>
-              <select name="experience_level_pro" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              <label class="block text-sm mb-1">Experience level</label>
+              <select
+                name="experience_level_pro"
+                class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400/70">
                 <option value="">Select…</option>
                 <option value="student">Student</option>
                 <option value="junior">Junior</option>
@@ -144,8 +217,10 @@
               </select>
             </div>
             <div>
-              <label class="block text-sm mb-1">Time Budget</label>
-              <select name="time_budget" class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+              <label class="block text-sm mb-1">Time budget</label>
+              <select
+                name="time_budget"
+                class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400/70">
                 <option value="2w">~2 weeks</option>
                 <option value="4w" selected>~4 weeks</option>
                 <option value="6w">~6 weeks</option>
@@ -154,132 +229,157 @@
           </div>
 
           <div>
-            <label class="block text-sm mb-1">Focus Area</label>
+            <label class="block text-sm mb-1">Focus area</label>
             <div class="chip-row">
               {% for opt in ['Backend','Data','Cloud','Frontend','AI/ML','DevOps','Security','IoT','Game'] %}
-                <label class="chip"><input type="checkbox" name="focus_area" value="{{ opt }}"> <span>{{ opt }}</span></label>
+                <label class="chip">
+                  <input type="checkbox" name="focus_area" value="{{ opt }}">
+                  <span>{{ opt }}</span>
+                </label>
               {% endfor %}
             </div>
           </div>
 
           <div>
-            <label class="block text-sm mb-1">Preferred Stack (comma or space separated)</label>
-            <input name="preferred_stack" placeholder="e.g., Python, Flask, Postgres, Docker"
-                   class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+            <label class="block text-sm mb-1">Preferred stack (comma or space separated)</label>
+            <input
+              name="preferred_stack"
+              placeholder="e.g., Python, Flask, Postgres, Docker"
+              class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400/70">
           </div>
 
-          <label class="inline-flex items-center gap-2 text-sm">
+          <label class="inline-flex items-center gap-2 text-sm mt-1">
             <input type="checkbox" name="use_profile" value="1" checked>
-            <span>Use my Profile Portal (skills, experience) for tailoring</span>
+            <span>Use my Profile Portal for tailoring</span>
           </label>
 
           {% if _is_pro %}
-            <button type="submit" class="btn-primary w-full">Get 3 Deep Suggestions ⭐</button>
+            <button type="submit" class="btn-primary w-full">
+              Get 3 deep suggestions ⭐
+            </button>
           {% else %}
-            <a class="btn-primary w-full" href="{{ feature_paths.billing }}">Upgrade to Pro to unlock ⭐</a>
+            <a class="btn-primary w-full text-center" href="{{ feature_paths.billing }}">
+              Upgrade to Pro to unlock ⭐
+            </a>
           {% endif %}
         </form>
 
         {% if pro_suggestions and pro_suggestions|length %}
-        <div class="mt-6 space-y-3">
-          {% for s in pro_suggestions %}
-            <div class="suggestion-card">
-              <div class="font-semibold">{{ s.title }}</div>
-              {% if s.why %}<div class="text-white/70 text-sm mt-1">{{ s.why }}</div>{% endif %}
+          <div class="mt-6 space-y-3">
+            {% for s in pro_suggestions %}
+              <article class="suggestion-card">
+                <h3 class="font-semibold text-sm">{{ s.title }}</h3>
+                {% if s.why %}
+                  <p class="text-white/70 text-xs mt-1">
+                    {{ s.why }}
+                  </p>
+                {% endif %}
 
-              {% if s.stack and s.stack|length %}
-                <div class="text-xs text-white/60 mt-2">Stack: {{ s.stack | join(', ') }}</div>
-              {% endif %}
+                {% if s.stack and s.stack|length %}
+                  <p class="text-[11px] text-white/60 mt-2">
+                    Stack: {{ s.stack | join(', ') }}
+                  </p>
+                {% endif %}
 
-              {% if s.what %}
-                <div class="mt-2">
-                  <div class="font-medium text-sm">What you’ll build (6 items)</div>
-                  <ul class="list-disc pl-6 text-sm space-y-1 mt-1">
-                    {% for w in s.what %}<li>{{ w }}</li>{% endfor %}
-                  </ul>
-                </div>
-              {% endif %}
+                {% if s.what %}
+                  <div class="mt-3">
+                    <div class="font-medium text-xs uppercase tracking-wide text-white/70 mb-1">
+                      What you’ll build
+                    </div>
+                    <ul class="list-disc pl-5 text-sm space-y-1">
+                      {% for w in s.what %}<li>{{ w }}</li>{% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
 
-              {% if s.milestones %}
-                <div class="mt-2">
-                  <div class="font-medium text-sm">Milestones</div>
-                  <ul class="list-disc pl-6 text-sm space-y-1 mt-1">
-                    {% for m in s.milestones %}<li>{{ m }}</li>{% endfor %}
-                  </ul>
-                </div>
-              {% endif %}
+                {% if s.milestones %}
+                  <div class="mt-3">
+                    <div class="font-medium text-xs uppercase tracking-wide text-white/70 mb-1">
+                      Milestones
+                    </div>
+                    <ul class="list-disc pl-5 text-sm space-y-1">
+                      {% for m in s.milestones %}<li>{{ m }}</li>{% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
 
-              {% if s.rubric %}
-                <div class="mt-2">
-                  <div class="font-medium text-sm">Success Criteria (Rubric)</div>
-                  <ul class="list-disc pl-6 text-sm space-y-1 mt-1">
-                    {% for r in s.rubric %}<li>{{ r }}</li>{% endfor %}
-                  </ul>
-                </div>
-              {% endif %}
+                {% if s.rubric %}
+                  <div class="mt-3">
+                    <div class="font-medium text-xs uppercase tracking-wide text-white/70 mb-1">
+                      Success criteria (rubric)
+                    </div>
+                    <ul class="list-disc pl-5 text-sm space-y-1">
+                      {% for r in s.rubric %}<li>{{ r }}</li>{% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
 
-              {% if s.risks %}
-                <div class="mt-2">
-                  <div class="font-medium text-sm">Risks & Mitigations</div>
-                  <ul class="list-disc pl-6 text-sm space-y-1 mt-1">
-                    {% for r in s.risks %}<li>{{ r }}</li>{% endfor %}
-                  </ul>
-                </div>
-              {% endif %}
+                {% if s.risks %}
+                  <div class="mt-3">
+                    <div class="font-medium text-xs uppercase tracking-wide text-white/70 mb-1">
+                      Risks & mitigations
+                    </div>
+                    <ul class="list-disc pl-5 text-sm space-y-1">
+                      {% for r in s.risks %}<li>{{ r }}</li>{% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
 
-              {% if s.stretch_goals %}
-                <div class="mt-2">
-                  <div class="font-medium text-sm">Stretch Goals</div>
-                  <ul class="list-disc pl-6 text-sm space-y-1 mt-1">
-                    {% for g in s.stretch_goals %}<li>{{ g }}</li>{% endfor %}
-                  </ul>
-                </div>
-              {% endif %}
+                {% if s.stretch_goals %}
+                  <div class="mt-3">
+                    <div class="font-medium text-xs uppercase tracking-wide text-white/70 mb-1">
+                      Stretch goals
+                    </div>
+                    <ul class="list-disc pl-5 text-sm space-y-1">
+                      {% for g in s.stretch_goals %}<li>{{ g }}</li>{% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
 
-              {% if s.resume_bullets %}
-                <div class="mt-2">
-                  <div class="font-medium text-sm">Resume Bullets</div>
-                  <ul class="list-disc pl-6 text-sm space-y-1 mt-1">
-                    {% for b in s.resume_bullets %}<li>{{ b }}</li>{% endfor %}
-                  </ul>
-                </div>
-              {% endif %}
-            </div>
-          {% endfor %}
-        </div>
+                {% if s.resume_bullets %}
+                  <div class="mt-3">
+                    <div class="font-medium text-xs uppercase tracking-wide text-white/70 mb-1">
+                      Resume bullets
+                    </div>
+                    <ul class="list-disc pl-5 text-sm space-y-1">
+                      {% for b in s.resume_bullets %}<li>{{ b }}</li>{% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
+              </article>
+            {% endfor %}
+          </div>
         {% endif %}
       </div>
 
       {% if not _is_pro %}
-      <div class="lock-overlay">
-        <div class="lock-card">
-          <div class="text-lg font-bold">Pro Required</div>
-          <div class="text-white/70 text-sm mt-1">Unlock 3 deep, profile-aware project ideas.</div>
-          <a href="{{ feature_paths.billing }}" class="btn-primary mt-3 w-full">Upgrade to Pro ⭐</a>
+        <div class="lock-overlay">
+          <div class="lock-card">
+            <h4>Pro Required</h4>
+            <p>Unlock 3 deep, profile-aware project ideas and public publishing.</p>
+            <a href="{{ feature_paths.billing }}" class="btn-primary mt-3 w-full text-center">
+              Upgrade to Pro ⭐
+            </a>
+          </div>
         </div>
-      </div>
       {% endif %}
     </section>
   </div>
 
-  <!-- Footer actions -->
-  <div class="flex flex-wrap items-center gap-3">
-    <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost">Preview Portfolio Page</a>
-    {% if subscription_status|default('free')|lower == 'pro' %}
-      <a href="{{ url_for('portfolio.publish') }}" class="btn-ghost">Publish from Profile ⭐</a>
-    {% else %}
-      <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
-    {% endif %}
-  </div>
-
   <!-- Profile snapshot -->
-  <aside class="glass-panel rounded-2xl p-6">
-    <h3 class="text-sm font-semibold">Profile Snapshot</h3>
+  <aside class="glass-panel rounded-2xl p-6 space-y-2">
+    <div class="flex items-center justify-between">
+      <h3 class="text-sm font-semibold">Profile snapshot</h3>
+      <a href="{{ feature_paths.profile }}" class="text-[11px] underline">
+        Open Profile Portal →
+      </a>
+    </div>
     {% set p = prof %}
-    <div class="mt-3 text-sm space-y-2">
+    <div class="mt-2 text-sm space-y-2">
       <div><span class="text-white/60">Name:</span> {{ (p.full_name if p else current_user.name) or '—' }}</div>
       <div><span class="text-white/60">Headline:</span> {{ (p.headline if p else '') or '—' }}</div>
-      <div><span class="text-white/60">Skills:</span>
+      <div>
+        <span class="text-white/60">Skills:</span>
         {% if p and p.skills %}
           {% for s in p.skills %}
             {{ (s.name if s.name is defined else s['name'] if 'name' in s else '') }}{% if not loop.last %}, {% endif %}
@@ -289,7 +389,6 @@
         {% endif %}
       </div>
     </div>
-    <a href="{{ feature_paths.profile }}" class="underline text-xs inline-block mt-3">Open Profile Portal →</a>
   </aside>
 </section>
 {% endblock %}

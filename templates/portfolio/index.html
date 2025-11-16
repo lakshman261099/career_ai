@@ -1,57 +1,199 @@
 {% extends "base.html" %}
 {% block title %}Your Portfolio Pages — CareerAI{% endblock %}
+
 {% block content %}
-<section class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-10 space-y-6">
-  <div class="glass-panel rounded-2xl p-6 flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-extrabold">Your Portfolio Pages</h1>
-      <p class="text-white/70 text-sm">Use the Wizard to get ideas. Publish builds a full page from your Profile Portal.</p>
-    </div>
-    <div class="flex items-center gap-2">
-      <a href="{{ url_for('portfolio.wizard') }}" class="btn-ghost">Open Wizard</a>
-      <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost">Preview from Profile</a>
-      {% if subscription_status|default('free')|lower == 'pro' %}
-        <a href="{{ url_for('portfolio.publish') }}" class="btn-primary">Publish from Profile ⭐</a>
-      {% else %}
-        <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
-      {% endif %}
+<section class="relative overflow-hidden">
+  <!-- Soft animated background layer -->
+  <div class="pointer-events-none absolute inset-0 -z-10">
+    <div class="w-full h-full opacity-60 animate-caGradient
+                bg-[radial-gradient(circle_at_top_left,#4f46e5_0,transparent_55%),radial-gradient(circle_at_bottom_right,#f97316_0,transparent_55%)]">
     </div>
   </div>
 
-  {% if pages and pages|length %}
-    <div class="space-y-3">
-      {% for p in pages %}
-        <div class="glass-panel rounded-2xl p-4 flex items-center justify-between">
-          <div class="min-w-0">
-            <div class="font-semibold truncate">{{ p.title }}</div>
-            <div class="text-xs text-white/60 mt-0.5">
-              Created {{ (p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '—') }}
-              • {{ 'Public' if p.is_public else 'Private' }}
-            </div>
-          </div>
-          <div class="flex items-center gap-2 shrink-0">
-            {% if p.is_public %}
-              <a class="btn-primary" target="_blank" rel="noopener" href="{{ url_for('portfolio.view', page_id=p.id) }}">Open Public Link</a>
-            {% else %}
-              <span class="btn-ghost">Private</span>
-            {% endif %}
-          </div>
+  <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-10 pb-16 space-y-8">
+    <!-- Header / Hero -->
+    <header class="glass-panel rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div class="space-y-2">
+        <p class="text-[11px] uppercase tracking-[0.18em] text-white/60">
+          Portfolio Hub
+        </p>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">
+          Ship a recruiter-ready portfolio, straight from your profile.
+        </h1>
+        <p class="text-sm text-white/70 max-w-xl">
+          Use the Wizard to generate project ideas. When you’re ready, publish a clean portfolio page
+          powered by your Profile Portal and projects.
+        </p>
+        {% if updated_tag %}
+          <p class="text-[11px] text-white/50">
+            Updated {{ updated_tag }}
+          </p>
+        {% endif %}
+      </div>
+
+      <div class="flex flex-col items-end gap-3 text-xs">
+        <div class="flex flex-wrap gap-2 justify-end">
+          <a href="{{ url_for('portfolio.wizard') }}" class="btn-primary">
+            Open Portfolio Wizard
+          </a>
+          <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost">
+            Live Preview from Profile
+          </a>
         </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="glass-panel rounded-2xl p-6">
-      <p class="text-white/70 text-sm">No portfolio pages yet.</p>
-      <div class="mt-3 flex items-center gap-2">
-        <a href="{{ url_for('portfolio.wizard') }}" class="btn-ghost">Open Wizard</a>
-        <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost">Preview from Profile</a>
+        <div class="flex flex-wrap gap-2 justify-end text-[11px] text-white/60">
+          {% if subscription_status|default('free')|lower == 'pro' %}
+            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-300/60 text-emerald-100">
+              Pro ⭐ Publishing Unlocked
+            </span>
+          {% else %}
+            <a href="{{ feature_paths.billing }}"
+               class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/5 border border-white/25 hover:bg-white/10 transition">
+              <span>Upgrade to publish public portfolio ⭐</span>
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <!-- Actions row -->
+    <div class="grid sm:grid-cols-3 gap-4">
+      <div class="glass-card p-4 flex flex-col gap-1">
+        <div class="text-xs text-white/60">Step 1</div>
+        <div class="font-semibold text-sm flex items-center gap-2">
+          <span class="inline-flex h-7 w-7 rounded-lg bg-indigo-500/20 border border-indigo-300/50 items-center justify-center text-indigo-200 text-sm">1</span>
+          Fill your Profile Portal
+        </div>
+        <p class="text-xs text-white/60">
+          Add your skills, education, and experience. Portfolio pulls everything from there.
+        </p>
+        <a href="{{ feature_paths.profile }}" class="text-[11px] underline mt-1">
+          Open Profile Portal →
+        </a>
+      </div>
+
+      <div class="glass-card p-4 flex flex-col gap-1">
+        <div class="text-xs text-white/60">Step 2</div>
+        <div class="font-semibold text-sm flex items-center gap-2">
+          <span class="inline-flex h-7 w-7 rounded-lg bg-fuchsia-500/20 border border-fuchsia-300/50 items-center justify-center text-fuchsia-200 text-sm">2</span>
+          Generate project ideas
+        </div>
+        <p class="text-xs text-white/60">
+          Use the Wizard for 1 free project idea, or 3 deep Pro ideas tailored to your profile.
+        </p>
+        <a href="{{ url_for('portfolio.wizard') }}" class="text-[11px] underline mt-1">
+          Open Wizard →
+        </a>
+      </div>
+
+      <div class="glass-card p-4 flex flex-col gap-1">
+        <div class="text-xs text-white/60">Step 3</div>
+        <div class="font-semibold text-sm flex items-center gap-2">
+          <span class="inline-flex h-7 w-7 rounded-lg bg-amber-500/20 border border-amber-300/50 items-center justify-center text-amber-100 text-sm">3</span>
+          Publish portfolio page
+        </div>
+        <p class="text-xs text-white/60">
+          Pro users can ship a public portfolio page with a single click and share the link.
+        </p>
         {% if subscription_status|default('free')|lower == 'pro' %}
-          <a href="{{ url_for('portfolio.publish') }}" class="btn-primary">Publish from Profile ⭐</a>
+          <a href="{{ url_for('portfolio.publish') }}" class="text-[11px] underline mt-1">
+            Publish from Profile ⭐ →
+          </a>
         {% else %}
-          <a class="btn-ghost" href="{{ feature_paths.billing }}">Upgrade to Pro to Publish ⭐</a>
+          <a href="{{ feature_paths.billing }}" class="text-[11px] underline mt-1">
+            Unlock publishing with Pro →
+          </a>
         {% endif %}
       </div>
     </div>
-  {% endif %}
+
+    <!-- Pages list -->
+    {% if pages and pages|length %}
+      <div class="space-y-4">
+        <h2 class="text-sm font-semibold text-white/80">Your portfolio pages</h2>
+        <div class="space-y-3">
+          {% for p in pages %}
+            <article class="glass-panel rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <h3 class="font-semibold truncate">{{ p.title }}</h3>
+                  {% if p.is_public %}
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-300/60 text-emerald-100">
+                      Public
+                    </span>
+                  {% else %}
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/25 text-white/60">
+                      Private
+                    </span>
+                  {% endif %}
+                </div>
+                <p class="text-[11px] text-white/60 mt-1">
+                  Created {{ (p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '—') }}
+                  • ID #{{ p.id }}
+                </p>
+                {% if p.is_public %}
+                  <p class="text-[11px] text-white/50 mt-1 line-clamp-1">
+                    Shareable link:
+                    <span class="underline">
+                      {{ url_for('portfolio.view', page_id=p.id, _external=True) }}
+                    </span>
+                  </p>
+                {% endif %}
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                {% if p.is_public %}
+                  <a
+                    class="btn-primary text-xs"
+                    target="_blank"
+                    rel="noopener"
+                    href="{{ url_for('portfolio.view', page_id=p.id) }}">
+                    Open Public Link
+                  </a>
+                {% else %}
+                  <span class="btn-ghost text-xs">Private (not published)</span>
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      </div>
+    {% else %}
+      <div class="glass-panel rounded-2xl p-6">
+        <h2 class="text-sm font-semibold mb-1">No portfolio pages yet</h2>
+        <p class="text-sm text-white/70">
+          You haven’t published a portfolio page. Use the Wizard to design projects, then publish from your Profile Portal.
+        </p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a href="{{ url_for('portfolio.wizard') }}" class="btn-primary">
+            Open Portfolio Wizard
+          </a>
+          <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost">
+            Preview from Profile
+          </a>
+          {% if subscription_status|default('free')|lower == 'pro' %}
+            <a href="{{ url_for('portfolio.publish') }}" class="btn-ghost">
+              Publish from Profile ⭐
+            </a>
+          {% else %}
+            <a class="btn-ghost" href="{{ feature_paths.billing }}">
+              Upgrade to Pro to Publish ⭐
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  @keyframes caGradient {
+    0%   { transform: translate3d(0,0,0) scale(1); }
+    50%  { transform: translate3d(-3%, -4%, 0) scale(1.03); }
+    100% { transform: translate3d(0,0,0) scale(1); }
+  }
+  .animate-caGradient {
+    animation: caGradient 26s ease-in-out infinite;
+  }
+</style>
 {% endblock %}

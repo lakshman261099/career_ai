@@ -430,7 +430,8 @@ def wizard():
             is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
             if not is_pro_user:
                 flash("Pro suggestions require a Pro plan. Upgrade to continue.", "warning")
-                return render_template("portfolio.wizard.html", **ctx)
+                # FIX: correct template path
+                return render_template("portfolio/wizard.html", **ctx)
 
             trg = (request.form.get("target_role_pro") or "").strip()[:MAX_FIELD]
             ind = (request.form.get("industry_pro") or "").strip()[:MAX_FIELD]
@@ -620,7 +621,7 @@ def preview():
         md_text = _render_full_portfolio_md(prof, projects, chosen=None)
         html = _md_to_html(md_text)
     except Exception as e:
-        current_app.logger.exception("Preview render failed: %s", e)
+        current_app.logger.exception("Could not render preview markdown: %s", e)
         flash("Could not render preview. Please check your Profile Portal.", "error")
         return redirect(url_for("portfolio.index"))
 

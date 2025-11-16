@@ -2,200 +2,481 @@
 {% block title %}Internship Analyzer — CareerAI{% endblock %}
 
 {% block content %}
-<section class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 pt-12">
-  <div class="glass-panel rounded-2xl p-6 border border-white/10">
-    <div class="flex items-start justify-between gap-3">
-      <div>
-        <h1 class="text-xl font-bold mb-1">Internship Analyzer</h1>
-        <p class="text-sm text-white/70">
-          Paste an internship description and see what you’ll actually learn, how it grows your skills,
-          and what roles it can lead to.
-        </p>
-      </div>
-      <div class="flex flex-col items-end gap-1 text-right">
-        {% if updated_tag %}
-          <span class="inline-flex items-center px-2 py-1 rounded-full text-[11px] bg-white/5 border border-white/20 text-white/70">
-            Updated {{ updated_tag }}
-          </span>
-        {% endif %}
-        {% if used_live_ai is not none %}
-          <span class="inline-flex items-center px-2 py-1 rounded-full text-[11px] bg-white/5 border border-white/20 {{ 'text-emerald-300' if used_live_ai else 'text-yellow-300' }}">
-            AI: {{ 'live model' if used_live_ai else 'fallback / mock' }}
-          </span>
-        {% endif %}
-      </div>
-    </div>
-
-    <form method="post" action="{{ url_for('internships.analyse') }}" class="mt-4 space-y-4">
-      <div>
-        <label class="block text-sm mb-1 font-medium flex items-center gap-1">
-          Internship description (paste)
-        </label>
-        <textarea
-          name="text"
-          rows="7"
-          class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
-          placeholder="Paste the full internship posting here. We’ll analyze what you’ll do, learn, and where it can take you."
-          required></textarea>
-        <p class="text-[11px] text-white/60 mt-1">
-          We only use what you paste here. No scraping or external lookups.
-        </p>
-      </div>
-
-      <div class="mt-1 flex flex-wrap items-center gap-4 text-sm">
-        <label class="inline-flex items-center gap-2">
-          <input
-            type="radio"
-            name="mode"
-            value="free"
-            {% if mode != 'pro' %}checked{% endif %}
-            class="rounded border-white/40 bg-transparent text-emerald-400 focus:ring-emerald-400/60" />
-          <span>
-            Free (🪙)
-            <span class="text-xs text-white/60 block">
-              High-level learning & career impact overview.
-            </span>
-          </span>
-        </label>
-
-        <label class="inline-flex items-center gap-2">
-          <input
-            type="radio"
-            name="mode"
-            value="pro"
-            {% if mode == 'pro' %}checked{% endif %}
-            class="rounded border-white/40 bg-transparent text-emerald-400 focus:ring-emerald-400/60" />
-          <span>
-            Deep (Pro ⭐)
-            <span class="text-xs text-white/60 block">
-              Uses your Profile Portal (when available) for personalized growth paths.
-            </span>
-          </span>
-        </label>
-      </div>
-
-      <div class="mt-3 flex flex-wrap gap-2">
-        <button class="btn-primary" type="submit">
-          Analyze internship
-        </button>
-        <a class="btn-ghost" href="{{ feature_paths.billing }}">
-          Get Pro
-        </a>
-      </div>
-    </form>
+<section class="relative overflow-hidden">
+  <!-- Animated background layer -->
+  <div class="pointer-events-none absolute inset-0 -z-10">
+    <div class="w-full h-full ia-animated-bg"></div>
   </div>
 
-  {% if result %}
-    {# normalize for safety #}
-    {% set summary = result.summary or '' %}
-    {% set sg = result.skill_growth or [] %}
-    {% set se = result.skill_enhancement or [] %}
-    {% set impact = result.career_impact or '' %}
-    {% set paths = result.new_paths or [] %}
-    {% set resume_boost = result.resume_boost or [] %}
-    {% set meta = result.meta or {} %}
-    {% set generated_at = meta.generated_at_utc or '' %}
-    {% set mode_label = 'Pro (profile-aware)' if result.mode == 'pro' else 'Free' %}
-
-    <!-- OVERVIEW -->
-    <div class="glass-panel rounded-2xl p-6 mt-6 border border-white/10">
-      <div class="flex items-center justify-between gap-2">
-        <div>
-          <h2 class="text-lg font-semibold mb-1">Internship Overview</h2>
-          <p class="text-sm text-white/80">
-            {{ summary or "No summary available for this internship." }}
-          </p>
-        </div>
-        <div class="flex flex-col items-end gap-1">
-          <span class="inline-flex items-center px-2 py-1 rounded-full text-[11px] bg-white/5 border border-white/20 text-white/70">
-            Mode: {{ mode_label }}
-          </span>
-          {% if generated_at %}
-            <span class="text-[11px] text-white/50">
-              Generated at {{ generated_at }}
+  <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-10 pb-16 space-y-8">
+    <!-- Hero header -->
+    <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="space-y-2 max-w-xl">
+        <p class="text-[11px] uppercase tracking-[0.18em] text-white/60">
+          Internship Analyzer
+        </p>
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight">
+          See what an internship really does for your career.
+        </h1>
+        <p class="text-sm sm:text-base text-slate-200">
+          Paste any internship description. We’ll show what you’ll learn, how it upgrades your skills,
+          and which roles it actually opens up.
+        </p>
+        <div class="flex flex-wrap items-center gap-2 text-[11px] text-white/70">
+          {% if updated_tag %}
+            <span class="inline-flex items-center px-2 py-1 rounded-full bg-white/5 border border-white/20">
+              Updated {{ updated_tag }}
+            </span>
+          {% endif %}
+          {% if used_live_ai is not none %}
+            <span class="inline-flex items-center px-2 py-1 rounded-full bg-white/5 border border-white/20 {{ 'text-emerald-300' if used_live_ai else 'text-yellow-300' }}">
+              AI: {{ 'live model' if used_live_ai else 'fallback / mock' }}
             </span>
           {% endif %}
         </div>
       </div>
-    </div>
 
-    <!-- WHAT YOU'LL LEARN -->
-    {% if sg %}
-    <div class="glass-panel rounded-2xl p-6 mt-4 border border-emerald-400/20 bg-emerald-900/10">
-      <h3 class="text-md font-semibold mb-2">What you’ll learn</h3>
-      <p class="text-xs text-white/60 mb-2">
-        New skills or tools you’re likely to pick up from this internship.
-      </p>
-      <ul class="list-disc pl-5 text-sm space-y-1">
-        {% for s in sg %}
-          <li>{{ s }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-
-    <!-- HOW YOU'LL LEVEL UP -->
-    {% if se %}
-    <div class="glass-panel rounded-2xl p-6 mt-4 border border-indigo-400/20 bg-indigo-900/10">
-      <h3 class="text-md font-semibold mb-2">How you’ll level up</h3>
-      <p class="text-xs text-white/60 mb-2">
-        Skills you already have that this internship will strengthen.
-      </p>
-      <ul class="list-disc pl-5 text-sm space-y-1">
-        {% for s in se %}
-          <li>{{ s }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-
-    <!-- CAREER IMPACT & PATHS -->
-    {% if impact or paths %}
-    <div class="glass-panel rounded-2xl p-6 mt-4 border border-white/15">
-      <h3 class="text-md font-semibold mb-2">Career impact & future paths</h3>
-      {% if impact %}
-        <p class="text-sm text-white/80 mb-3">
-          {{ impact }}
-        </p>
-      {% endif %}
-      {% if paths %}
-        <h4 class="text-sm font-semibold mb-1">Roles or directions this can lead to:</h4>
-        <ul class="list-disc pl-5 text-sm space-y-1">
-          {% for p in paths %}
-            <li>{{ p }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    </div>
-    {% endif %}
-
-    <!-- HOW TO TALK ABOUT THIS ON YOUR RESUME -->
-    <div class="glass-panel rounded-2xl p-6 mt-4 border border-white/15">
-      <h3 class="text-md font-semibold mb-2">How to talk about this on your resume</h3>
-      {% if resume_boost %}
-        <p class="text-xs text-white/60 mb-2">
-          Use or adapt these as bullets once you complete (or are part-way through) the internship.
-        </p>
-        <div class="space-y-2">
-          {% for line in resume_boost %}
-            <div class="flex items-center justify-between gap-2 bg-white/5 px-3 py-2 rounded-lg text-sm">
-              <span class="flex-1">{{ line }}</span>
-              <button
-                type="button"
-                onclick="navigator.clipboard.writeText(`{{ line|replace('`','\\`') }}`)"
-                class="text-[11px] text-white/60 hover:text-white/90 transition">
-                Copy
-              </button>
-            </div>
-          {% endfor %}
+      <!-- Mode chips / quick legend -->
+      <div class="ia-legend glass-card p-4 sm:p-5">
+        <h2 class="text-sm font-semibold mb-2 flex items-center gap-2">
+          <span class="ia-pill-dot ia-pill-free"></span>
+          Free vs Pro
+        </h2>
+        <div class="space-y-2 text-xs text-white/75">
+          <div class="flex gap-2 items-start">
+            <span class="ia-pill ia-pill-free">Free (🪙)</span>
+            <p>High-level learning, skill growth, and career impact overview.</p>
+          </div>
+          <div class="flex gap-2 items-start">
+            <span class="ia-pill ia-pill-pro">Pro (⭐)</span>
+            <p>Profile-aware analysis with richer pathways and stronger resume bullets.</p>
+          </div>
         </div>
-      {% else %}
-        <p class="text-sm text-white/60">
-          No resume phrasing suggestions were generated for this internship.
-        </p>
-      {% endif %}
+        <div class="mt-3 text-[11px] text-white/50">
+          Pro uses your Profile Portal (when available) to personalize recommendations.
+        </div>
+      </div>
+    </header>
+
+    <!-- Main glass form card -->
+    <div class="glass-panel rounded-2xl p-6 sm:p-7 border border-white/15 ia-form-card">
+      <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+        <div class="space-y-1">
+          <h2 class="text-lg font-semibold">Paste the internship description</h2>
+          <p class="text-xs sm:text-sm text-white/70 max-w-xl">
+            Include responsibilities, requirements, and any info about the team. The more detail, the better our analysis.
+          </p>
+        </div>
+        <div class="ia-badge-row">
+          <span class="ia-mini-badge">
+            No scraping · Only what you paste
+          </span>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('internships.analyse') }}" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold mb-1 tracking-wide text-white/80">
+            Internship description (paste)
+          </label>
+          <textarea
+            name="text"
+            rows="8"
+            class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+            placeholder="Paste the full internship posting here. We’ll analyze what you’ll do, learn, and where it can take you."
+            required></textarea>
+          <p class="text-[11px] text-white/60 mt-1">
+            We only use what you paste here. No company tracking, no external scraping.
+          </p>
+        </div>
+
+        <!-- Mode selector -->
+        <div class="flex flex-wrap items-start gap-4 text-sm mt-2">
+          <label class="ia-mode-pill">
+            <input
+              type="radio"
+              name="mode"
+              value="free"
+              {% if mode != 'pro' %}checked{% endif %}
+            />
+            <div class="ia-mode-content">
+              <div class="ia-mode-title">
+                <span class="ia-dot ia-dot-free"></span>
+                Free (🪙)
+              </div>
+              <p class="ia-mode-sub">
+                Quick “Is this worth it?” view: skills, leveling, and future roles.
+              </p>
+            </div>
+          </label>
+
+          <label class="ia-mode-pill">
+            <input
+              type="radio"
+              name="mode"
+              value="pro"
+              {% if mode == 'pro' %}checked{% endif %}
+            />
+            <div class="ia-mode-content">
+              <div class="ia-mode-title">
+                <span class="ia-dot ia-dot-pro"></span>
+                Deep (Pro ⭐)
+              </div>
+              <p class="ia-mode-sub">
+                Uses your Profile Portal (when available) for tailored growth paths &amp; resume bullets.
+              </p>
+            </div>
+          </label>
+        </div>
+
+        <div class="mt-3 flex flex-wrap gap-2 items-center">
+          <button class="btn-primary" type="submit">
+            Analyze internship
+          </button>
+          <a class="btn-ghost" href="{{ feature_paths.billing }}">
+            Get Pro
+          </a>
+          <p class="text-[11px] text-white/50 ml-1">
+            Free uses 🪙 credits. Pro uses ⭐ and gives deeper, profile-aware guidance.
+          </p>
+        </div>
+      </form>
     </div>
 
-  {% endif %}
+    {% if result %}
+      {# normalize for safety #}
+      {% set summary = result.summary or '' %}
+      {% set sg = result.skill_growth or [] %}
+      {% set se = result.skill_enhancement or [] %}
+      {% set impact = result.career_impact or '' %}
+      {% set paths = result.new_paths or [] %}
+      {% set resume_boost = result.resume_boost or [] %}
+      {% set meta = result.meta or {} %}
+      {% set generated_at = meta.generated_at_utc or '' %}
+      {% set mode_label = 'Pro (profile-aware)' if result.mode == 'pro' else 'Free' %}
+
+      <!-- Results layout -->
+      <section class="space-y-4">
+        <!-- Overview -->
+        <div class="glass-card rounded-2xl p-5 border border-white/15 ia-result-card">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div>
+              <h2 class="text-md font-semibold mb-1 flex items-center gap-2">
+                <span class="ia-icon-circle ia-icon-main">🎯</span>
+                Internship overview
+              </h2>
+              <p class="text-sm text-white/80">
+                {{ summary or "We couldn't summarize this internship. Try a clearer description." }}
+              </p>
+            </div>
+            <div class="flex flex-col items-end gap-1 text-right">
+              <span class="inline-flex items-center px-2 py-1 rounded-full text-[11px] bg-white/5 border border-white/20 text-white/70">
+                Mode: {{ mode_label }}
+              </span>
+              {% if generated_at %}
+                <span class="text-[11px] text-white/50">
+                  Generated at {{ generated_at }}
+                </span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- 3-column grid: Learn / Level up / Career impact -->
+        <div class="ia-result-grid">
+          {% if sg %}
+          <div class="glass-card rounded-2xl p-5 border border-emerald-400/30 ia-result-card">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="ia-icon-circle ia-icon-learn">📚</span>
+              <h3 class="text-sm font-semibold">What you’ll learn</h3>
+            </div>
+            <p class="text-[11px] text-white/60 mb-2">
+              New skills, tools, or concepts you’re likely to pick up.
+            </p>
+            <ul class="list-disc pl-5 text-sm space-y-1">
+              {% for s in sg %}
+                <li>{{ s }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if se %}
+          <div class="glass-card rounded-2xl p-5 border border-indigo-400/30 ia-result-card">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="ia-icon-circle ia-icon-level">💪</span>
+              <h3 class="text-sm font-semibold">How you’ll level up</h3>
+            </div>
+            <p class="text-[11px] text-white/60 mb-2">
+              Skills you already have that this internship will strengthen.
+            </p>
+            <ul class="list-disc pl-5 text-sm space-y-1">
+              {% for s in se %}
+                <li>{{ s }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if impact or paths %}
+          <div class="glass-card rounded-2xl p-5 border border-amber-400/30 ia-result-card">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="ia-icon-circle ia-icon-impact">🧭</span>
+              <h3 class="text-sm font-semibold">Career impact & paths</h3>
+            </div>
+            {% if impact %}
+              <p class="text-sm text-white/80 mb-2">
+                {{ impact }}
+              </p>
+            {% endif %}
+            {% if paths %}
+              <h4 class="text-xs font-semibold mb-1 text-white/70">Roles or directions this can lead to:</h4>
+              <ul class="list-disc pl-5 text-sm space-y-1">
+                {% for p in paths %}
+                  <li>{{ p }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Resume section -->
+        <div class="glass-card rounded-2xl p-5 border border-white/18 ia-result-card">
+          <div class="flex items-center justify-between gap-3 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="ia-icon-circle ia-icon-resume">📄</span>
+              <h3 class="text-sm font-semibold">How to talk about this on your resume</h3>
+            </div>
+            {% if result.mode != 'pro' %}
+              <span class="text-[11px] text-white/50">
+                Pro may generate more tailored bullets using your profile.
+              </span>
+            {% endif %}
+          </div>
+
+          {% if resume_boost %}
+            <p class="text-[11px] text-white/60 mb-2">
+              Use or adapt these as bullets once you complete (or are part-way through) the internship.
+            </p>
+            <div class="space-y-2">
+              {% for line in resume_boost %}
+                <div class="ia-resume-line">
+                  <span class="flex-1 text-sm">{{ line }}</span>
+                  <button
+                    type="button"
+                    onclick="navigator.clipboard.writeText(`{{ line|replace('`','\\`') }}`)"
+                    class="ia-copy-btn">
+                    Copy
+                  </button>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-sm text-white/60">
+              No resume phrasing suggestions were generated for this internship.
+            </p>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+  </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  /* Animated soft gradient background */
+  @keyframes iaGradient {
+    0%   { transform: translate3d(0,0,0) scale(1); opacity: 0.85; }
+    40%  { transform: translate3d(-3%, -3%, 0) scale(1.03); opacity: 1; }
+    100% { transform: translate3d(0,0,0) scale(1); opacity: 0.9; }
+  }
+  .ia-animated-bg {
+    background:
+      radial-gradient(circle at top left, rgba(129,140,248,0.35), transparent 55%),
+      radial-gradient(circle at bottom right, rgba(249,115,22,0.28), transparent 55%),
+      radial-gradient(circle at center, rgba(15,23,42,1), rgba(2,6,23,1));
+    animation: iaGradient 28s ease-in-out infinite;
+  }
+
+  /* Legend */
+  .ia-legend {
+    max-width: 260px;
+    border-radius: 1.1rem;
+  }
+  .ia-pill-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+  }
+  .ia-pill-free { background: rgba(56,189,248,0.9); box-shadow: 0 0 12px rgba(56,189,248,0.8); }
+  .ia-pill-pro  { background: rgba(251,191,36,0.95); box-shadow: 0 0 12px rgba(251,191,36,0.9); }
+
+  .ia-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    border: 1px solid rgba(148,163,184,0.7);
+    background: rgba(15,23,42,0.9);
+    white-space: nowrap;
+  }
+
+  .ia-badge-row {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .ia-mini-badge {
+    font-size: 0.7rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148,163,184,0.75);
+    background: rgba(15,23,42,0.95);
+    color: rgba(226,232,240,0.9);
+  }
+
+  /* Form card subtle border accent */
+  .ia-form-card {
+    position: relative;
+    overflow: hidden;
+  }
+  .ia-form-card::before {
+    content: "";
+    position: absolute;
+    inset: -30%;
+    background: radial-gradient(circle at top, rgba(148,163,248,0.18), transparent 60%);
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  /* Mode selector pills */
+  .ia-mode-pill {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0.65rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(148,163,184,0.75);
+    background: rgba(15,23,42,0.95);
+    cursor: pointer;
+    min-width: 0;
+    max-width: 280px;
+    box-shadow: 0 10px 26px rgba(15,23,42,0.9);
+    transition: border-color 140ms ease, background 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+  }
+  .ia-mode-pill:hover {
+    border-color: rgba(191,219,254,0.95);
+    background: rgba(15,23,42,1);
+    transform: translateY(-1px);
+    box-shadow: 0 16px 32px rgba(15,23,42,1);
+  }
+  .ia-mode-pill input {
+    margin-top: 0.2rem;
+    accent-color: rgba(249,115,22,0.95);
+  }
+  .ia-mode-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+  .ia-mode-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .ia-mode-sub {
+    font-size: 0.7rem;
+    color: rgba(226,232,240,0.85);
+  }
+  .ia-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    box-shadow: 0 0 12px currentColor;
+  }
+  .ia-dot-free {
+    background: rgba(56,189,248,0.95);
+    color: rgba(56,189,248,0.95);
+  }
+  .ia-dot-pro {
+    background: rgba(250,204,21,0.98);
+    color: rgba(250,204,21,0.98);
+  }
+
+  /* Result cards */
+  .ia-result-card {
+    position: relative;
+    overflow: hidden;
+  }
+  .ia-result-card::after {
+    content: "";
+    position: absolute;
+    inset-inline: -20%;
+    bottom: -40%;
+    height: 60%;
+    background: radial-gradient(circle at top, rgba(148,163,248,0.15), transparent 60%);
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  .ia-result-grid {
+    display: grid;
+    grid-template-columns: minmax(0,1fr);
+    gap: 1rem;
+  }
+  @media (min-width: 900px) {
+    .ia-result-grid {
+      grid-template-columns: repeat(3,minmax(0,1fr));
+    }
+  }
+
+  .ia-icon-circle {
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    box-shadow: 0 12px 26px rgba(15,23,42,0.9);
+  }
+  .ia-icon-main   { background: radial-gradient(circle at top, #6366f1, #312e81); }
+  .ia-icon-learn  { background: radial-gradient(circle at top, #22c55e, #065f46); }
+  .ia-icon-level  { background: radial-gradient(circle at top, #06b6d4, #0f766e); }
+  .ia-icon-impact { background: radial-gradient(circle at top, #eab308, #854d0e); }
+  .ia-icon-resume { background: radial-gradient(circle at top, #f97316, #9a3412); }
+
+  /* Resume bullet row */
+  .ia-resume-line {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.8rem;
+    background: rgba(15,23,42,0.9);
+    border: 1px solid rgba(148,163,184,0.85);
+  }
+  .ia-copy-btn {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148,163,184,0.9);
+    background: rgba(15,23,42,0.95);
+    color: rgba(226,232,240,0.9);
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+    white-space: nowrap;
+  }
+  .ia-copy-btn:hover {
+    background: rgba(30,64,175,0.95);
+    border-color: rgba(191,219,254,0.95);
+    transform: translateY(-1px);
+  }
+</style>
 {% endblock %}

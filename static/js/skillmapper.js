@@ -1,288 +1,675 @@
 // static/js/skillmapper.js
 (function () {
-  // Read config injected by Flask safely (no VS Code squiggles)
-  const smConfigEl = document.getElementById("sm-config");
-  let smConfig = { is_pro: false, settings_path: "/settings#projects" };
-  if (smConfigEl) {
-    try {
-      smConfig = JSON.parse(smConfigEl.textContent);
-    } catch (e) {
-      // ignore parse errors, fall back to defaults
-      console.warn("SkillMapper: failed to parse sm-config JSON", e);
-    }
-  }
-  window.__SM_IS_PRO__ = smConfig.is_pro;
-  window.__SM_SETTINGS_PATH__ = smConfig.settings_path;
-
-  const $ = (sel) => document.querySelector(sel);
-
-  const toast = (msg, t = 2500) => {
-    const el = $("#sm-toast");
-    if (!el) return;
-    el.textContent = msg;
-    el.classList.remove("hidden");
-    setTimeout(() => el.classList.add("hidden"), t);
-  };
-
-  const freeBtn = $("#sm-free-btn");
-  const proBtn = $("#sm-pro-btn");
-
-  const input = $("#sm-free-input");
-  const freeDomain = $("#sm-free-domain");
-
-  const useProfile = $("#sm-pro-use-profile");
-  const proRegion = $("#sm-pro-region");
-  const proHorizon = $("#sm-pro-horizon");
-  const proResume = $("#sm-pro-resume");
-
-  const results = $("#sm-results");
-  const rolesEl = $("#sm-roles");
-  const metaEl = $("#sm-meta");
-  const hiringStrip = $("#sm-hiring-strip");
-  const addPortfolio = $("#sm-add-portfolio");
-  const profileSnapEl = $("#sm-profile-snapshot");
-
-  function animateNumber(el, to, dur = 900) {
-    if (!el) return;
-    const start = 0;
-    const t0 = performance.now();
-    function frame(now) {
-      const p = Math.min(1, (now - t0) / dur);
-      const val = Math.round(start + (to - start) * p);
-      el.textContent = val.toLocaleString();
-      if (p < 1) requestAnimationFrame(frame);
-    }
-    requestAnimationFrame(frame);
+  const root = document.getElementById("sm-root");
+  if (!root) {
+    console.warn("SkillMapper: root element not found");
+    return;
   }
 
-  function renderProfileSnapshot(meta) {
-    if (!profileSnapEl) return;
-    const snap = (meta && meta.profile_snapshot) || null;
-    if (!snap) {
-      profileSnapEl.classList.add("hidden");
-      profileSnapEl.innerHTML = "";
-      return;
-    }
-    const name = snap.full_name || "";
-    const headline = snap.headline || "";
-    const keySkills = (snap.key_skills || [])
-      .slice(0, 12)
-      .map((s) => `<span class="sm-chip">${s}</span>`)
+  const isProUser = root.dataset.isPro === "true";
+  const billingPath = root.dataset.billingPath || "/pricing";
+
+  const freeBtn = document.getElementById("sm-free-btn");
+  const freeInput = document.getElementById("sm-free-input");
+  const freeDomain = document.getElementById("sm-free-domain");
+
+  const proBtn = document.getElementById("sm-pro-btn");
+  const proUseProfile = document.getElementById("sm-pro-use-profile");
+  const proRegion = document.getElementById("sm-pro-region");
+  const proResume = document.getElementById("sm-pro-resume");
+
+  const resultsEl = document.getElementById("sm-results");
+  const resultsInnerEl = document.getElementById("sm-results-inner");
+  const toastEl = document.getElementById("sm-toast");
+
+  function showToast(message, kind) {
+    if (!toastEl) return;
+    const type = kind || "info";
+    toastEl.textContent = message;
+    toastEl.classList.remove(
+      "hidden",
+      "sm-toast-error",
+      "sm-toast-success",
+      "sm-toast-info"
+    );
+    toastEl.classList.add(
+      type === "error"
+        ? "sm-toast-error"
+        : type === "success"
+        ? "sm-toast-success"
+        : "sm-toast-info"
+    );
+    setTimeout(function () {
+      toastEl.classList.add("hidden");
+    }, 3500);
+  }
+
+  function escapeHtml(s) {
+    if (typeof s !== "string") return "";
+    return s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function safeArray(val) {
+    return Array.isArray(val) ? val : [];
+  }
+
+  // ---------- Schema compatibility helpers ----------
+
+  function getRolesFromData(data) {
+    if (!data || typeof data !== "object") return [];
+    return safeArray(
+      data.top_roles ||
+        data.roles ||
+        data.role_matches ||
+        data.top_3_roles ||
+        data.mapped_roles
+    );
+  }
+
+  function getHiringNowFromData(data) {
+    if (!data || typeof data !== "object") return [];
+    return safeArray(
+      data.hiring_now_india ||
+        data.hiring_now ||
+        data.market_snapshot ||
+        data.demand_snapshot
+    );
+  }
+
+  function getHighPaidFromData(data) {
+    if (!data || typeof data !== "object") return [];
+    return safeArray(
+      data.high_paid_roles_india ||
+        data.high_paid_roles ||
+        data.india_high_paid ||
+        data.salary_snapshot
+    );
+  }
+
+  function getMetaFromData(data) {
+    if (!data || typeof data !== "object") return {};
+    return data.meta || {};
+  }
+
+  // ---------- Rendering helpers ----------
+
+  function renderRoleCard(role) {
+    if (!role) return "";
+
+    var name = escapeHtml(role.role_name || role.name || "Unknown role");
+    var matchLabel = escapeHtml(role.match_label || role.match_level || "");
+    var shortDesc = escapeHtml(
+      role.short_description || role.description || role.summary || ""
+    );
+
+    var matchedSkills = safeArray(
+      role.matched_skills || role.current_skills || role.have_skills
+    )
+      .map(function (s) {
+        return (
+          '<span class="sm-chip sm-chip-match">' +
+          escapeHtml(String(s)) +
+          "</span>"
+        );
+      })
       .join("");
-    profileSnapEl.innerHTML = `
-      <div class="sm-profile-head">
-        <div class="sm-profile-name">${name}</div>
-        <div class="sm-profile-headline">${headline}</div>
-      </div>
-      <div class="sm-profile-skills">${keySkills}</div>
-    `;
-    profileSnapEl.classList.remove("hidden");
+    var missingCore = safeArray(
+      role.missing_core_skills || role.gap_skills || role.missing_skills
+    )
+      .map(function (s) {
+        return (
+          '<span class="sm-chip sm-chip-gap">' +
+          escapeHtml(String(s)) +
+          "</span>"
+        );
+      })
+      .join("");
+    var niceToHave = safeArray(
+      role.nice_to_have_skills || role.bonus_skills
+    )
+      .map(function (s) {
+        return (
+          '<span class="sm-chip sm-chip-nice">' +
+          escapeHtml(String(s)) +
+          "</span>"
+        );
+      })
+      .join("");
+
+    var learningAreas = safeArray(
+      role.learning_focus_areas || role.learning_plan || role.study_plan
+    )
+      .map(function (item) {
+        return "<li>" + escapeHtml(String(item)) + "</li>";
+      })
+      .join("");
+    var firstSteps = safeArray(
+      role.first_steps || role.next_steps || role.action_steps
+    )
+      .map(function (item) {
+        return "<li>" + escapeHtml(String(item)) + "</li>";
+      })
+      .join("");
+    var projects = safeArray(role.suggested_projects || role.micro_projects)
+      .map(function (item) {
+        return "<li>" + escapeHtml(String(item)) + "</li>";
+      })
+      .join("");
+
+    var india = role.india_context || role.india || {};
+    var indiaDemand = escapeHtml(
+      india.india_hiring_demand || india.demand || ""
+    );
+    var indiaSalary = escapeHtml(
+      india.india_fresher_salary_band || india.salary_band || india.salary || ""
+    );
+    var indiaCompanies = safeArray(
+      india.typical_indian_companies ||
+        india.common_companies ||
+        india.example_companies
+    )
+      .map(function (c) {
+        return escapeHtml(String(c));
+      })
+      .join(", ");
+    var keywords = safeArray(
+      india.keywords_for_job_portals ||
+        india.search_keywords ||
+        india.portal_keywords
+    )
+      .map(function (k) {
+        return (
+          '<code class="sm-code">' + escapeHtml(String(k)) + "</code>"
+        );
+      })
+      .join(" ");
+
+    return (
+      '<article class="sm-role-card">' +
+      '  <header class="sm-role-head">' +
+      '    <div>' +
+      '      <h3 class="sm-role-title">' +
+      name +
+      "</h3>" +
+      (shortDesc ? '      <p class="sm-role-sub">' + shortDesc + "</p>" : "") +
+      "    </div>" +
+      (matchLabel
+        ? '    <span class="sm-role-badge">' + matchLabel + "</span>"
+        : "") +
+      "  </header>" +
+      '  <section class="sm-role-section">' +
+      "    <h4>Skill match</h4>" +
+      '    <div class="sm-role-skills">' +
+      (matchedSkills
+        ? '      <div><div class="sm-label-small">You already have</div>' +
+          matchedSkills +
+          "</div>"
+        : "") +
+      (missingCore
+        ? '      <div><div class="sm-label-small">Core to build</div>' +
+          missingCore +
+          "</div>"
+        : "") +
+      (niceToHave
+        ? '      <div><div class="sm-label-small">Nice to have</div>' +
+          niceToHave +
+          "</div>"
+        : "") +
+      "    </div>" +
+      "  </section>" +
+      (learningAreas || firstSteps || projects
+        ? '  <section class="sm-role-section sm-role-grid">' +
+          (learningAreas
+            ? '    <div><h4>What to study next</h4><ul class="sm-list">' +
+              learningAreas +
+              "</ul></div>"
+            : "") +
+          (firstSteps
+            ? '    <div><h4>First 3 steps</h4><ul class="sm-list">' +
+              firstSteps +
+              "</ul></div>"
+            : "") +
+          (projects
+            ? '    <div><h4>Micro-project ideas</h4><ul class="sm-list">' +
+              projects +
+              "</ul></div>"
+            : "") +
+          "  </section>"
+        : "") +
+      (indiaDemand || indiaSalary || indiaCompanies || keywords
+        ? '  <section class="sm-role-section">' +
+          "    <h4>India market snapshot (model estimate)</h4>" +
+          '    <div class="sm-role-india">' +
+          (indiaDemand
+            ? '      <p><span class="sm-label-small">Demand:</span> ' +
+              indiaDemand +
+              "</p>"
+            : "") +
+          (indiaSalary
+            ? '      <p><span class="sm-label-small">Fresher salary:</span> ' +
+              indiaSalary +
+              "</p>"
+            : "") +
+          (indiaCompanies
+            ? '      <p><span class="sm-label-small">Typical companies:</span> ' +
+              indiaCompanies +
+              "</p>"
+            : "") +
+          (keywords
+            ? '      <p><span class="sm-label-small">Search keywords:</span> ' +
+              keywords +
+              "</p>"
+            : "") +
+          "    </div>" +
+          '    <p class="sm-note">These are model estimates based on common patterns, not live-scraped data.</p>' +
+          "  </section>"
+        : "") +
+      "</article>"
+    );
   }
 
-  function render(rawData) {
-    if (!results) return;
-    const data = rawData || {};
+  function renderHiringNow(hiringNow) {
+    var items = safeArray(hiringNow);
+    if (!items.length) return "";
 
-    results.classList.remove("hidden");
+    var cards = items
+      .map(function (item) {
+        var name = escapeHtml(item.role_name || item.name || "Role");
+        var pctRaw =
+          item.demand_estimate_percent !== undefined
+            ? item.demand_estimate_percent
+            : item.estimate_percent !== undefined
+            ? item.estimate_percent
+            : item.share_percent;
+        var pct =
+          typeof pctRaw === "number"
+            ? pctRaw + "%"
+            : typeof pctRaw === "string"
+            ? pctRaw
+            : "";
+        var notes = escapeHtml(item.notes || item.description || "");
+        var keywords = safeArray(
+          item.typical_keywords || item.search_keywords
+        )
+          .map(function (k) {
+            return (
+              '<code class="sm-code">' + escapeHtml(String(k)) + "</code>"
+            );
+          })
+          .join(" ");
 
-    const meta = data.meta || {};
-    const when = meta.generated_at_utc || "";
-    if (metaEl) metaEl.textContent = when ? `Generated at ${when}` : "";
+        return (
+          '<div class="sm-hiring-card">' +
+          '  <div class="sm-hiring-main">' +
+          '    <div class="sm-hiring-role">' +
+          name +
+          "</div>" +
+          (pct
+            ? '    <div class="sm-hiring-pct">' +
+              pct +
+              " of postings (model estimate)</div>"
+            : "") +
+          "  </div>" +
+          (notes ? '  <p class="sm-hiring-notes">' + notes + "</p>" : "") +
+          (keywords ? '  <p class="sm-hiring-keywords">' + keywords + "</p>" : "") +
+          "</div>"
+        );
+      })
+      .join("");
 
-    renderProfileSnapshot(meta);
+    return (
+      '<section class="sm-section">' +
+      "  <h3>What’s hiring now (India)</h3>" +
+      '  <p class="sm-section-sub">Rough model estimates of demand based on Indian tech & analytics roles.</p>' +
+      '  <div class="sm-hiring-grid">' +
+      cards +
+      "  </div>" +
+      "</section>"
+    );
+  }
 
-    // Optional: expose model CTA as tooltip on the bottom button
-    if (
-      addPortfolio &&
-      typeof data.call_to_action === "string" &&
-      data.call_to_action.trim()
-    ) {
-      addPortfolio.title = data.call_to_action.trim();
+  function renderHighPaid(highPaid) {
+    var items = safeArray(highPaid);
+    if (!items.length) return "";
+
+    var cards = items
+      .map(function (item) {
+        var name = escapeHtml(item.role_name || item.name || "Role");
+        var band = escapeHtml(
+          item.typical_salary_band || item.salary_band || ""
+        );
+        var diff = escapeHtml(item.difficulty_label || item.competition || "");
+        var requirements = safeArray(
+          item.key_requirements || item.requirements
+        )
+          .map(function (r) {
+            return "<li>" + escapeHtml(String(r)) + "</li>";
+          })
+          .join("");
+
+        return (
+          '<div class="sm-high-card">' +
+          '  <div class="sm-high-head">' +
+          '    <div class="sm-high-role">' +
+          name +
+          "</div>" +
+          (diff ? '    <div class="sm-high-diff">' + diff + "</div>" : "") +
+          "  </div>" +
+          (band ? '  <p class="sm-high-band">' + band + "</p>" : "") +
+          (requirements
+            ? '  <ul class="sm-list sm-high-reqs">' + requirements + "</ul>"
+            : "") +
+          "</div>"
+        );
+      })
+      .join("");
+
+    return (
+      '<section class="sm-section">' +
+      "  <h3>High-paid roles (India, 0–3 years)</h3>" +
+      '  <p class="sm-section-sub">Typical bands are for top product/startups and strong candidates. These are model estimates, not salary guarantees.</p>' +
+      '  <div class="sm-high-grid">' +
+      cards +
+      "  </div>" +
+      "</section>"
+    );
+  }
+
+  function renderFullSkillmapHTML(data) {
+    var roles = getRolesFromData(data);
+    var roleCards = roles.map(renderRoleCard).join("");
+
+    var hiringNowHTML = renderHiringNow(getHiringNowFromData(data));
+    var highPaidHTML = renderHighPaid(getHighPaidFromData(data));
+
+    var meta = getMetaFromData(data);
+    var source = escapeHtml(meta.source || "");
+    var usingProfile = !!meta.using_profile;
+    var region = escapeHtml(meta.region_focus || meta.region || "India");
+    var version = escapeHtml(meta.version || "");
+
+    var metaBits = [];
+    if (source) metaBits.push(source === "pro" ? "Pro run" : "Free run");
+    if (usingProfile) metaBits.push("Profile + resume");
+    metaBits.push("Region focus: " + region);
+    if (version) metaBits.push("Model version: " + version);
+
+    var metaLine = metaBits.join(" · ");
+
+    return (
+      '<div class="sm-panel-full">' +
+      '  <header class="sm-results-head">' +
+      '    <h2>Your role roadmap</h2>' +
+      (metaLine ? '    <div class="sm-meta">' + metaLine + "</div>" : "") +
+      "  </header>" +
+      (roles.length
+        ? '<section class="sm-section">' +
+          "  <h3>Top roles based on your current profile</h3>" +
+          '  <div class="sm-roles-grid">' +
+          roleCards +
+          "  </div>" +
+          "</section>"
+        : '<section class="sm-section"><p>No roles returned. Try adding more detail about your skills/interests.</p></section>') +
+      hiringNowHTML +
+      highPaidHTML +
+      "</div>"
+    );
+  }
+
+  function renderBasicPanelHTML(data) {
+    var roles = getRolesFromData(data);
+    var firstRole = roles[0];
+
+    if (!firstRole) {
+      return (
+        '<div class="sm-panel-basic">' +
+        "  <h2>Basic view (Free)</h2>" +
+        '  <p class="sm-section-sub">We could not infer a clear role. Try adding more detail about your skills and interests.</p>' +
+        "</div>"
+      );
     }
 
-    // Roles
-    rolesEl.innerHTML = "";
-    (data.top_roles || []).forEach((r, idx) => {
-      const chips = (r.primary_skill_clusters || [])
-        .map((c) =>
-          (c.skills || [])
-            .slice(0, 3)
-            .map((s) => `<span class="sm-chip">${s}</span>`)
-            .join("")
-        )
-        .join("");
+    var name = escapeHtml(firstRole.role_name || firstRole.name || "Role");
+    var shortDesc = escapeHtml(
+      firstRole.short_description || firstRole.description || ""
+    );
+    var matchedSkills = safeArray(
+      firstRole.matched_skills || firstRole.current_skills
+    )
+      .slice(0, 8)
+      .map(function (s) {
+        return (
+          '<span class="sm-chip sm-chip-match">' +
+          escapeHtml(String(s)) +
+          "</span>"
+        );
+      })
+      .join("");
+    var missingCore = safeArray(
+      firstRole.missing_core_skills || firstRole.gap_skills
+    )
+      .slice(0, 5)
+      .map(function (s) {
+        return (
+          '<span class="sm-chip sm-chip-gap">' +
+          escapeHtml(String(s)) +
+          "</span>"
+        );
+      })
+      .join("");
 
-      const gaps = (r.gaps || [])
-        .map((g) => {
-          const pri = Math.max(1, Math.min(5, parseInt(g.priority || 0, 10) || 0));
-          const pct = Math.min(100, Math.max(0, pri * 20));
-          return `
-          <li>
-            <strong>${g.skill}</strong> — ${g.how_to_learn} <em>(${g.time_estimate_weeks}w)</em>
-            <div class="sm-priority"><div style="width:0%" data-target="${pct}"></div></div>
-          </li>`;
-        })
-        .join("");
-
-      const micro = (r.micro_projects || [])
-        .map(
-          (m) => `
-        <li><strong>${m.title}:</strong> ${m.outcome}. Deliverables: ${(m.deliverables || []).join(
-          ", "
-        )}.</li>
-      `
-        )
-        .join("");
-
-      const exTitles = (r.example_titles || []).slice(0, 3).join(" · ");
-
-      const card = document.createElement("div");
-      card.className = "sm-role";
-      card.innerHTML = `
-        <div class="sm-role-head">
-          <h3 class="sm-title">${r.title || "Role"}</h3>
-          <span class="sm-badge">${(r.seniority_target || "").toString().toUpperCase()}</span>
-        </div>
-        <div class="sm-score"><span class="num">0</span><span class="unit">/100</span></div>
-        <p class="sm-why">${r.why_fit || ""}</p>
-        <div class="sm-chips">${chips}</div>
-
-        <div class="sm-section">
-          <h4>Gaps (fix next)</h4>
-          <ol class="sm-list">${gaps}</ol>
-        </div>
-
-        <div class="sm-section">
-          <h4>Micro-projects</h4>
-          <ul class="sm-list">${micro}</ul>
-        </div>
-
-        <div class="sm-section">
-          <h4>Example titles</h4>
-          <div>${exTitles}</div>
-        </div>
-      `;
-      rolesEl.appendChild(card);
-
-      // animate score
-      const scoreNum = card.querySelector(".sm-score .num");
-      animateNumber(
-        scoreNum,
-        parseInt(r.match_score || 0, 10) || 0,
-        1000 + idx * 200
-      );
-
-      // animate gap bars
-      card.querySelectorAll(".sm-priority > div").forEach((bar, i) => {
-        const pct = parseInt(bar.getAttribute("data-target") || "0", 10);
-        setTimeout(() => {
-          bar.style.width = pct + "%";
-        }, 300 + i * 120);
-      });
-    });
-
-    // Hiring now
-    hiringStrip.innerHTML = "";
-    (data.hiring_now || []).forEach((h) => {
-      const item = document.createElement("div");
-      item.className = "sm-hiring-item";
-      item.innerHTML = `
-        <div class="sm-hiring-title">${h.role_group}</div>
-        <div class="sm-hiring-metrics">
-          <div class="sm-hiring-num"><span class="num">0</span></div>
-          <div class="sm-hiring-pct"><span class="pct">0</span>% share</div>
-        </div>
-        <div class="sm-hiring-note">${h.note || ""}</div>
-      `;
-      hiringStrip.appendChild(item);
-
-      // animate numbers
-      animateNumber(
-        item.querySelector(".num"),
-        parseInt(h.est_count_estimate_global || 0, 10) || 0,
-        900
-      );
-      animateNumber(
-        item.querySelector(".pct"),
-        Math.round(parseFloat(h.share_estimate_pct || 0) || 0),
-        900
-      );
-    });
+    return (
+      '<div class="sm-panel-basic">' +
+      "  <h2>Basic view (Free)</h2>" +
+      '  <p class="sm-section-sub">Here’s one role that fits your current skills snapshot.</p>' +
+      '  <article class="sm-role-card sm-role-basic">' +
+      '    <header class="sm-role-head">' +
+      "      <div>" +
+      '        <h3 class="sm-role-title">' +
+      name +
+      "</h3>" +
+      (shortDesc
+        ? '        <p class="sm-role-sub">' + shortDesc + "</p>"
+        : "") +
+      "      </div>" +
+      "    </header>" +
+      '    <section class="sm-role-section">' +
+      "      <h4>Skill match</h4>" +
+      '      <div class="sm-role-skills">' +
+      (matchedSkills
+        ? '        <div><div class="sm-label-small">You already have</div>' +
+          matchedSkills +
+          "</div>"
+        : "") +
+      (missingCore
+        ? '        <div><div class="sm-label-small">Core to build</div>' +
+          missingCore +
+          "</div>"
+        : "") +
+      "      </div>" +
+      "    </section>" +
+      "  </article>" +
+      '  <p class="sm-note">Pro analysis goes deeper with 3 roles, India salary bands, and detailed roadmaps.</p>' +
+      "</div>"
+    );
   }
 
-  async function post(url, body) {
-    const res = await fetch(url, {
+  function renderProPreviewHTML(data, billingHref) {
+    var fullHTML = renderFullSkillmapHTML(data);
+    var href = escapeHtml(billingHref || "/pricing");
+
+    return (
+      '<div class="sm-panel-pro-preview">' +
+      '  <div class="sm-panel-pro-inner">' +
+      fullHTML +
+      '    <div class="sm-pro-blur-overlay">' +
+      '      <div class="sm-pro-blur-content">' +
+      '        <div class="sm-pro-lock-icon">🔒</div>' +
+      '        <div class="sm-pro-lock-title">Skill Mapper Pro (preview)</div>' +
+      '        <p class="sm-pro-lock-text">Pro shows full 3-role roadmap, India salary bands, and “What’s hiring now” in detail.</p>' +
+      '        <a href="' +
+      href +
+      '" class="sm-btn sm-btn-upgrade">Unlock with Pro ⭐</a>' +
+      "      </div>" +
+      "    </div>" +
+      "  </div>" +
+      "</div>"
+    );
+  }
+
+  // ---------- Render entry points ----------
+
+  function renderFreeResult(data) {
+    if (!resultsEl || !resultsInnerEl) return;
+    resultsEl.classList.remove("hidden");
+    console.log("SkillMapper Free data:", data);
+
+    if (!isProUser) {
+      var basicHTML = renderBasicPanelHTML(data);
+      var previewHTML = renderProPreviewHTML(data, billingPath);
+
+      resultsInnerEl.innerHTML =
+        '<div class="sm-results-layout sm-results-layout-two">' +
+        basicHTML +
+        previewHTML +
+        "</div>";
+    } else {
+      var fullHTML = renderFullSkillmapHTML(data);
+      resultsInnerEl.innerHTML =
+        '<div class="sm-results-layout">' + fullHTML + "</div>";
+    }
+  }
+
+  function renderProResult(data) {
+    if (!resultsEl || !resultsInnerEl) return;
+    resultsEl.classList.remove("hidden");
+    console.log("SkillMapper Pro data:", data);
+
+    var fullHTML = renderFullSkillmapHTML(data);
+    resultsInnerEl.innerHTML =
+      '<div class="sm-results-layout">' + fullHTML + "</div>";
+  }
+
+  // ---------- Network helper ----------
+
+  function postJSON(url, payload) {
+    return fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {}),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify(payload || {})
+    }).then(function (resp) {
+      return resp
+        .json()
+        .catch(function () {
+          return {};
+        })
+        .then(function (data) {
+          return { status: resp.status, body: data };
+        });
     });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.ok) {
-      throw new Error(json.error || `Request failed (${res.status})`);
-    }
-    return json;
   }
 
-  const freeBtnInit = () => {
-    if (!freeBtn) return;
-    freeBtn.addEventListener("click", async () => {
-      const txt = ((input && input.value) || "").trim();
-      const domain = ((freeDomain && freeDomain.value) || "").trim();
-      if (!txt) return toast("Paste a few skills first.");
-      freeBtn.disabled = true;
-      freeBtn.textContent = "Running...";
-      try {
-        const json = await post("/skillmapper/free", {
-          free_text_skills: txt,
-          target_domain: domain,
-        });
-        render(json.data);
-        toast(json.used_live_ai ? "AI: live" : "AI: mock");
-      } catch (e) {
-        toast(e.message || "Something went wrong.");
-      } finally {
-        freeBtn.disabled = false;
-        freeBtn.textContent = "Run Skill Mapper";
-      }
-    });
-  };
+  // ---------- Event listeners ----------
 
-  const proBtnInit = () => {
-    if (!proBtn) return;
-    proBtn.addEventListener("click", async () => {
-      const body = {
-        use_profile: !!(useProfile && useProfile.checked),
-        region_sector: ((proRegion && proRegion.value) || "").trim(),
-        time_horizon_months: (proHorizon && proHorizon.value) || 6,
-        resume_text: ((proResume && proResume.value) || "").trim(),
-      };
-      proBtn.disabled = true;
-      proBtn.textContent = "Analyzing...";
-      try {
-        const json = await post("/skillmapper/pro", body);
-        render(json.data);
-        toast(json.used_live_ai ? "AI: live" : "AI: mock");
-      } catch (e) {
-        toast(e.message || "Pro analysis failed.");
-      } finally {
-        proBtn.disabled = false;
-        proBtn.textContent = "Analyze from Profile";
-      }
-    });
-  };
+  if (freeBtn) {
+    freeBtn.addEventListener("click", function () {
+      var text = (freeInput && freeInput.value) || "";
+      var domain = (freeDomain && freeDomain.value) || "";
 
-  const addPortfolioInit = () => {
-    if (!addPortfolio) return;
-    addPortfolio.addEventListener("click", () => {
-      if (!window.__SM_IS_PRO__) {
-        toast("Upgrade to Pro to add micro-projects to your Portfolio.");
+      if (!text.trim()) {
+        showToast("Please paste your skills/interests text.", "error");
         return;
       }
-      window.location.href = window.__SM_SETTINGS_PATH__ || "/settings#projects";
-    });
-  };
 
-  freeBtnInit();
-  proBtnInit();
-  addPortfolioInit();
+      freeBtn.disabled = true;
+      freeBtn.textContent = "Running…";
+
+      postJSON("/skillmapper/free", {
+        free_text_skills: text,
+        target_domain: domain
+      })
+        .then(function (res) {
+          var status = res.status;
+          var body = res.body || {};
+          if (!body || body.ok === false) {
+            var errMsg =
+              (body && body.error) ||
+              (status === 402
+                ? "Not enough Silver credits to run Skill Mapper."
+                : "Skill Mapper Free run failed.");
+            showToast(errMsg, "error");
+            return;
+          }
+          renderFreeResult(body.data || {});
+          showToast("Skill Mapper (Free) complete.", "success");
+        })
+        .catch(function (e) {
+          console.error("SkillMapper /free error", e);
+          showToast(
+            "Something went wrong while running Skill Mapper.",
+            "error"
+          );
+        })
+        .finally(function () {
+          freeBtn.disabled = false;
+          freeBtn.textContent = "Run Skill Mapper (Free)";
+        });
+    });
+  }
+
+  if (proBtn) {
+    proBtn.addEventListener("click", function () {
+      if (!isProUser) {
+        showToast("Skill Mapper Pro requires an active Pro plan.", "error");
+        return;
+      }
+
+      var useProfile = proUseProfile ? !!proUseProfile.checked : true;
+      var region = (proRegion && proRegion.value) || "";
+      var resumeText = (proResume && proResume.value) || "";
+
+      proBtn.disabled = true;
+      proBtn.textContent = "Analyzing…";
+
+      postJSON("/skillmapper/pro", {
+        use_profile: useProfile,
+        region_sector: region,
+        resume_text: resumeText
+      })
+        .then(function (res) {
+          var status = res.status;
+          var body = res.body || {};
+          if (!body || body.ok === false) {
+            var errMsg =
+              (body && body.error) ||
+              (status === 403
+                ? "Skill Mapper Pro requires an active Pro plan."
+                : "Skill Mapper Pro run failed.");
+            showToast(errMsg, "error");
+            return;
+          }
+          renderProResult(body.data || {});
+          showToast("Skill Mapper Pro analysis complete.", "success");
+        })
+        .catch(function (e) {
+          console.error("SkillMapper /pro error", e);
+          showToast(
+            "Something went wrong while running Skill Mapper Pro.",
+            "error"
+          );
+        })
+        .finally(function () {
+          proBtn.disabled = false;
+          proBtn.textContent = "Analyze from Profile";
+        });
+    });
+  }
 })();

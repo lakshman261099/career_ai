@@ -1,97 +1,284 @@
 {% extends "base.html" %}
 {% block title %}CareerAI — Launch Your Career{% endblock %}
+
 {% block content %}
-<section class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-10 lg:pt-16">
-  <div class="space-y-6 max-w-3xl">
-    <h1 class="text-4xl md:text-5xl font-extrabold leading-tight">
-      Tools to win internships and jobs.
-    </h1>
-    <p class="text-white/70">
-      Five focused features. Use Free coins to try, unlock Pro when you’re ready.
-    </p>
-    <div class="flex gap-3">
-      <a href="{{ feature_paths.resume }}" class="btn-primary">
-        {% if is_pro() %}Upload Resume{% else %}Upload Resume (Pro) 🔒{% endif %}
-      </a>
-      <a href="{{ feature_paths.internships }}" class="btn-ghost">Explore Internships</a>
+<section class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-12 lg:pt-16 pb-16 space-y-12">
+
+  <!-- HERO -->
+  <div class="grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-10 items-center">
+    <!-- Left: Copy + CTAs -->
+    <div class="space-y-6 max-w-3xl">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/60 border border-slate-500/40 text-[11px] uppercase tracking-[0.18em] text-slate-200/80">
+        <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        Live Career Copilot for Students
+      </div>
+
+      <h1 class="text-4xl md:text-5xl font-extrabold leading-tight">
+        Turn your skills into offers,
+        <span class="bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-sky-300 to-amber-200">
+          not just applications.
+        </span>
+      </h1>
+
+      <p class="text-white/70 text-sm md:text-base">
+        CareerAI gives you five focused tools for Indian students &amp; new grads:
+        AI resume checks, Job Packs, Skill Mapper, Internship Analyzer, and Referral Trainer —
+        all in one place. Try with 🪙 Free coins, unlock ⭐ Pro when it actually helps you.
+      </p>
+
+      <div class="flex flex-wrap gap-3 items-center">
+        <a href="{{ feature_paths.resume }}" class="btn-primary">
+          {% if is_pro() %}Upload Resume &amp; Start{% else %}Upload Resume (Pro) 🔒{% endif %}
+        </a>
+        <a href="{{ feature_paths.skillmapper }}" class="btn-ghost">
+          Try Skill Mapper (Free 🪙)
+        </a>
+      </div>
+
+      <p class="text-[11px] text-white/50">
+        Resume Vault is Pro-only. Once uploaded, your profile auto-fills Portfolio, Job Packs,
+        Skill Mapper Pro, and Internship Analyzer.
+      </p>
     </div>
-    <p class="text-xs text-white/50">
-      Resume Vault is Pro-only. Your saved details auto-fill across all features.
-    </p>
+
+    <!-- Right: Stacked feature overview -->
+    <div class="space-y-4">
+      <div class="glass-card p-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-100 uppercase tracking-[0.18em]">5 Core Tools</h2>
+          <p class="text-xs text-white/70 mt-1">
+            Designed for Indian CS/IT/EEE/ECE students: resume → projects → referrals → offers.
+          </p>
+        </div>
+        <div class="flex flex-col items-end text-[11px] text-white/70">
+          <span>🪙 Free runs daily</span>
+          <span>⭐ Pro = deeper packs</span>
+        </div>
+      </div>
+
+      <!-- Feature list (hover expands) -->
+      <a href="{{ feature_paths.jobpack }}"
+         class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
+        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+             style="background: radial-gradient(circle at right, rgba(56,189,248,.20), transparent 55%);"></div>
+        <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-sky-300/60 grid place-items-center text-lg shadow-lg shadow-sky-500/40">
+          💼
+        </div>
+        <div class="relative flex-1">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold">Job Pack Reports</h3>
+            <span class="tier-badge free text-[9px]">Free</span>
+            <span class="tier-badge pro text-[9px]">Pro</span>
+          </div>
+          <p class="text-xs text-white/70 mt-1">
+            Paste any JD and get ATS score, skill gaps, suggested resume edits, and interview prep
+            — built for Indian fresher roles.
+          </p>
+        </div>
+      </a>
+
+      <a href="{{ feature_paths.skillmapper }}"
+         class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
+        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+             style="background: radial-gradient(circle at right, rgba(129,140,248,.22), transparent 55%);"></div>
+        <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-indigo-300/70 grid place-items-center text-lg shadow-lg shadow-indigo-500/40">
+          🧭
+        </div>
+        <div class="relative flex-1">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold">Skill Mapper</h3>
+            <span class="tier-badge free text-[9px]">Free</span>
+            <span class="tier-badge pro text-[9px]">Pro</span>
+          </div>
+          <p class="text-xs text-white/70 mt-1">
+            Map your current skills to real roles in India (e.g., Data Analyst, SDE, DevOps),
+            see demand levels, salary bands, and missing skills.
+          </p>
+        </div>
+      </a>
+
+      <a href="{{ feature_paths.internships }}"
+         class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
+        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+             style="background: radial-gradient(circle at right, rgba(52,211,153,.22), transparent 55%);"></div>
+        <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-emerald-300/70 grid place-items-center text-lg shadow-lg shadow-emerald-500/40">
+          📚
+        </div>
+        <div class="relative flex-1">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold">Internship Analyzer</h3>
+            <span class="tier-badge free text-[9px]">Free</span>
+            <span class="tier-badge pro text-[9px]">Pro</span>
+          </div>
+          <p class="text-xs text-white/70 mt-1">
+            Paste any internship and see: skill gain, CV impact, portfolio value, and what
+            full-time roles it actually leads to.
+          </p>
+        </div>
+      </a>
+
+      <a href="{{ feature_paths.portfolio }}"
+         class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
+        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+             style="background: radial-gradient(circle at right, rgba(251,191,36,.24), transparent 55%);"></div>
+        <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-amber-300/70 grid place-items-center text-lg shadow-lg shadow-amber-500/40">
+          🧪
+        </div>
+        <div class="relative flex-1">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold">Portfolio Builder</h3>
+            <span class="tier-badge free text-[9px]">Free</span>
+            <span class="tier-badge pro text-[9px]">Pro</span>
+          </div>
+          <p class="text-xs text-white/70 mt-1">
+            Turn your skills + internships into 1–3 solid project ideas with tasks, tech stack,
+            and impact bullets ready to paste into your resume.
+          </p>
+        </div>
+      </a>
+
+      <a href="{{ feature_paths.referral }}"
+         class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
+        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+             style="background: radial-gradient(circle at right, rgba(244,114,182,.24), transparent 55%);"></div>
+        <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-pink-300/70 grid place-items-center text-lg shadow-lg shadow-pink-500/40">
+          🔗
+        </div>
+        <div class="relative flex-1">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold">Referral Trainer</h3>
+            <span class="tier-badge free text-[9px]">Free</span>
+            <span class="tier-badge pro text-[9px]">Pro (soon)</span>
+          </div>
+          <p class="text-xs text-white/70 mt-1">
+            Get warm + cold outreach drafts and polite follow-ups, tuned for Indian LinkedIn culture
+            (no cringe “synergy” buzzwords).
+          </p>
+        </div>
+      </a>
+    </div>
   </div>
 
-  <!-- === FEATURE GRID (5 features, no separate Resume Critique card) === -->
-  <div class="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  <!-- FEATURE GRID (deep dive cards with images) -->
+  <div class="mt-4">
+    <h2 class="text-lg font-semibold text-white/90 mb-3">Explore each tool in detail</h2>
+    <p class="text-xs text-white/60 mb-4">
+      Every feature has a Free mode (🪙) and a Pro mode (⭐). Free lets you try; Pro goes deeper with
+      more structure, export, and personalization.
+    </p>
 
-    <!-- 1) Portfolio Builder -->
-    <a href="{{ feature_paths.portfolio }}" class="feature-card group">
-      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_portfolio.svg') }}" alt="Portfolio" />
-      <h3 class="feature-title mt-3">Portfolio Builder</h3>
-      <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
-        <ul class="tier-list"><li>One project outline</li><li>Share as draft</li></ul>
-      </div>
-      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro)</span>
-        <ul class="tier-list"><li>3 project writeups</li><li>Publish with custom slug</li></ul>
-      </div>
-      <span class="feature-cta">Open →</span>
-    </a>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
-    <!-- 2) Internship Finder -->
-    <a href="{{ feature_paths.internships }}" class="feature-card group">
-      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_internships.svg') }}" alt="Internships" />
-      <h3 class="feature-title mt-3">Internship Finder</h3>
-      <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
-        <ul class="tier-list"><li>Top matches by skills</li><li>Learning links</li></ul>
-      </div>
-      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro)</span>
-        <ul class="tier-list"><li>Priority sorting</li><li>Save & export</li></ul>
-      </div>
-      <span class="feature-cta">Open →</span>
-    </a>
+      <!-- 1) Portfolio Builder -->
+      <a href="{{ feature_paths.portfolio }}" class="feature-card group">
+        <img class="feature-img" src="{{ url_for('static', filename='assets/feature_portfolio.svg') }}" alt="Portfolio" />
+        <h3 class="feature-title mt-3">Portfolio Builder</h3>
+        <div class="tier">
+          <span class="tier-badge free">Fast Pack (Free)</span>
+          <ul class="tier-list">
+            <li>1 project outline from your skills</li>
+            <li>Beginner-friendly tasks</li>
+          </ul>
+        </div>
+        <div class="tier">
+          <span class="tier-badge pro">Deep Pack (Pro)</span>
+          <ul class="tier-list">
+            <li>3 fully written projects</li>
+            <li>Recruiter-style impact bullets</li>
+            <li>Publish a public portfolio link</li>
+          </ul>
+        </div>
+        <span class="feature-cta">Open →</span>
+      </a>
 
-    <!-- 3) Referral Trainer -->
-    <a href="{{ feature_paths.referral }}" class="feature-card group">
-      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_referrals.svg') }}" alt="Referrals" />
-      <h3 class="feature-title mt-3">Referral Trainer</h3>
-      <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
-        <ul class="tier-list"><li>Warm + cold draft</li><li>Follow-up reminder</li></ul>
-      </div>
-      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro — Coming Soon)</span>
-        <ul class="tier-list"><li>Tone tuning</li><li>Contact notes & saves</li></ul>
-      </div>
-      <span class="feature-cta">Open →</span>
-    </a>
+      <!-- 2) Internship Analyzer -->
+      <a href="{{ feature_paths.internships }}" class="feature-card group">
+        <img class="feature-img" src="{{ url_for('static', filename='assets/feature_internships.svg') }}" alt="Internships" />
+        <h3 class="feature-title mt-3">Internship Analyzer</h3>
+        <div class="tier">
+          <span class="tier-badge free">Fast Pack (Free)</span>
+          <ul class="tier-list">
+            <li>Skill gain &amp; CV impact</li>
+            <li>Short explanation of value</li>
+          </ul>
+        </div>
+        <div class="tier">
+          <span class="tier-badge pro">Deep Pack (Pro)</span>
+          <ul class="tier-list">
+            <li>Detailed experience growth map</li>
+            <li>Portfolio suggestions from the role</li>
+            <li>Downstream full-time job pathways</li>
+          </ul>
+        </div>
+        <span class="feature-cta">Open →</span>
+      </a>
 
-    <!-- 4) Job Pack Reports -->
-    <a href "{{ feature_paths.jobpack }}" class="feature-card group md:col-span-2 lg:col-span-1">
-      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_jobpack.svg') }}" alt="Job Packs" />
-      <h3 class="feature-title mt-3">Job Pack Reports</h3>
-      <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
-        <ul class="tier-list"><li>One quick summary</li></ul>
-      </div>
-      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro)</span>
-        <ul class="tier-list">
-          <li>Detailed scoring for fit</li>
-          <li>Deep resume critique + role variants</li>
-          <li>Skill gaps & learning path</li>
-          <li>PDF/CSV export</li>
-        </ul>
-      </div>
-      <span class="feature-cta">Open →</span>
-    </a>
+      <!-- 3) Referral Trainer -->
+      <a href="{{ feature_paths.referral }}" class="feature-card group">
+        <img class="feature-img" src="{{ url_for('static', filename='assets/feature_referrals.svg') }}" alt="Referrals" />
+        <h3 class="feature-title mt-3">Referral Trainer</h3>
+        <div class="tier">
+          <span class="tier-badge free">Fast Pack (Free)</span>
+          <ul class="tier-list">
+            <li>Warm + cold outreach drafts</li>
+            <li>Follow-up templates</li>
+          </ul>
+        </div>
+        <div class="tier">
+          <span class="tier-badge pro">Deep Pack (Pro — Coming Soon)</span>
+          <ul class="tier-list">
+            <li>Tone tuning by referrer type</li>
+            <li>Contact notes &amp; saved history</li>
+          </ul>
+        </div>
+        <span class="feature-cta">Open →</span>
+      </a>
 
-    <!-- 5) Skill Mapper -->
-    <a href="{{ feature_paths.skillmapper }}" class="feature-card group">
-      <img class="feature-img" src="{{ url_for('static', filename='assets/feature_skillmapper.svg') }}" alt="Skill Mapper" />
-      <h3 class="feature-title mt-3">Skill Mapper</h3>
-      <div class="tier"><span class="tier-badge free">Fast Pack (Free)</span>
-        <ul class="tier-list"><li>Core skills by role</li><li>Starter links</li></ul>
-      </div>
-      <div class="tier"><span class="tier-badge pro">Deep Pack (Pro)</span>
-        <ul class="tier-list"><li>Tailored gaps via Resume Vault</li><li>Next-step plan</li></ul>
-      </div>
-      <span class="feature-cta">Open →</span>
-    </a>
+      <!-- 4) Job Pack Reports -->
+      <a href="{{ feature_paths.jobpack }}" class="feature-card group md:col-span-2 lg:col-span-1">
+        <img class="feature-img" src="{{ url_for('static', filename='assets/feature_jobpack.svg') }}" alt="Job Packs" />
+        <h3 class="feature-title mt-3">Job Pack Reports</h3>
+        <div class="tier">
+          <span class="tier-badge free">Fast Pack (Free)</span>
+          <ul class="tier-list">
+            <li>1 quick JD snapshot</li>
+            <li>Basic fit commentary</li>
+          </ul>
+        </div>
+        <div class="tier">
+          <span class="tier-badge pro">Deep Pack (Pro)</span>
+          <ul class="tier-list">
+            <li>ATS-style score &amp; missing keywords</li>
+            <li>Resume rewrite suggestions</li>
+            <li>Skill gaps &amp; learning path</li>
+            <li>Interview Q&amp;A and next steps</li>
+          </ul>
+        </div>
+        <span class="feature-cta">Open →</span>
+      </a>
+
+      <!-- 5) Skill Mapper -->
+      <a href="{{ feature_paths.skillmapper }}" class="feature-card group">
+        <img class="feature-img" src="{{ url_for('static', filename='assets/feature_skillmapper.svg') }}" alt="Skill Mapper" />
+        <h3 class="feature-title mt-3">Skill Mapper</h3>
+        <div class="tier">
+          <span class="tier-badge free">Fast Pack (Free)</span>
+          <ul class="tier-list">
+            <li>3 suggested roles for your skills</li>
+            <li>Basic skill clusters</li>
+          </ul>
+        </div>
+        <div class="tier">
+          <span class="tier-badge pro">Deep Pack (Pro)</span>
+          <ul class="tier-list">
+            <li>Profile-aware matches using your resume</li>
+            <li>India demand &amp; salary bands (model estimates)</li>
+            <li>Action plan to move from “now” → “target role”</li>
+          </ul>
+        </div>
+        <span class="feature-cta">Open →</span>
+      </a>
+    </div>
   </div>
 </section>
 {% endblock %}

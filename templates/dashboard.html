@@ -1,17 +1,380 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — {{ tenant_name or 'CareerAI' }}{% endblock %}
+
 {% block content %}
-<section class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-10">
-  <h2 class="text-2xl font-bold mb-4">
-    Welcome{% if current_user.is_authenticated %}, {{ current_user.email }}{% endif %}
-  </h2>
-  <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-    <a href="{{ feature_paths.resume }}" class="glass-card p-4 rounded-2xl">Resume Hub</a>
-    <a href="{{ feature_paths.jobpack }}" class="glass-card p-4 rounded-2xl">Job Pack</a>
-    <a href="{{ feature_paths.internships }}" class="glass-card p-4 rounded-2xl">Internship Analyzer</a>
-    <a href="{{ feature_paths.portfolio }}" class="glass-card p-4 rounded-2xl">Portfolio Builder</a>
-    <a href="{{ feature_paths.referral }}" class="glass-card p-4 rounded-2xl">Referral Trainer</a>
-    <a href="{{ feature_paths.skillmapper }}" class="glass-card p-4 rounded-2xl">Skill Mapper</a>
+<section class="relative overflow-hidden">
+  <!-- Animated background layer behind the dashboard (still under base.html gradient) -->
+  <div class="pointer-events-none absolute inset-0 -z-10">
+    <div class="w-full h-full opacity-60 animate-caGradient
+                bg-[radial-gradient(circle_at_top_left,#f97316_0,transparent_55%),radial-gradient(circle_at_bottom_right,#6366f1_0,transparent_55%)]">
+    </div>
+  </div>
+
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
+    <!-- Hero / Welcome -->
+    <header class="space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="space-y-1">
+          <p class="text-xs text-white/60 uppercase tracking-[0.16em]">
+            Dashboard
+          </p>
+          <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">
+            Welcome{% if current_user.is_authenticated %}, {{ current_user.email }}{% endif %}
+          </h1>
+          <p class="text-sm sm:text-base text-slate-200 max-w-xl">
+            Use these five tools together as your AI career control center — map your skills, decode jobs,
+            design projects, and reach warm referrals.
+          </p>
+        </div>
+        <div class="flex flex-col items-end gap-2 text-xs">
+          <a href="{{ feature_paths.resume }}"
+             class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/15 text-slate-100 hover:bg-white/10 transition">
+            <span class="text-[11px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/60 text-emerald-200">
+              Resume Hub
+            </span>
+            <span class="hidden sm:inline text-slate-200/90">
+              Upload once, reuse everywhere
+            </span>
+          </a>
+          <p class="text-[10px] text-white/40">
+            Resume Hub is Pro-only; details auto-fill across CareerAI.
+          </p>
+        </div>
+      </div>
+    </header>
+
+    <!-- Features zig-zag -->
+    <div class="space-y-10">
+      <!-- 1. Skill Mapper (left) -->
+      <div class="ca-feature-row ca-feature-left">
+        <article class="ca-feature-card">
+          <div class="ca-feature-icon bg-gradient-to-tr from-violet-500 to-indigo-400">
+            <span class="text-xl">☍</span>
+          </div>
+          <div class="space-y-1.5">
+            <h2 class="text-lg font-semibold">Skill Mapper</h2>
+            <p class="text-slate-200 text-sm">
+              Paste your skills and interests. Get 3 best-fit roles with India demand and sample salaries.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-400/40">
+              <span class="text-[10px]">★</span> India demand
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-400/40">
+              ₹ salaries (0–3 YOE)
+            </span>
+          </div>
+          <div class="pt-2">
+            <a href="{{ feature_paths.skillmapper }}" class="ca-feature-cta">
+              Open Skill Mapper
+            </a>
+          </div>
+
+          <div class="ca-feature-detail ca-feature-detail-left">
+            <h3 class="text-sm font-semibold mb-1.5 text-white">What you’ll see</h3>
+            <ul class="space-y-1.5 text-xs text-slate-100/90">
+              <li>• Top 3 roles ranked by fit from your skills snapshot</li>
+              <li>• Skills you already have vs gaps for each role</li>
+              <li>• India hiring demand &amp; salary hints per role</li>
+              <li>• Micro-project ideas to close the biggest gaps</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+
+      <!-- 2. Job Packs (right) -->
+      <div class="ca-feature-row ca-feature-right">
+        <article class="ca-feature-card">
+          <div class="ca-feature-icon bg-gradient-to-tr from-emerald-500 to-teal-400">
+            <span class="text-xl">📄</span>
+          </div>
+          <div class="space-y-1.5">
+            <h2 class="text-lg font-semibold">Job Pack</h2>
+            <p class="text-slate-200 text-sm">
+              Paste a JD. Get ATS score, missing keywords, interview Q&amp;A, and a full prep plan.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/40">
+              ✅ Resume checklist
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-400/40">
+              🎯 Interview drills
+            </span>
+          </div>
+          <div class="pt-2">
+            <a href="{{ feature_paths.jobpack }}" class="ca-feature-cta">
+              Analyze a job
+            </a>
+          </div>
+
+          <div class="ca-feature-detail ca-feature-detail-right">
+            <h3 class="text-sm font-semibold mb-1.5 text-white">What you’ll see</h3>
+            <ul class="space-y-1.5 text-xs text-slate-100/90">
+              <li>• ATS score with exact phrases to add to your resume</li>
+              <li>• Matched vs missing skills and tools</li>
+              <li>• Role-specific interview questions &amp; model answers</li>
+              <li>• 7-day prep plan tailored to that JD</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+
+      <!-- 3. Portfolio Builder (left) -->
+      <div class="ca-feature-row ca-feature-left">
+        <article class="ca-feature-card">
+          <div class="ca-feature-icon bg-gradient-to-tr from-fuchsia-500 to-rose-400">
+            <span class="text-xl">🚀</span>
+          </div>
+          <div class="space-y-1.5">
+            <h2 class="text-lg font-semibold">Portfolio Builder</h2>
+            <p class="text-slate-200 text-sm">
+              Convert your skills into standout project ideas with impact bullets and tech stack suggestions.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-fuchsia-500/15 border border-fuchsia-400/40">
+              📌 Recruiter-ready bullets
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100/10 border border-slate-400/40">
+              🌐 Public portfolio link (Pro)
+            </span>
+          </div>
+          <div class="pt-2">
+            <a href="{{ feature_paths.portfolio }}" class="ca-feature-cta">
+              Design a project
+            </a>
+          </div>
+
+          <div class="ca-feature-detail ca-feature-detail-left">
+            <h3 class="text-sm font-semibold mb-1.5 text-white">What you’ll see</h3>
+            <ul class="space-y-1.5 text-xs text-slate-100/90">
+              <li>• 1–3 project ideas matched to your target role</li>
+              <li>• Recommended tech stack with beginner-friendly options</li>
+              <li>• Impact bullets you can paste into your resume</li>
+              <li>• Pro: publish a clean portfolio page from your profile</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+
+      <!-- 4. Internship Analyzer (right) -->
+      <div class="ca-feature-row ca-feature-right">
+        <article class="ca-feature-card">
+          <div class="ca-feature-icon bg-gradient-to-tr from-sky-500 to-cyan-400">
+            <span class="text-xl">🎓</span>
+          </div>
+          <div class="space-y-1.5">
+            <h2 class="text-lg font-semibold">Internship Analyzer</h2>
+            <p class="text-slate-200 text-sm">
+              Paste any internship description. See what you’ll learn, portfolio impact, and next roles it opens.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-400/40">
+              📈 Skill growth
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/40">
+              🔁 Pathway after internship
+            </span>
+          </div>
+          <div class="pt-2">
+            <a href="{{ feature_paths.internships }}" class="ca-feature-cta">
+              Evaluate an internship
+            </a>
+          </div>
+
+          <div class="ca-feature-detail ca-feature-detail-right">
+            <h3 class="text-sm font-semibold mb-1.5 text-white">What you’ll see</h3>
+            <ul class="space-y-1.5 text-xs text-slate-100/90">
+              <li>• Concrete skills you’ll build (tools + concepts)</li>
+              <li>• How it boosts your resume and portfolio</li>
+              <li>• Likely next roles after 6–18 months</li>
+              <li>• Whether it matches your long-term direction</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+
+      <!-- 5. Referral Trainer (left) -->
+      <div class="ca-feature-row ca-feature-left">
+        <article class="ca-feature-card">
+          <div class="ca-feature-icon bg-gradient-to-tr from-amber-500 to-orange-400">
+            <span class="text-xl">📨</span>
+          </div>
+          <div class="space-y-1.5">
+            <h2 class="text-lg font-semibold">Referral Trainer</h2>
+            <p class="text-slate-200 text-sm">
+              Draft warm, respectful outreach to alumni and employees — without sounding robotic or salesy.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40">
+              💬 Warm, cold &amp; follow-ups
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100/10 border border-slate-400/40">
+              🪙 Free feature
+            </span>
+          </div>
+          <div class="pt-2">
+            <a href="{{ feature_paths.referral }}" class="ca-feature-cta">
+              Draft a message
+            </a>
+          </div>
+
+          <div class="ca-feature-detail ca-feature-detail-left">
+            <h3 class="text-sm font-semibold mb-1.5 text-white">What you’ll see</h3>
+            <ul class="space-y-1.5 text-xs text-slate-100/90">
+              <li>• 3 outreach drafts: warm, cold, and follow-up</li>
+              <li>• Student-friendly tone (no cringe, no hype)</li>
+              <li>• Clear subject line + LinkedIn opener</li>
+              <li>• Easy spots to personalize in 10–15 seconds</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+    </div>
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  /* Subtle animated gradient in background */
+  @keyframes caGradient {
+    0%   { transform: translate3d(0,0,0) scale(1); }
+    50%  { transform: translate3d(-3%, -4%, 0) scale(1.03); }
+    100% { transform: translate3d(0,0,0) scale(1); }
+  }
+  .animate-caGradient {
+    animation: caGradient 26s ease-in-out infinite;
+  }
+
+  /* Feature rows (zig-zag left/right) */
+  .ca-feature-row {
+    position: relative;
+    display: flex;
+    justify-content: flex-start;
+  }
+  .ca-feature-row.ca-feature-right {
+    justify-content: flex-end;
+  }
+
+  /* Core feature card */
+  .ca-feature-card {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    padding: 1.5rem 1.6rem;
+    border-radius: 1.4rem;
+    background:
+      radial-gradient(circle at top left, rgba(148,163,253,0.25), transparent 55%),
+      radial-gradient(circle at bottom right, rgba(249,115,22,0.18), transparent 55%),
+      rgba(15,23,42,0.95);
+    border: 1px solid rgba(148,163,184,0.45);
+    box-shadow: 0 22px 44px rgba(15,23,42,0.9);
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    overflow: hidden;
+    cursor: pointer;
+    transition:
+      transform 220ms cubic-bezier(0.22,0.61,0.36,1),
+      box-shadow 220ms cubic-bezier(0.22,0.61,0.36,1),
+      border-color 200ms ease-out,
+      background 220ms ease-out;
+  }
+  .ca-feature-card:hover {
+    transform: translate3d(0,-4px,0) scale(1.01);
+    box-shadow: 0 28px 60px rgba(59,130,246,0.6);
+    border-color: rgba(129,140,248,0.9);
+    background:
+      radial-gradient(circle at top left, rgba(129,140,248,0.38), transparent 60%),
+      radial-gradient(circle at bottom right, rgba(249,115,22,0.22), transparent 55%),
+      rgba(15,23,42,0.96);
+  }
+
+  .ca-feature-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    box-shadow: 0 16px 35px rgba(15,23,42,0.75);
+  }
+
+  .ca-feature-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.55rem 1rem;
+    font-size: 0.8rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg,#4f46e5,#6366f1,#f97316);
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 16px 32px rgba(79,70,229,0.8);
+    text-decoration: none;
+    transition:
+      transform 160ms ease-out,
+      box-shadow 160ms ease-out,
+      filter 160ms ease-out;
+  }
+  .ca-feature-cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 22px 40px rgba(79,70,229,0.95);
+    filter: brightness(1.05);
+  }
+
+  /* Detail panel that expands out on hover (desktop) */
+  .ca-feature-detail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 52%;
+    padding: 1.2rem 1.3rem;
+    border-radius: 1.3rem;
+    background: rgba(15,23,42,0.96);
+    border: 1px solid rgba(148,163,184,0.6);
+    box-shadow: 0 18px 40px rgba(15,23,42,0.9);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate3d(0,8px,0);
+    transition:
+      opacity 220ms ease-out,
+      transform 240ms cubic-bezier(0.22,0.61,0.36,1);
+  }
+  .ca-feature-detail-left { right: -54%; }
+  .ca-feature-detail-right { left: -54%; }
+
+  .ca-feature-card:hover .ca-feature-detail {
+    opacity: 1;
+    transform: translate3d(0,0,0);
+    pointer-events: auto;
+  }
+
+  /* Mobile: stack, details appear under card instead of sliding */
+  @media (max-width: 900px) {
+    .ca-feature-row,
+    .ca-feature-row.ca-feature-right {
+      justify-content: center;
+    }
+    .ca-feature-card {
+      max-width: 100%;
+    }
+    .ca-feature-detail,
+    .ca-feature-detail-left,
+    .ca-feature-detail-right {
+      position: static;
+      width: 100%;
+      margin-top: 0.75rem;
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+  }
+</style>
 {% endblock %}
