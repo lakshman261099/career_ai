@@ -573,60 +573,70 @@ SKILLMAPPER_JSON_SCHEMA = r"""
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "role_name", "seniority_target", "match_label",
-          "why_fit", "matched_skills", "missing_core_skills",
-          "learning_focus_areas", "first_steps", "suggested_projects",
-          "india_context"
+          "title", "seniority_target", "match_score",
+          "why_fit", "primary_skill_clusters",
+          "gaps", "micro_projects", "example_titles"
         ],
         "properties": {
-          "role_name": { "type": "string", "minLength": 3 },
+          "title": { "type": "string", "minLength": 3 },
           "seniority_target": { "type": "string", "enum": ["intern", "junior", "entry", "mid"] },
-          "match_label": { "type": "string" },
-          "short_description": { "type": "string" },
+          "match_score": { "type": "integer", "minimum": 0, "maximum": 100 },
           "why_fit": { "type": "string", "minLength": 10 },
-          "matched_skills": {
-            "type": "array",
-            "items": { "type": "string" }
-          },
-          "missing_core_skills": {
-            "type": "array",
-            "items": { "type": "string" }
-          },
-          "nice_to_have_skills": {
-            "type": "array",
-            "items": { "type": "string" }
-          },
-          "learning_focus_areas": {
+          "primary_skill_clusters": {
             "type": "array",
             "minItems": 2,
-            "items": { "type": "string" }
-          },
-          "first_steps": {
-            "type": "array",
-            "minItems": 2,
-            "items": { "type": "string" }
-          },
-          "suggested_projects": {
-            "type": "array",
-            "minItems": 2,
-            "items": { "type": "string" }
-          },
-          "india_context": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["india_hiring_demand"],
-            "properties": {
-              "india_hiring_demand": { "type": "string" },
-              "india_fresher_salary_band": { "type": "string" },
-              "typical_indian_companies": {
-                "type": "array",
-                "items": { "type": "string" }
-              },
-              "keywords_for_job_portals": {
-                "type": "array",
-                "items": { "type": "string" }
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "skills"],
+              "properties": {
+                "name": { "type": "string" },
+                "skills": {
+                  "type": "array",
+                  "minItems": 3,
+                  "items": { "type": "string" }
+                }
               }
             }
+          },
+          "gaps": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["skill", "priority", "how_to_learn", "time_estimate_weeks"],
+              "properties": {
+                "skill": { "type": "string" },
+                "priority": { "type": "integer", "minimum": 1, "maximum": 5 },
+                "how_to_learn": { "type": "string" },
+                "time_estimate_weeks": { "type": "integer", "minimum": 1, "maximum": 24 }
+              }
+            }
+          },
+          "micro_projects": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["title", "outcome", "deliverables", "difficulty"],
+              "properties": {
+                "title": { "type": "string" },
+                "outcome": { "type": "string" },
+                "deliverables": {
+                  "type": "array",
+                  "minItems": 2,
+                  "items": { "type": "string" }
+                },
+                "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] }
+              }
+            }
+          },
+          "example_titles": {
+            "type": "array",
+            "minItems": 3,
+            "items": { "type": "string" }
           }
         }
       }
@@ -637,33 +647,17 @@ SKILLMAPPER_JSON_SCHEMA = r"""
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["role_name", "demand_estimate_percent", "notes"],
+        "required": ["role_group", "roles", "share_estimate_pct", "est_count_estimate_global", "note"],
         "properties": {
-          "role_name": { "type": "string" },
-          "demand_estimate_percent": { "type": "number", "minimum": 0, "maximum": 100 },
-          "notes": { "type": "string" },
-          "typical_keywords": {
+          "role_group": { "type": "string" },
+          "roles": {
             "type": "array",
+            "minItems": 2,
             "items": { "type": "string" }
-          }
-        }
-      }
-    },
-    "high_paid_roles_india": {
-      "type": "array",
-      "minItems": 3,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["role_name", "typical_salary_band", "difficulty_label"],
-        "properties": {
-          "role_name": { "type": "string" },
-          "typical_salary_band": { "type": "string" },
-          "difficulty_label": { "type": "string" },
-          "key_requirements": {
-            "type": "array",
-            "items": { "type": "string" }
-          }
+          },
+          "share_estimate_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+          "est_count_estimate_global": { "type": "integer", "minimum": 1000 },
+          "note": { "type": "string" }
         }
       }
     },
@@ -702,15 +696,12 @@ Context & Rules:
 - The profile object is authoritative: {profile_json}
 - If resume_text is provided, prefer profile fields, then use resume_text to fill gaps.
 - Produce three DISTINCT, specialized roles (not generic reskins).
-- Focus on India-first, 0–3 years experience roles unless the profile clearly supports mid-level.
-- For each role, return:
-  - role_name, seniority_target, match_label, short_description.
-  - matched_skills, missing_core_skills, nice_to_have_skills.
-  - learning_focus_areas, first_steps, suggested_projects.
-  - india_context with hiring demand, fresher salary band, example Indian companies, and keywords_for_job_portals.
-- "hiring_now" is MODEL ESTIMATES (directional), not scraped; include a brief note that ends with "model estimate".
-- "high_paid_roles_india" must describe realistic but non-guaranteed bands for India; include key_requirements.
-- call_to_action: 2–4 sentences giving a clear next-step plan a fresher can follow in India.
+- Match depth to the domain in profile; avoid vague titles.
+- Give a candid match_score (0–100); avoid clustering all scores together.
+- "hiring_now" is MODEL ESTIMATES (directional), not scraped; include a brief regional/sector note if relevant.
+- Gaps must be specific, prioritized, and time-bounded with weeks.
+- Micro-projects must be resume-ready with concrete deliverables.
+- Keep language concise and recruiter-friendly.
 
 JSON Schema:
 {json_schema}
@@ -724,20 +715,24 @@ Return ONLY valid JSON matching the provided JSON Schema—no markdown or commen
 
 Freshness: {freshness}
 
+Region & market emphasis:
+{region_line}
+
 {target_domain_line}
 
 Context & Rules:
 - Mode: "free".
-- Input is free_text_skills (which actually contains a compact snapshot built from the student's profile, resume, and any extra skills they typed).
-- Assume India-first hiring, 0–3 years experience.
-- Infer a plausible target domain from the text and produce three DISTINCT, specialized roles within that domain.
+- Primary signal is profile_json (skills, projects, education) plus resume_text.
+- free_text_skills is optional; treat it as an extra hint only.
+- Infer a plausible target domain and produce three DISTINCT, specialized roles within that domain.
 - Keep outputs actionable but concise; assume beginner to entry level.
+- "hiring_now" is MODEL ESTIMATES (directional), not scraped.
 - Micro-projects should be simple but portfolio-worthy.
-- "hiring_now" and "high_paid_roles_india" are MODEL ESTIMATES (directional), not scraped.
-- call_to_action: 2–3 sentences with specific advice on what to do in the next 4–8 weeks.
 
 Inputs:
-- free_text_skills: {free_text_skills}
+- profile_json (optional): {profile_json}
+- resume_text (optional): {resume_text}
+- extra_free_text_skills: {free_text_skills}
 
 JSON Schema:
 {json_schema}
@@ -773,7 +768,7 @@ def build_skillmapper_messages(pro_mode: bool, inputs: Dict[str, Any]) -> List[D
         region_line = (
             f"Emphasize region/sector context: {region_sector}."
             if region_sector
-            else "Emphasize global hiring context, but keep examples grounded in India when reasonable."
+            else "Emphasize global hiring context (no specific region provided)."
         )
 
         # Horizon narrative used in prompt
@@ -803,8 +798,8 @@ def build_skillmapper_messages(pro_mode: bool, inputs: Dict[str, Any]) -> List[D
             [
                 "- Use tight, recruiter-friendly language.",
                 "- Roles must be distinct; avoid duplicates and near-duplicates.",
-                "- Target level is intern/junior/entry unless the profile clearly supports mid.",
-                "- For each gap: include specific skills, not vague themes.",
+                "- Target level is junior/intern/entry unless the profile clearly supports mid.",
+                "- For each gap: include priority (1–5), a concrete learning step, and a realistic time_estimate_weeks.",
                 "- Micro-projects should align with the stated time horizon (shorter and simpler for 3 months, deeper for 12).",
             ]
         )
@@ -820,23 +815,43 @@ def build_skillmapper_messages(pro_mode: bool, inputs: Dict[str, Any]) -> List[D
         )
         resume_text = (inputs.get("resume_text") or "").strip()
         if resume_text:
-            prompt += f"\n\nAdditional resume_text (truncated as needed):\n{resume_text}"
+            prompt += f"\n\nAdditional resume_text (truncated as needed):\n{resume_text[:4000]}"
     else:
         free_text = (inputs.get("free_text_skills") or "").strip()
+        profile_json = inputs.get("profile_json") or {}
+        resume_text = (inputs.get("resume_text") or "").strip()
         hints = inputs.get("hints") or {}
+
         target_domain = ""
+        region_focus = ""
         if isinstance(hints, dict):
             target_domain = (hints.get("target_domain") or "").strip()
+            region_focus = (
+                hints.get("region_focus")
+                or hints.get("region_sector")
+                or ""
+            )
+            region_focus = str(region_focus).strip()
+
         target_domain_line = (
             f"Target domain hint from user: {target_domain}"
             if target_domain
-            else "No explicit domain; infer a logical domain from the text."
+            else "No explicit domain; infer a logical domain from the text + profile."
         )
+        region_line = (
+            f"Emphasize roles aligned with this region/sector: {region_focus}."
+            if region_focus
+            else "Assume India early-career tech roles as the default market."
+        )
+
         prompt = FREE_SKILLMAPPER_PROMPT.format(
-            free_text_skills=free_text,
+            free_text_skills=free_text[:2000],
+            profile_json=json.dumps(profile_json, ensure_ascii=False)[:3000],
+            resume_text=resume_text[:3000],
             json_schema=SKILLMAPPER_JSON_SCHEMA,
             freshness=FRESHNESS_NOTE,
             target_domain_line=target_domain_line,
+            region_line=region_line,
         )
 
     return [
@@ -851,13 +866,12 @@ def _light_validate_skillmap(data: Any) -> Dict[str, Any]:
             "mode": "free",
             "top_roles": [],
             "hiring_now": [],
-            "high_paid_roles_india": [],
             "call_to_action": "",
             "meta": {},
         }
-    for k in ["mode", "top_roles", "hiring_now", "high_paid_roles_india", "call_to_action", "meta"]:
+    for k in ["mode", "top_roles", "hiring_now", "call_to_action", "meta"]:
         if k not in data:
-            if k in ("top_roles", "hiring_now", "high_paid_roles_india"):
+            if k in ("top_roles", "hiring_now"):
                 data[k] = []
             elif k == "meta":
                 data[k] = {}
@@ -871,15 +885,49 @@ def _light_validate_skillmap(data: Any) -> Dict[str, Any]:
         data["top_roles"] = data["top_roles"][:3]
     if not isinstance(data.get("hiring_now"), list):
         data["hiring_now"] = []
-    elif len(data["hiring_now"]) > 6:
-        data["hiring_now"] = data["hiring_now"][:6]
-    if not isinstance(data.get("high_paid_roles_india"), list):
-        data["high_paid_roles_india"] = []
-    elif len(data["high_paid_roles_india"]) > 6:
-        data["high_paid_roles_india"] = data["high_paid_roles_india"][:6]
+    elif len(data["hiring_now"]) > 5:
+        data["hiring_now"] = data["hiring_now"][:5]
     if not isinstance(data.get("meta"), dict):
         data["meta"] = {}
     return data
+
+
+def _parse_skillmap_json(raw: str) -> Dict[str, Any]:
+    """
+    Try strict JSON first, then relaxed parsing:
+    - Strip ```json fences if present.
+    - Take substring between first '{' and last '}'.
+    If everything fails, re-raise so caller can handle.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        raise ValueError("Empty response from model")
+
+    # 1) Direct parse
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+
+    # 2) Strip code fences like ```json ... ```
+    if raw.startswith("```"):
+        stripped = raw.strip("`")
+        if stripped.lower().startswith("json"):
+            stripped = stripped[4:].lstrip()
+        try:
+            return json.loads(stripped)
+        except Exception:
+            raw = stripped  # continue with stripped
+
+    # 3) Substring between first { and last }
+    first = raw.find("{")
+    last = raw.rfind("}")
+    if first != -1 and last != -1 and last > first:
+        candidate = raw[first : last + 1]
+        return json.loads(candidate)
+
+    # If still not parseable, let caller handle
+    raise ValueError("Unable to parse SkillMapper JSON")
 
 
 def generate_skillmap(
@@ -896,19 +944,21 @@ def generate_skillmap(
     client = OpenAI()
 
     used_live_ai = False
-    try:
-        if pro_mode:
-            inputs: Dict[str, Any] = {
-                "profile_json": profile_json or {},
-                "resume_text": (resume_text or "").strip(),
-                "hints": hints or {},
-            }
-        else:
-            inputs = {
-                "free_text_skills": (free_text_skills or "").strip(),
-                "hints": hints or {},
-            }
+    if pro_mode:
+        inputs: Dict[str, Any] = {
+            "profile_json": profile_json or {},
+            "resume_text": (resume_text or "").strip(),
+            "hints": hints or {},
+        }
+    else:
+        inputs = {
+            "profile_json": profile_json or {},
+            "resume_text": (resume_text or "").strip(),
+            "free_text_skills": (free_text_skills or "").strip(),
+            "hints": hints or {},
+        }
 
+    try:
         messages = build_skillmapper_messages(pro_mode, inputs)
 
         resp = client.chat.completions.create(
@@ -919,24 +969,9 @@ def generate_skillmap(
             response_format={"type": "json_object"},
         )
         raw = (resp.choices[0].message.content or "").strip()
-        if not raw:
-            raise ValueError("Empty response from model")
 
-        raw_strip = raw.strip()
-        if raw_strip.startswith("```"):
-            # Strip accidental fences if any
-            raw_strip = re.sub(r"^```[a-zA-Z0-9]*\s*\n", "", raw_strip)
-            if raw_strip.endswith("```"):
-                raw_strip = raw_strip[:-3].strip()
-
-        try:
-            data = json.loads(raw_strip)
-        except json.JSONDecodeError:
-            # Last-ditch: grab the first JSON-looking block
-            m = re.search(r"(\{[\s\S]+\})", raw_strip)
-            if not m:
-                raise
-            data = json.loads(m.group(1))
+        # Robust parsing instead of plain json.loads
+        data = _parse_skillmap_json(raw)
 
         data = _light_validate_skillmap(data)
 
@@ -946,28 +981,25 @@ def generate_skillmap(
         if "inputs_digest" not in meta:
             meta["inputs_digest"] = _inputs_digest(inputs)
 
-        # Source + region/meta hints for the UI
-        meta["source"] = "pro" if pro_mode else "free"
+        # Extra meta for UI
+        meta.setdefault("source", "pro" if pro_mode else "free")
+        meta.setdefault("using_profile", bool(inputs.get("profile_json")))
+        region_hint = None
+        hints_obj = inputs.get("hints") or {}
+        if isinstance(hints_obj, dict):
+            region_hint = (
+                hints_obj.get("region_sector")
+                or hints_obj.get("region_focus")
+                or None
+            )
+        if region_hint:
+            meta.setdefault("region_focus", region_hint)
         meta.setdefault("version", CAREER_AI_VERSION)
 
-        if pro_mode:
-            if isinstance(profile_json, dict):
-                meta["using_profile"] = bool(profile_json)
-                opts = (profile_json or {}).get("_skillmapper_options") or {}
-                if isinstance(opts, dict):
-                    region = opts.get("region_sector") or opts.get("region_focus")
-                    if region:
-                        meta.setdefault("region_focus", str(region))
-        else:
-            if isinstance(hints, dict):
-                region = hints.get("region_focus") or hints.get("target_region")
-                if region:
-                    meta.setdefault("region_focus", str(region))
-
-        # Optional profile snapshot for Pro (used in UI)
+        # Optional profile snapshot for Pro (used in right-rail UI)
         try:
-            if pro_mode and isinstance(inputs.get("profile_json"), dict):
-                prof = inputs["profile_json"]
+            prof = inputs.get("profile_json") or {}
+            if isinstance(prof, dict) and prof:
                 ident = prof.get("identity") or {}
                 skills_field = prof.get("skills") or []
                 key_skills: List[str] = []
@@ -999,7 +1031,6 @@ def generate_skillmap(
                 "mode": "pro" if pro_mode else "free",
                 "top_roles": [],
                 "hiring_now": [],
-                "high_paid_roles_india": [],
                 "call_to_action": "ERROR: " + str(e),
                 "meta": {
                     "generated_at_utc": _utc_now_iso(),

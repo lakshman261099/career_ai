@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Skill Mapper History — CareerAI{% endblock %}
+
+{% block content %}
+<section class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 pt-10 space-y-6">
+  <div class="glass-panel rounded-2xl p-6">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <h1 class="text-xl font-bold">Skill Mapper history</h1>
+        <p class="text-sm text-white/70">
+          Reopen past roadmaps without spending extra coins or Pro credits.
+        </p>
+      </div>
+      <a href="{{ url_for('skillmapper.index') }}"
+         class="text-xs text-white/70 hover:text-white underline">
+        New Skill Mapper run
+      </a>
+    </div>
+
+    {% if snapshots %}
+      <ul class="divide-y divide-white/10 text-sm">
+        {% for snap in snapshots %}
+          <li class="py-3 flex items-center justify-between gap-3">
+            <div>
+              <p class="font-semibold">
+                {{ snap.source_title or "Skill Mapper" }}
+              </p>
+              <p class="text-xs text-white/60">
+                {{ snap.created_at.strftime('%d %b %Y · %H:%M') if snap.created_at }}
+              </p>
+              {% if snap.input_text %}
+                <p class="text-[11px] text-white/50 mt-0.5 line-clamp-2">
+                  {{ snap.input_text[:140] }}{% if snap.input_text|length > 140 %}…{% endif %}
+                </p>
+              {% endif %}
+            </div>
+            <div class="flex items-center gap-2">
+              <a href="{{ url_for('skillmapper.snapshot', snapshot_id=snap.id) }}"
+                 class="btn-primary text-[11px] px-3 py-1">
+                View roadmap
+              </a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if pagination.pages > 1 %}
+      <div class="mt-4 flex justify-between text-xs text-white/60">
+        <div>
+          Page {{ pagination.page }} of {{ pagination.pages }}
+        </div>
+        <div class="space-x-2">
+          {% if pagination.has_prev %}
+            <a href="{{ url_for('skillmapper.history', page=pagination.prev_num) }}" class="underline hover:text-white">
+              ← Prev
+            </a>
+          {% endif %}
+          {% if pagination.has_next %}
+            <a href="{{ url_for('skillmapper.history', page=pagination.next_num) }}" class="underline hover:text-white">
+              Next →
+            </a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    {% else %}
+      <p class="text-sm text-white/70 mt-2">
+        No Skill Mapper runs saved yet. Run your first roadmap to see it here.
+      </p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -8,17 +8,27 @@ import sys
 import traceback
 from datetime import datetime
 
-from flask import jsonify, render_template, request
+from flask import (
+    jsonify,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    current_app,
+)
 from flask_login import current_user, login_required
 from sqlalchemy import desc
 
 from limits import authorize_and_consume
 from models import ResumeAsset, SkillMapSnapshot, UserProfile, db
 from modules.common.ai import generate_skillmap
+from modules.common.profile_loader import load_profile_snapshot
 
 from . import bp
 
 log = logging.getLogger(__name__)
+
 FEATURE_KEY = "skillmapper"
 SHOW_ERRS = os.getenv("SHOW_SM_ERRORS", "0") == "1"
 CAREER_AI_VERSION = os.getenv("CAREER_AI_VERSION", "2025-Q4")
@@ -26,6 +36,9 @@ CAREER_AI_VERSION = os.getenv("CAREER_AI_VERSION", "2025-Q4")
 # Max size guardrails (avoid huge pastes)
 MAX_FREE_TEXT = int(os.getenv("SM_MAX_FREE_TEXT", "12000"))
 MAX_RESUME_TEXT = int(os.getenv("SM_MAX_RESUME_TEXT", "24000"))
+
+
+# ---------------------- helpers ----------------------
 
 
 def _latest_resume_text(user_id: int) -> str:
@@ -57,83 +70,291 @@ def _profile_json(user_id: int) -> dict:
     }
 
 
-def _profile_snapshot_text(profile: dict) -> str:
-    """
-    Turn the Profile Portal JSON into a compact text snapshot that can be fed
-    into the free SkillMapper prompt. This lets free mode still be
-    profile-driven without changing the AI schema.
-    """
-    if not isinstance(profile, dict) or not profile:
-        return ""
-
-    ident = profile.get("identity") or {}
-    pieces = []
-
-    name = (ident.get("full_name") or "").strip()
-    headline = (ident.get("headline") or "").strip()
-    summary = (ident.get("summary") or "").strip()
-
-    if headline:
-        pieces.append(headline)
-    if summary:
-        pieces.append(summary)
-
-    # Flatten skills into simple names
-    skills_field = profile.get("skills") or []
-    skill_names: list[str] = []
-    if isinstance(skills_field, list):
-        for s in skills_field:
-            if isinstance(s, str) and s.strip():
-                skill_names.append(s.strip())
-            elif isinstance(s, dict):
-                n = (s.get("name") or s.get("skill") or "").strip()
-                if n:
-                    skill_names.append(n)
-    if skill_names:
-        pieces.append("Core skills: " + ", ".join(skill_names[:30]))
-
-    # Light-touch experience labels (no huge text)
-    exp = profile.get("experience") or []
-    if isinstance(exp, list) and exp:
-        roles = []
-        for item in exp[:4]:
-            if not isinstance(item, dict):
-                continue
-            title = (item.get("title") or item.get("role") or "").strip()
-            company = (item.get("company") or "").strip()
-            if title and company:
-                roles.append(f"{title} @ {company}")
-            elif title:
-                roles.append(title)
-        if roles:
-            pieces.append("Experience: " + "; ".join(roles))
-
-    return (name + " — " if name else "") + " | ".join(pieces)
+def json_dumps_safe(obj) -> str:
+    try:
+        return _json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        return "{}"
 
 
-@bp.route("", methods=["GET"])
+# ---------------------- new HTML-first flow ----------------------
+
+
+@bp.route("/", methods=["GET", "POST"], endpoint="index")
 @login_required
 def index():
-    # feature_paths is likely injected via a context processor elsewhere
+    """
+    Skill Mapper — HTML-first flow (like Job Pack).
+
+    - GET: show simple preferences form.
+    - POST: run Free or Deep (Pro) roadmap and render result page.
+
+    Free runs:
+      - Use Profile Portal + resume + optional extra skills.
+      - Cost Silver (FEATURE_KEY = "skillmapper").
+      - Show 1 full role + Pro preview (blurred) of the rest.
+
+    Pro runs:
+      - Require Pro subscription.
+      - Use Profile Portal + resume.
+      - Show full 3-role roadmap + hiring snapshot + action plan.
+    """
+    is_pro_user = bool(getattr(current_user, "is_pro", False))
+    profile_snapshot = load_profile_snapshot(current_user)
+
+    mode = (request.form.get("mode") or "free").lower()
+    if mode not in ("free", "pro"):
+        mode = "free"
+    pro_mode = mode == "pro"
+
+    skillmap = None
+    used_live_ai = False
+    snapshot = None
+
+    if request.method == "POST":
+        # Simple preference inputs
+        extra_skills = (request.form.get("free_text_skills") or "").strip()
+        target_domain = (request.form.get("target_domain") or "").strip()
+        region_focus = (request.form.get("region_focus") or "").strip()
+        time_horizon = (request.form.get("time_horizon") or "").strip()  # months
+
+        # Access controls / credits
+        if pro_mode:
+            if not is_pro_user:
+                flash("Skill Mapper Pro requires a Pro subscription.", "warning")
+                return redirect(url_for("billing.index"))
+        else:
+            ok = authorize_and_consume(current_user, FEATURE_KEY)
+            if not ok:
+                flash(
+                    "Not enough Silver credits to run Skill Mapper. "
+                    "Upgrade to Pro ⭐ for unlimited deep roadmaps.",
+                    "warning",
+                )
+                return redirect(url_for("billing.index"))
+
+        # Load Profile Portal + latest resume on file
+        profile = _profile_json(current_user.id)
+        resume_text = _latest_resume_text(current_user.id)
+        if len(resume_text) > MAX_RESUME_TEXT:
+            resume_text = resume_text[:MAX_RESUME_TEXT]
+
+        if not profile and not resume_text and not extra_skills:
+            flash(
+                "We couldn’t find a Profile Portal or resume yet. "
+                "Add your basics in Profile Portal, then try again.",
+                "warning",
+            )
+            return render_template(
+                "skillmapper/index.html",
+                mode=mode,
+                is_pro_user=is_pro_user,
+                profile_snapshot=profile_snapshot,
+            )
+
+        try:
+            if pro_mode:
+                # For Pro, require some profile content (it’s a profile-tuned roadmap)
+                if not profile:
+                    flash(
+                        "Your Profile Portal looks empty. "
+                        "Please add basic details and skills first.",
+                        "warning",
+                    )
+                    return render_template(
+                        "skillmapper/index.html",
+                        mode=mode,
+                        is_pro_user=is_pro_user,
+                        profile_snapshot=profile_snapshot,
+                    )
+
+                hints = {
+                    "region_sector": region_focus or "India · early-career tech roles",
+                    "time_horizon_months": time_horizon or 6,
+                    "focus": "current_snapshot",
+                }
+                skillmap, used_live_ai = generate_skillmap(
+                    pro_mode=True,
+                    profile_json=profile,
+                    resume_text=resume_text,
+                    return_source=True,
+                    hints=hints,
+                )
+            else:
+                if len(extra_skills) > MAX_FREE_TEXT:
+                    extra_skills = extra_skills[:MAX_FREE_TEXT]
+
+                hints = {
+                    "region_focus": region_focus or "India · early-career tech roles",
+                    "target_domain": target_domain,
+                    "focus": "current_snapshot",
+                }
+                skillmap, used_live_ai = generate_skillmap(
+                    pro_mode=False,
+                    profile_json=profile or None,
+                    resume_text=resume_text,
+                    free_text_skills=extra_skills,
+                    return_source=True,
+                    hints=hints,
+                )
+
+            log.info(
+                "SkillMapper HTML run pro_mode=%s used_live_ai=%s has_profile=%s "
+                "has_resume=%s region=%s target_domain=%s",
+                pro_mode,
+                used_live_ai,
+                bool(profile),
+                bool(resume_text),
+                region_focus or ("India-default" if not pro_mode else "N/A"),
+                target_domain,
+            )
+        except Exception as e:
+            current_app.logger.exception("SkillMapper analysis failed: %s", e)
+            flash(
+                "Skill Mapper had a problem generating your roadmap. "
+                "Please try again in a bit.",
+                "danger",
+            )
+            return render_template(
+                "skillmapper/index.html",
+                mode=mode,
+                is_pro_user=is_pro_user,
+                profile_snapshot=profile_snapshot,
+            )
+
+        # Persist snapshot (best-effort)
+        try:
+            snap = SkillMapSnapshot(
+                user_id=current_user.id,
+                source_title="Skill Mapper (Pro)" if pro_mode else "Skill Mapper (Free)",
+                input_text="\n".join(
+                    part
+                    for part in [
+                        f"mode={mode}",
+                        f"region={region_focus}" if region_focus else "",
+                        f"target_domain={target_domain}" if target_domain else "",
+                        f"time_horizon={time_horizon}" if time_horizon else "",
+                        extra_skills,
+                    ]
+                    if part
+                ),
+                skills_json=json_dumps_safe(skillmap),
+                created_at=datetime.utcnow(),
+            )
+            db.session.add(snap)
+            db.session.commit()
+            snapshot = snap
+        except Exception:
+            db.session.rollback()
+            current_app.logger.warning(
+                "SkillMapper snapshot save failed.", exc_info=True
+            )
+
+        # Enrich meta a bit for the template
+        if isinstance(skillmap, dict):
+            meta = skillmap.get("meta") or {}
+            if not isinstance(meta, dict):
+                meta = {}
+            meta.setdefault("run_mode", "pro" if pro_mode else "free")
+            meta.setdefault("used_live_ai", bool(used_live_ai))
+            if snapshot is not None:
+                meta.setdefault("snapshot_id", snapshot.id)
+            skillmap["meta"] = meta
+
+        return render_template(
+            "skillmapper/result.html",
+            skillmap=skillmap,
+            is_pro=pro_mode,  # deep vs free run (like Job Pack)
+            is_pro_user=is_pro_user,
+            mode=mode,
+            from_history=False,
+            snapshot=snapshot,
+            profile_snapshot=profile_snapshot,
+        )
+
+    # GET
     return render_template(
         "skillmapper/index.html",
-        is_pro=current_user.is_pro,
-        feature_key=FEATURE_KEY,
-        updated_tag=CAREER_AI_VERSION,  # optional UI label
+        mode=mode,
+        is_pro_user=is_pro_user,
+        profile_snapshot=profile_snapshot,
     )
+
+
+# ---------------------- history + reopen snapshot ----------------------
+
+
+@bp.route("/history", methods=["GET"], endpoint="history")
+@login_required
+def history():
+    """
+    List past Skill Mapper snapshots for the current user (most recent first).
+    """
+    page = request.args.get("page", 1, type=int)
+    per_page = 10
+    pagination = (
+        SkillMapSnapshot.query.filter_by(user_id=current_user.id)
+        .order_by(SkillMapSnapshot.created_at.desc())
+        .paginate(page=page, per_page=per_page, error_out=False)
+    )
+    snapshots = pagination.items
+    return render_template(
+        "skillmapper/history.html",
+        snapshots=snapshots,
+        pagination=pagination,
+    )
+
+
+@bp.route("/snapshot/<int:snapshot_id>", methods=["GET"], endpoint="snapshot")
+@login_required
+def snapshot(snapshot_id: int):
+    """
+    Reopen a previously saved Skill Mapper snapshot without re-running AI.
+    """
+    snap = (
+        SkillMapSnapshot.query.filter_by(id=snapshot_id, user_id=current_user.id)
+        .first_or_404()
+    )
+
+    try:
+        raw = _json.loads(snap.skills_json or "{}")
+    except Exception:
+        raw = {}
+
+    skillmap = raw if isinstance(raw, dict) else {}
+    meta = skillmap.get("meta") or {}
+    if not isinstance(meta, dict):
+        meta = {}
+    meta.setdefault("snapshot_id", snap.id)
+    meta.setdefault("restored_from_history", True)
+    skillmap["meta"] = meta
+
+    pro_mode = (skillmap.get("mode") or "free") == "pro"
+    profile_snapshot = load_profile_snapshot(current_user)
+
+    return render_template(
+        "skillmapper/result.html",
+        skillmap=skillmap,
+        is_pro=pro_mode,
+        is_pro_user=bool(getattr(current_user, "is_pro", False)),
+        mode="pro" if pro_mode else "free",
+        from_history=True,
+        snapshot=snap,
+        profile_snapshot=profile_snapshot,
+    )
+
+
+# ---------------------- legacy JSON endpoints (kept for compatibility) ----------------------
 
 
 @bp.route("/free", methods=["POST"])
 @login_required
 def run_free():
     """
-    Free Skill Mapper (basic run):
-    - Uses Profile Portal + latest resume as the main source.
-    - Optional extra skills/interests text nudges the roadmap.
-    - India-first, early-career bias via hints.
-    - Returns full JSON, but UI shows:
-        - Basic panel (fully visible)
-        - Pro-style preview panel (blurred) for Free users.
+    Skill Mapper Free (JSON API):
+    - Always uses Profile Portal + latest resume as the *primary* source.
+    - Extra pasted text is just a hint (optional).
+    - Returns a compact roadmap JSON; Pro-only sections are *not* generated here.
     """
     try:
         # Silver credit check for non-Pro users
@@ -154,77 +375,65 @@ def run_free():
         extra_text = (payload.get("free_text_skills") or "").strip()
         target_domain = (payload.get("target_domain") or "").strip()
 
+        # Cap size to keep prompts bounded (optional, since it's just a hint)
+        if len(extra_text) > MAX_FREE_TEXT:
+            extra_text = extra_text[:MAX_FREE_TEXT]
+
+        # Main source: Profile Portal + latest resume
         profile = _profile_json(current_user.id)
         resume_text = _latest_resume_text(current_user.id)
-
-        profile_text = _profile_snapshot_text(profile)
         if len(resume_text) > MAX_RESUME_TEXT:
             resume_text = resume_text[:MAX_RESUME_TEXT]
 
-        # Build a single compact text blob for the free prompt
-        chunks: list[str] = []
-
-        if profile_text:
-            chunks.append("Profile snapshot:\n" + profile_text)
-
-        if resume_text:
-            # Only a slice — free mode doesn’t need the full resume
-            chunks.append("Resume excerpt:\n" + resume_text[:3000])
-
-        if extra_text:
-            if len(extra_text) > MAX_FREE_TEXT:
-                extra_text = extra_text[:MAX_FREE_TEXT]
-            chunks.append("Extra skills & interests:\n" + extra_text)
-
-        combined_text = "\n\n".join(chunks).strip()
-
-        # Guard: if everything is empty, tell the user instead of calling AI
-        if not combined_text:
+        if not profile and not resume_text and not extra_text:
             return (
                 jsonify(
                     {
                         "ok": False,
-                        "error": (
-                            "We couldn’t find any data to map. "
-                            "Please fill your Profile Portal or add a few skills/interests."
-                        ),
+                        "error": "We couldn’t find a Profile Portal or resume yet. Add your basics in Profile Portal, then try again.",
                     }
                 ),
                 400,
             )
 
-        # Hints for the AI generator (non-breaking)
         free_hints = {
             "region_focus": "India · early-career tech roles",
             "focus": "current_snapshot",
-            "using_profile": bool(profile),
-            "using_resume": bool(resume_text),
         }
         if target_domain:
             free_hints["target_domain"] = target_domain
 
         data, used_live_ai = generate_skillmap(
             pro_mode=False,
-            free_text_skills=combined_text,
+            profile_json=profile or None,
+            resume_text=resume_text,
+            free_text_skills=extra_text,
             return_source=True,
             hints=free_hints,
         )
 
         log.info(
-            "SM/free used_live_ai=%s combined_len=%d profile=%s resume=%s domain_hint=%s",
+            "SM/free used_live_ai=%s extra_len=%d domain_hint=%s has_profile=%s has_resume=%s",
             used_live_ai,
-            len(combined_text),
+            len(extra_text),
+            bool(target_domain),
             bool(profile),
             bool(resume_text),
-            bool(target_domain),
         )
 
         # Persist snapshot (best-effort)
         try:
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
-                source_title="Skill Mapper (Free)",
-                input_text=combined_text,
+                source_title="Skill Mapper (Free API)",
+                input_text="\n\n".join(
+                    part
+                    for part in [
+                        f"target_domain={target_domain}" if target_domain else "",
+                        extra_text,
+                    ]
+                    if part
+                ),
                 skills_json=json_dumps_safe(data),
                 created_at=datetime.utcnow(),
             )
@@ -252,10 +461,10 @@ def run_free():
 @login_required
 def run_pro():
     """
-    Pro Skill Mapper:
+    Skill Mapper Pro (JSON API):
     - Uses Profile Portal + latest resume (or pasted override).
-    - Focus is “current snapshot” (no more time horizon).
-    - Region is biased to India by default, with optional region/sector text.
+    - Focus is “current snapshot” for India by default.
+    - Deep roadmap + richer India market context.
     """
     try:
         if not current_user.is_pro:
@@ -292,26 +501,18 @@ def run_pro():
         if len(resume_text) > MAX_RESUME_TEXT:
             resume_text = resume_text[:MAX_RESUME_TEXT]
 
-        # Embed SM options into the profile payload so ai.py can read them without
-        # changing generate_skillmap signature.
-        if profile is None:
-            profile = {}
-        profile = dict(profile or {})
-        profile.setdefault("_skillmapper_options", {})
-        profile["_skillmapper_options"].update(
-            {
-                # Bias to India + allow extra hint from UI
-                "region_sector": region_sector or "India · early-career tech roles",
-                "use_profile": bool(use_profile),
-                "focus": "current_snapshot",
-            }
-        )
+        hints = {
+            "region_sector": region_sector or "India · early-career tech roles",
+            "use_profile": bool(use_profile),
+            "focus": "current_snapshot",
+        }
 
         data, used_live_ai = generate_skillmap(
             pro_mode=True,
             profile_json=profile if use_profile else None,
             resume_text=resume_text,
             return_source=True,
+            hints=hints,
         )
 
         log.info(
@@ -326,7 +527,7 @@ def run_pro():
         try:
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
-                source_title="Skill Mapper (Pro)",
+                source_title="Skill Mapper (Pro API)",
                 input_text=(
                     f"profile={'on' if use_profile else 'off'}; "
                     f"region={region_sector or 'India-default'}"
@@ -352,11 +553,3 @@ def run_pro():
         if SHOW_ERRS:
             msg += f" :: {e.__class__.__name__}: {e}"
         return jsonify({"ok": False, "error": msg}), 500
-
-
-# --------------- utils ----------------
-def json_dumps_safe(obj) -> str:
-    try:
-        return _json.dumps(obj, ensure_ascii=False)
-    except Exception:
-        return "{}"

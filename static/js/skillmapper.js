@@ -62,33 +62,12 @@
 
   function getRolesFromData(data) {
     if (!data || typeof data !== "object") return [];
-    return safeArray(
-      data.top_roles ||
-        data.roles ||
-        data.role_matches ||
-        data.top_3_roles ||
-        data.mapped_roles
-    );
+    return safeArray(data.top_roles || data.roles || data.role_matches);
   }
 
   function getHiringNowFromData(data) {
     if (!data || typeof data !== "object") return [];
-    return safeArray(
-      data.hiring_now_india ||
-        data.hiring_now ||
-        data.market_snapshot ||
-        data.demand_snapshot
-    );
-  }
-
-  function getHighPaidFromData(data) {
-    if (!data || typeof data !== "object") return [];
-    return safeArray(
-      data.high_paid_roles_india ||
-        data.high_paid_roles ||
-        data.india_high_paid ||
-        data.salary_snapshot
-    );
+    return safeArray(data.hiring_now || data.market_snapshot || data.demand_snapshot);
   }
 
   function getMetaFromData(data) {
@@ -101,93 +80,112 @@
   function renderRoleCard(role) {
     if (!role) return "";
 
-    var name = escapeHtml(role.role_name || role.name || "Unknown role");
-    var matchLabel = escapeHtml(role.match_label || role.match_level || "");
+    var score =
+      typeof role.match_score === "number" ? role.match_score : null;
+    var name = escapeHtml(
+      role.title || role.role_name || role.name || "Unknown role"
+    );
     var shortDesc = escapeHtml(
-      role.short_description || role.description || role.summary || ""
+      role.why_fit || role.short_description || role.description || ""
     );
 
-    var matchedSkills = safeArray(
-      role.matched_skills || role.current_skills || role.have_skills
-    )
+    var matchLabel = "";
+    if (score !== null) {
+      if (score >= 80) {
+        matchLabel = "Strong match (" + score + "%)";
+      } else if (score >= 60) {
+        matchLabel = "Moderate match (" + score + "%)";
+      } else {
+        matchLabel = "Explore (" + score + "%)";
+      }
+    }
+
+    // Primary skills: flatten primary_skill_clusters[].skills
+    var clusters = safeArray(role.primary_skill_clusters);
+    var haveSkills = [];
+    clusters.forEach(function (c) {
+      safeArray(c.skills).forEach(function (s) {
+        haveSkills.push(String(s));
+      });
+    });
+    var matchedSkills = haveSkills
+      .slice(0, 12)
       .map(function (s) {
         return (
           '<span class="sm-chip sm-chip-match">' +
-          escapeHtml(String(s)) +
+          escapeHtml(s) +
           "</span>"
         );
       })
       .join("");
-    var missingCore = safeArray(
-      role.missing_core_skills || role.gap_skills || role.missing_skills
-    )
-      .map(function (s) {
+
+    // Gaps: from gaps[].skill
+    var gaps = safeArray(role.gaps);
+    var missingCore = gaps
+      .slice(0, 8)
+      .map(function (g) {
+        var label = g && g.skill ? String(g.skill) : "";
         return (
           '<span class="sm-chip sm-chip-gap">' +
-          escapeHtml(String(s)) +
+          escapeHtml(label) +
           "</span>"
         );
       })
       .join("");
-    var niceToHave = safeArray(
-      role.nice_to_have_skills || role.bonus_skills
-    )
-      .map(function (s) {
+
+    // Nice-to-have: use micro_projects titles as a hint
+    var microProjects = safeArray(role.micro_projects);
+    var niceToHave = microProjects
+      .map(function (m) {
+        return m && m.title ? String(m.title) : "";
+      })
+      .filter(Boolean)
+      .slice(0, 6)
+      .map(function (t) {
         return (
           '<span class="sm-chip sm-chip-nice">' +
-          escapeHtml(String(s)) +
+          escapeHtml(t) +
           "</span>"
         );
       })
       .join("");
 
-    var learningAreas = safeArray(
-      role.learning_focus_areas || role.learning_plan || role.study_plan
-    )
-      .map(function (item) {
-        return "<li>" + escapeHtml(String(item)) + "</li>";
+    // Learning areas: from gaps[].how_to_learn
+    var learningAreas = gaps
+      .map(function (g) {
+        return g && g.how_to_learn ? String(g.how_to_learn) : "";
       })
-      .join("");
-    var firstSteps = safeArray(
-      role.first_steps || role.next_steps || role.action_steps
-    )
+      .filter(Boolean)
+      .slice(0, 6)
       .map(function (item) {
-        return "<li>" + escapeHtml(String(item)) + "</li>";
-      })
-      .join("");
-    var projects = safeArray(role.suggested_projects || role.micro_projects)
-      .map(function (item) {
-        return "<li>" + escapeHtml(String(item)) + "</li>";
+        return "<li>" + escapeHtml(item) + "</li>";
       })
       .join("");
 
-    var india = role.india_context || role.india || {};
-    var indiaDemand = escapeHtml(
-      india.india_hiring_demand || india.demand || ""
-    );
-    var indiaSalary = escapeHtml(
-      india.india_fresher_salary_band || india.salary_band || india.salary || ""
-    );
-    var indiaCompanies = safeArray(
-      india.typical_indian_companies ||
-        india.common_companies ||
-        india.example_companies
-    )
-      .map(function (c) {
-        return escapeHtml(String(c));
+    // First steps: from micro_projects[].deliverables
+    var firstStepsArr = [];
+    microProjects.forEach(function (m) {
+      safeArray(m.deliverables).forEach(function (d) {
+        firstStepsArr.push(String(d));
+      });
+    });
+    var firstSteps = firstStepsArr
+      .slice(0, 6)
+      .map(function (item) {
+        return "<li>" + escapeHtml(item) + "</li>";
       })
-      .join(", ");
-    var keywords = safeArray(
-      india.keywords_for_job_portals ||
-        india.search_keywords ||
-        india.portal_keywords
-    )
-      .map(function (k) {
-        return (
-          '<code class="sm-code">' + escapeHtml(String(k)) + "</code>"
-        );
+      .join("");
+
+    // Micro-project ideas: title + outcome
+    var projects = microProjects
+      .slice(0, 4)
+      .map(function (m) {
+        var t = m.title || "Project";
+        var o = m.outcome || "";
+        var label = t + (o ? " — " + o : "");
+        return "<li>" + escapeHtml(label) + "</li>";
       })
-      .join(" ");
+      .join("");
 
     return (
       '<article class="sm-role-card">' +
@@ -206,17 +204,17 @@
       "    <h4>Skill match</h4>" +
       '    <div class="sm-role-skills">' +
       (matchedSkills
-        ? '      <div><div class="sm-label-small">You already have</div>' +
+        ? '      <div><div class="sm-label-small">You already show</div>' +
           matchedSkills +
           "</div>"
         : "") +
       (missingCore
-        ? '      <div><div class="sm-label-small">Core to build</div>' +
+        ? '      <div><div class="sm-label-small">Core gaps to build</div>' +
           missingCore +
           "</div>"
         : "") +
       (niceToHave
-        ? '      <div><div class="sm-label-small">Nice to have</div>' +
+        ? '      <div><div class="sm-label-small">Nice-to-have / stretch</div>' +
           niceToHave +
           "</div>"
         : "") +
@@ -230,7 +228,7 @@
               "</ul></div>"
             : "") +
           (firstSteps
-            ? '    <div><h4>First 3 steps</h4><ul class="sm-list">' +
+            ? '    <div><h4>First 3–5 steps</h4><ul class="sm-list">' +
               firstSteps +
               "</ul></div>"
             : "") +
@@ -239,34 +237,6 @@
               projects +
               "</ul></div>"
             : "") +
-          "  </section>"
-        : "") +
-      (indiaDemand || indiaSalary || indiaCompanies || keywords
-        ? '  <section class="sm-role-section">' +
-          "    <h4>India market snapshot (model estimate)</h4>" +
-          '    <div class="sm-role-india">' +
-          (indiaDemand
-            ? '      <p><span class="sm-label-small">Demand:</span> ' +
-              indiaDemand +
-              "</p>"
-            : "") +
-          (indiaSalary
-            ? '      <p><span class="sm-label-small">Fresher salary:</span> ' +
-              indiaSalary +
-              "</p>"
-            : "") +
-          (indiaCompanies
-            ? '      <p><span class="sm-label-small">Typical companies:</span> ' +
-              indiaCompanies +
-              "</p>"
-            : "") +
-          (keywords
-            ? '      <p><span class="sm-label-small">Search keywords:</span> ' +
-              keywords +
-              "</p>"
-            : "") +
-          "    </div>" +
-          '    <p class="sm-note">These are model estimates based on common patterns, not live-scraped data.</p>' +
           "  </section>"
         : "") +
       "</article>"
@@ -279,26 +249,21 @@
 
     var cards = items
       .map(function (item) {
-        var name = escapeHtml(item.role_name || item.name || "Role");
-        var pctRaw =
-          item.demand_estimate_percent !== undefined
-            ? item.demand_estimate_percent
-            : item.estimate_percent !== undefined
-            ? item.estimate_percent
-            : item.share_percent;
+        var name = escapeHtml(
+          item.role_group || item.name || "Role group"
+        );
+        var pctRaw = item.share_estimate_pct;
         var pct =
           typeof pctRaw === "number"
-            ? pctRaw + "%"
+            ? (pctRaw.toFixed(1).replace(/\.0$/, "") || "0") + "%"
             : typeof pctRaw === "string"
             ? pctRaw
             : "";
-        var notes = escapeHtml(item.notes || item.description || "");
-        var keywords = safeArray(
-          item.typical_keywords || item.search_keywords
-        )
-          .map(function (k) {
+        var notes = escapeHtml(item.note || item.description || "");
+        var roles = safeArray(item.roles)
+          .map(function (r) {
             return (
-              '<code class="sm-code">' + escapeHtml(String(k)) + "</code>"
+              '<code class="sm-code">' + escapeHtml(String(r)) + "</code>"
             );
           })
           .join(" ");
@@ -316,103 +281,93 @@
             : "") +
           "  </div>" +
           (notes ? '  <p class="sm-hiring-notes">' + notes + "</p>" : "") +
-          (keywords ? '  <p class="sm-hiring-keywords">' + keywords + "</p>" : "") +
-          "</div>"
-        );
-      })
-      .join("");
-
-    return (
-      '<section class="sm-section">' +
-      "  <h3>What’s hiring now (India)</h3>" +
-      '  <p class="sm-section-sub">Rough model estimates of demand based on Indian tech & analytics roles.</p>' +
-      '  <div class="sm-hiring-grid">' +
-      cards +
-      "  </div>" +
-      "</section>"
-    );
-  }
-
-  function renderHighPaid(highPaid) {
-    var items = safeArray(highPaid);
-    if (!items.length) return "";
-
-    var cards = items
-      .map(function (item) {
-        var name = escapeHtml(item.role_name || item.name || "Role");
-        var band = escapeHtml(
-          item.typical_salary_band || item.salary_band || ""
-        );
-        var diff = escapeHtml(item.difficulty_label || item.competition || "");
-        var requirements = safeArray(
-          item.key_requirements || item.requirements
-        )
-          .map(function (r) {
-            return "<li>" + escapeHtml(String(r)) + "</li>";
-          })
-          .join("");
-
-        return (
-          '<div class="sm-high-card">' +
-          '  <div class="sm-high-head">' +
-          '    <div class="sm-high-role">' +
-          name +
-          "</div>" +
-          (diff ? '    <div class="sm-high-diff">' + diff + "</div>" : "") +
-          "  </div>" +
-          (band ? '  <p class="sm-high-band">' + band + "</p>" : "") +
-          (requirements
-            ? '  <ul class="sm-list sm-high-reqs">' + requirements + "</ul>"
+          (roles
+            ? '  <p class="sm-hiring-keywords">' + roles + "</p>"
             : "") +
           "</div>"
         );
       })
       .join("");
 
-    return (
-      '<section class="sm-section">' +
-      "  <h3>High-paid roles (India, 0–3 years)</h3>" +
-      '  <p class="sm-section-sub">Typical bands are for top product/startups and strong candidates. These are model estimates, not salary guarantees.</p>' +
-      '  <div class="sm-high-grid">' +
-      cards +
-      "  </div>" +
-      "</section>"
-    );
+    return '<div class="sm-hiring-grid">' + cards + "</div>";
   }
 
-  function renderProfileSnapshot(meta) {
-    if (!meta || typeof meta !== "object") return "";
-    var snap = meta.profile_snapshot;
-    if (!snap || typeof snap !== "object") return "";
+  function buildOverviewHTML(roles) {
+    if (!roles || !roles.length) {
+      return (
+        '<section class="sm-section-card sm-section-overview">' +
+        "  <h3>Where you stand today</h3>" +
+        '  <p class="sm-section-sub">We couldn’t infer strong matches yet. Add a bit more detail into your Profile Portal or resume for better results.</p>' +
+        "</section>"
+      );
+    }
 
-    var name = escapeHtml(snap.full_name || "");
-    var headline = escapeHtml(snap.headline || "");
-    var skills = safeArray(snap.key_skills).slice(0, 12);
+    var primary = roles[0] || {};
+    var alt1 = roles[1] || null;
+    var alt2 = roles[2] || null;
 
-    var chips = skills
-      .map(function (s) {
-        return (
-          '<span class="sm-chip sm-chip-nice">' +
-          escapeHtml(String(s)) +
-          "</span>"
-        );
+    var score =
+      typeof primary.match_score === "number" ? primary.match_score : null;
+    var matchLabel = "";
+    if (score !== null) {
+      if (score >= 80) matchLabel = "Strong match (" + score + "%)";
+      else if (score >= 60) matchLabel = "Moderate match (" + score + "%)";
+      else matchLabel = "Explore (" + score + "%)";
+    }
+
+    var primaryTitle = escapeHtml(
+      primary.title || primary.role_name || primary.name || "Role"
+    );
+    var why = escapeHtml(primary.why_fit || primary.description || "");
+
+    // Key strengths: first few skills from clusters
+    var clusters = safeArray(primary.primary_skill_clusters);
+    var keySkills = [];
+    clusters.forEach(function (c) {
+      safeArray(c.skills).forEach(function (s) {
+        keySkills.push(String(s));
+      });
+    });
+    keySkills = keySkills.slice(0, 6);
+
+    var strengthsLine = keySkills.length
+      ? "Key strengths: " + keySkills.join(", ")
+      : "";
+
+    var altTitles = [];
+    if (alt1 && (alt1.title || alt1.name)) {
+      altTitles.push(alt1.title || alt1.name);
+    }
+    if (alt2 && (alt2.title || alt2.name)) {
+      altTitles.push(alt2.title || alt2.name);
+    }
+    var altLine = altTitles.length
+      ? "Alternative paths: " + altTitles.join(" · ")
+      : "";
+
+    var bullets = [];
+    bullets.push(
+      "Best-fit role right now: " +
+        primaryTitle +
+        (matchLabel ? " — " + matchLabel : "")
+    );
+    if (strengthsLine) bullets.push(strengthsLine);
+    if (altLine) bullets.push(altLine);
+
+    var bulletsHTML = bullets
+      .map(function (b) {
+        return "<li>" + escapeHtml(b) + "</li>";
       })
       .join("");
 
     return (
-      '<section class="sm-section sm-profile">' +
-      "  <h3>Your profile snapshot</h3>" +
-      (name || headline
-        ? '  <p class="sm-section-sub">' +
-          (name ? "<strong>" + name + "</strong>" : "") +
-          (name && headline ? " · " : "") +
-          (headline || "") +
-          "</p>"
-        : "") +
-      (chips
-        ? '  <div class="sm-profile-skills">' +
-          chips +
-          "</div>"
+      '<section class="sm-section-card sm-section-overview">' +
+      "  <h3>Where you stand today</h3>" +
+      (why
+        ? '  <p class="sm-section-sub">' + why + "</p>"
+        : '  <p class="sm-section-sub">Overview of your current fit based on your Profile Portal and resume.</p>') +
+      (bulletsHTML
+        ? '  <ul class="sm-list sm-list-tight">' + bulletsHTML + "</ul>"
         : "") +
       "</section>"
     );
@@ -422,32 +377,61 @@
     var roles = getRolesFromData(data);
     var roleCards = roles.map(renderRoleCard).join("");
 
-    var hiringNowHTML = renderHiringNow(getHiringNowFromData(data));
-    var highPaidHTML = renderHighPaid(getHighPaidFromData(data));
+    var hiringNowInner = renderHiringNow(getHiringNowFromData(data));
 
     var meta = getMetaFromData(data);
     var source = escapeHtml(meta.source || "");
     var usingProfile = !!meta.using_profile;
     var region = escapeHtml(meta.region_focus || meta.region || "India");
     var version = escapeHtml(meta.version || "");
-    var callToAction = escapeHtml(data.call_to_action || "");
+    var generated = escapeHtml(meta.generated_at_utc || "");
 
     var metaBits = [];
     if (source) metaBits.push(source === "pro" ? "Pro run" : "Free run");
-    if (usingProfile) metaBits.push("Profile + resume");
+    if (usingProfile) metaBits.push("Profile Portal + resume");
     metaBits.push("Region focus: " + region);
     if (version) metaBits.push("Model version: " + version);
-
+    if (generated) metaBits.push("Generated: " + generated);
     var metaLine = metaBits.join(" · ");
-    var profileSnapHTML = renderProfileSnapshot(meta);
 
-    var ctaHTML = "";
-    if (callToAction) {
-      ctaHTML =
-        '<section class="sm-section">' +
+    var cta = escapeHtml(data.call_to_action || "");
+
+    // Overview section built from the roles
+    var overviewHTML = buildOverviewHTML(roles);
+
+    // Roles card section
+    var rolesSectionHTML = roles.length
+      ? '<section class="sm-section-card sm-section-roles">' +
+        "  <h3>Top roles based on your current profile</h3>" +
+        '  <p class="sm-section-sub">Three near-fit roles based on your current skills, projects, and resume.</p>' +
+        '  <div class="sm-roles-grid">' +
+        roleCards +
+        "  </div>" +
+        "</section>"
+      : '<section class="sm-section-card sm-section-roles">' +
+        "  <h3>Top roles based on your current profile</h3>" +
+        '  <p class="sm-section-sub">No roles returned yet. Try adding more detail into your Profile Portal or the optional skills box.</p>' +
+        "</section>";
+
+    // Hiring now section
+    var hiringSectionHTML = "";
+    if (hiringNowInner) {
+      hiringSectionHTML =
+        '<section class="sm-section-card sm-section-hiring">' +
+        "  <h3>What’s hiring now (India)</h3>" +
+        '  <p class="sm-section-sub">Model estimates based on Indian tech & analytics roles. Not live-scraped.</p>' +
+        hiringNowInner +
+        "</section>";
+    }
+
+    // CTA section
+    var nextSectionHTML = "";
+    if (cta) {
+      nextSectionHTML =
+        '<section class="sm-section-card sm-section-next">' +
         "  <h3>What to do next</h3>" +
         '  <p class="sm-section-sub">' +
-        callToAction +
+        cta +
         "</p>" +
         "</section>";
     }
@@ -455,21 +439,17 @@
     return (
       '<div class="sm-panel-full">' +
       '  <header class="sm-results-head">' +
-      '    <h2>Your role roadmap</h2>' +
-      (metaLine ? '    <div class="sm-meta">' + metaLine + "</div>" : "") +
+      '    <div>' +
+      "      <h2>Your role roadmap</h2>" +
+      (metaLine ? '      <div class="sm-meta">' + metaLine + "</div>" : "") +
+      "    </div>" +
       "  </header>" +
-      (roles.length
-        ? '<section class="sm-section">' +
-          "  <h3>Top roles based on your current profile</h3>" +
-          '  <div class="sm-roles-grid">' +
-          roleCards +
-          "  </div>" +
-          "</section>"
-        : '<section class="sm-section"><p>No roles returned. Try adding more detail about your skills or profile.</p></section>') +
-      hiringNowHTML +
-      highPaidHTML +
-      ctaHTML +
-      profileSnapHTML +
+      '  <div class="sm-section-grid-main">' +
+      overviewHTML +
+      rolesSectionHTML +
+      "  </div>" +
+      hiringSectionHTML +
+      nextSectionHTML +
       "</div>"
     );
   }
@@ -482,35 +462,41 @@
       return (
         '<div class="sm-panel-basic">' +
         "  <h2>Basic view (Free)</h2>" +
-        '  <p class="sm-section-sub">We couldn’t infer a clear role yet. Try topping up your Profile Portal or adding a few skills/interests.</p>' +
+        '  <p class="sm-section-sub">We could not infer a clear role. Try adding a bit more detail into your Profile Portal or the optional skills box.</p>' +
         "</div>"
       );
     }
 
-    var name = escapeHtml(firstRole.role_name || firstRole.name || "Role");
+    var name = escapeHtml(firstRole.title || firstRole.name || "Role");
     var shortDesc = escapeHtml(
-      firstRole.short_description || firstRole.description || ""
+      firstRole.why_fit || firstRole.description || ""
     );
-    var matchedSkills = safeArray(
-      firstRole.matched_skills || firstRole.current_skills
-    )
+    var clusters = safeArray(firstRole.primary_skill_clusters);
+    var haveSkills = [];
+    clusters.forEach(function (c) {
+      safeArray(c.skills).forEach(function (s) {
+        haveSkills.push(String(s));
+      });
+    });
+    var matchedSkills = haveSkills
       .slice(0, 8)
       .map(function (s) {
         return (
           '<span class="sm-chip sm-chip-match">' +
-          escapeHtml(String(s)) +
+          escapeHtml(s) +
           "</span>"
         );
       })
       .join("");
-    var missingCore = safeArray(
-      firstRole.missing_core_skills || firstRole.gap_skills
-    )
+
+    var gaps = safeArray(firstRole.gaps);
+    var missingCore = gaps
       .slice(0, 5)
-      .map(function (s) {
+      .map(function (g) {
+        var label = g && g.skill ? String(g.skill) : "";
         return (
           '<span class="sm-chip sm-chip-gap">' +
-          escapeHtml(String(s)) +
+          escapeHtml(label) +
           "</span>"
         );
       })
@@ -535,7 +521,7 @@
       "      <h4>Skill match</h4>" +
       '      <div class="sm-role-skills">' +
       (matchedSkills
-        ? '        <div><div class="sm-label-small">You already have</div>' +
+        ? '        <div><div class="sm-label-small">You already show</div>' +
           matchedSkills +
           "</div>"
         : "") +
@@ -564,7 +550,7 @@
       '      <div class="sm-pro-blur-content">' +
       '        <div class="sm-pro-lock-icon">🔒</div>' +
       '        <div class="sm-pro-lock-title">Skill Mapper Pro (preview)</div>' +
-      '        <p class="sm-pro-lock-text">Pro shows full 3-role roadmap, India salary bands, “What’s hiring now”, and a deeper plan just for your profile.</p>' +
+      '        <p class="sm-pro-lock-text">Pro shows full 3-role roadmap, India salary bands, and detailed “what to do next” roadmaps.</p>' +
       '        <a href="' +
       href +
       '" class="sm-btn sm-btn-upgrade">Unlock with Pro ⭐</a>' +

@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+{% block title %}Skill Mapper Roadmap{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 mt-10 space-y-6 text-white">
+
+  {% set meta = (skillmap.meta or {}) %}
+  {% set roles = skillmap.top_roles or [] %}
+  {% set hiring = skillmap.hiring_now or [] %}
+  {% set mode_label = 'Deep roadmap ⭐' if is_pro else 'Free roadmap 🪙' %}
+  {% set run_region = meta.region_focus or meta.region or 'India · early-career tech roles' %}
+  {% set generated = meta.generated_at_utc or '' %}
+  {% set version = meta.version or CAREER_AI_VERSION or '' %}
+
+  <!-- HEADER -->
+  <div class="glass-card p-6 rounded-2xl flex justify-between items-center border border-white/10 shadow-lg">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">
+        {{ "Skill Mapper Deep Roadmap" if is_pro else "Skill Mapper Roadmap" }}
+      </h1>
+      <p class="text-sm text-white/70">
+        Roles, skill gaps, and micro-projects tuned to your Profile Portal and Indian market demand.
+      </p>
+      {% if from_history %}
+        <p class="text-xs text-white/50 mt-1">
+          Viewing a saved roadmap from your Skill Mapper history.
+        </p>
+      {% endif %}
+      <p class="text-xs text-white/50 mt-1">
+        Region focus: <span class="font-semibold">{{ run_region }}</span>
+        {% if generated %} · Generated: {{ generated }}{% endif %}
+        {% if version %} · Model version: {{ version }}{% endif %}
+      </p>
+    </div>
+    <div class="flex flex-col items-end gap-1">
+      <span class="px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-white/80">
+        {{ mode_label }}
+      </span>
+      <a href="{{ url_for('skillmapper.history') }}"
+         class="text-[11px] text-white/60 hover:text-white underline">
+        View Skill Mapper history
+      </a>
+    </div>
+  </div>
+
+  <!-- PROFILE SNAPSHOT / WHERE YOU STAND -->
+  {% if meta.profile_snapshot or profile_snapshot %}
+  {% set snap = meta.profile_snapshot or {} %}
+  <div class="glass-card p-5 rounded-2xl">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-semibold mb-1">Where you stand today</h2>
+        <p class="text-sm text-white/70">
+          Quick view of the profile we used. Update your
+          <a href="{{ url_for('settings.profile') }}" class="underline hover:no-underline">Profile Portal</a>
+          to change this baseline.
+        </p>
+      </div>
+      <div class="text-xs text-white/70 space-y-1">
+        {% if snap.full_name %}
+          <div class="font-semibold text-white/80">{{ snap.full_name }}</div>
+        {% endif %}
+        {% if snap.headline %}
+          <div>{{ snap.headline }}</div>
+        {% endif %}
+        {% if snap.key_skills %}
+          <div class="flex flex-wrap gap-1 mt-1">
+            {% for s in snap.key_skills[:10] %}
+              <span class="px-2 py-0.5 rounded-full bg-white/10 border border-white/15 text-[11px]">
+                {{ s }}
+              </span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if roles and roles|length > 0 %}
+
+  <!-- TOP ROLES GRID -->
+  <div class="glass-card p-6 rounded-2xl">
+    <h2 class="text-lg font-semibold mb-3">Top roles based on your profile</h2>
+    <p class="text-xs text-white/60 mb-3">
+      Model-estimated fit using your Profile Portal + resume. Match scores are directional, not a guarantee.
+    </p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {% for role in roles %}
+        {% set locked = (not is_pro and not loop.first) %}
+        {% set score = role.match_score or 0 %}
+        {% set seniority = role.seniority_target or 'entry' %}
+        {% set why = role.why_fit or '' %}
+        {% set ex_titles = role.example_titles or [] %}
+
+        {% if seniority == 'intern' %}
+          {% set band = '3–8 LPA (model estimate)' %}
+        {% elif seniority in ['junior','entry'] %}
+          {% set band = '5–18 LPA (model estimate)' %}
+        {% else %}
+          {% set band = '10–30 LPA (model estimate)' %}
+        {% endif %}
+
+        <div class="pro-lock-wrapper {% if locked %}pro-locked{% endif %}">
+          <div class="pro-lock-blur glass-card p-4 rounded-xl border border-slate-200/20 bg-slate-950/80">
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <div>
+                <h3 class="text-sm font-semibold">{{ role.title or 'Role' }}</h3>
+                <p class="text-xs text-white/60 mt-0.5">
+                  {% if seniority == 'intern' %}
+                    Intern / student-friendly
+                  {% elif seniority == 'junior' %}
+                    Junior / 0–2 yrs
+                  {% elif seniority == 'entry' %}
+                    Entry level / 0–3 yrs
+                  {% else %}
+                    Early-mid (2–4 yrs)
+                  {% endif %}
+                </p>
+              </div>
+              <div class="text-right">
+                <div class="text-[11px] px-2 py-0.5 rounded-full
+                    {% if score >= 80 %}bg-emerald-500/20 text-emerald-300 border border-emerald-400/60
+                    {% elif score >= 60 %}bg-yellow-500/15 text-yellow-300 border border-yellow-400/60
+                    {% else %}bg-red-500/15 text-red-300 border border-red-400/60{% endif %}">
+                  {{ score }}% match
+                </div>
+                <div class="text-[10px] text-white/60 mt-1">{{ band }}</div>
+              </div>
+            </div>
+
+            {% if ex_titles %}
+              <p class="text-[11px] text-white/60 mb-2">
+                Also called:
+                <span class="text-white/80">{{ ex_titles[:3] | join(', ') }}</span>
+              </p>
+            {% endif %}
+
+            {% if why %}
+              <div class="mb-3">
+                <p class="text-xs font-semibold text-white/80 mb-1">Why this fits you</p>
+                <p class="text-xs text-white/70 leading-snug">{{ why }}</p>
+              </div>
+            {% endif %}
+
+            <!-- Skills + gaps -->
+            <div class="space-y-2 mb-3">
+              {% set clusters = role.primary_skill_clusters or [] %}
+              {% if clusters %}
+                <div>
+                  <p class="text-[11px] font-semibold text-white/70 mb-1">You already show</p>
+                  <div class="flex flex-wrap gap-1">
+                    {% for c in clusters %}
+                      {% for s in c.skills[:4] %}
+                        <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-400/40 text-[11px] text-emerald-200">
+                          {{ s }}
+                        </span>
+                      {% endfor %}
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endif %}
+
+              {% set gaps = role.gaps or [] %}
+              {% if gaps %}
+                <div>
+                  <p class="text-[11px] font-semibold text-white/70 mb-1">Core gaps to build</p>
+                  <div class="flex flex-wrap gap-1">
+                    {% for g in gaps[:6] %}
+                      <span class="px-2 py-0.5 rounded-full bg-red-500/10 border border-red-400/40 text-[11px] text-red-200">
+                        {{ g.skill }} · P{{ g.priority }}
+                      </span>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+
+            <!-- Learning plan + micro projects -->
+            <div class="space-y-2">
+              {% if gaps %}
+                <div>
+                  <p class="text-[11px] font-semibold text-white/70 mb-1">What to study next</p>
+                  <ul class="list-disc pl-4 text-[11px] text-white/75 space-y-0.5">
+                    {% for g in gaps[:4] %}
+                      <li>{{ g.how_to_learn }} ({{ g.time_estimate_weeks }} weeks)</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+
+              {% set mps = role.micro_projects or [] %}
+              {% if mps %}
+                <div>
+                  <p class="text-[11px] font-semibold text-white/70 mb-1">Micro-project ideas</p>
+                  <ul class="list-disc pl-4 text-[11px] text-white/75 space-y-0.5">
+                    {% for p in mps[:3] %}
+                      <li>
+                        <span class="font-semibold">{{ p.title }}</span>
+                        {% if p.outcome %} — {{ p.outcome }}{% endif %}
+                        {% if p.difficulty %} · <span class="uppercase">{{ p.difficulty }}</span>{% endif %}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          {% if locked %}
+          <div class="pro-lock-overlay">
+            <h3>Full role {{ loop.index }} is Pro-only 🔒</h3>
+            <p>
+              Deep roadmap shows 3 detailed roles with gaps, study plan, and micro-projects tuned to your profile.
+            </p>
+            <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">
+              Unlock all roles with Pro ⭐
+            </a>
+          </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% else %}
+  <div class="glass-card p-6 rounded-2xl text-sm text-white/70">
+    No roles returned. Try adding more detail into your Profile Portal or the optional skills box.
+  </div>
+  {% endif %}
+
+  <!-- HIRING NOW (India) -->
+  <div class="glass-card p-6 rounded-2xl pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+    <div class="pro-lock-blur">
+      <h2 class="text-lg font-semibold mb-2">What’s hiring now (India)</h2>
+      <p class="text-xs text-white/60">
+        Model estimates based on Indian tech &amp; analytics roles. Not live-scraped; use as directional guidance.
+      </p>
+
+      {% if hiring %}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+          {% for h in hiring[:6] %}
+            <div class="glass-card p-3 rounded-xl border border-slate-200/25 bg-slate-950/80">
+              <div class="flex justify-between items-start gap-2">
+                <div>
+                  <p class="text-sm font-semibold">{{ h.role_group or 'Role group' }}</p>
+                  {% if h.note %}
+                    <p class="text-[11px] text-white/70 mt-0.5">
+                      {{ h.note }}
+                    </p>
+                  {% endif %}
+                </div>
+                {% if h.share_estimate_pct is not none %}
+                  <span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-400/40 text-indigo-200">
+                    {{ '%.1f'|format(h.share_estimate_pct)|replace('.0','') }}% of postings
+                  </span>
+                {% endif %}
+              </div>
+              {% if h.est_count_estimate_global %}
+                <p class="text-[11px] text-white/60 mt-1">
+                  ~{{ h.est_count_estimate_global }} openings globally (model estimate).
+                </p>
+              {% endif %}
+              {% if h.roles %}
+                <div class="flex flex-wrap gap-1 mt-2">
+                  {% for r in h.roles[:6] %}
+                    <span class="px-2 py-0.5 rounded-full bg-white/10 border border-white/15 text-[11px]">
+                      {{ r }}
+                    </span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm text-white/70 mt-2">
+          No hiring snapshot was generated for this run.
+        </p>
+      {% endif %}
+    </div>
+
+    {% if not is_pro %}
+    <div class="pro-lock-overlay">
+      <h3>Full market snapshot is Pro-only 🔒</h3>
+      <p>
+        Pro shows which clusters of roles are hiring most in India right now, so you can prioritize where to aim.
+      </p>
+      <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">
+        Unlock hiring snapshot
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ACTION PLAN / NEXT STEPS -->
+  <div class="glass-card p-6 rounded-2xl pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
+    <div class="pro-lock-blur">
+      <h2 class="text-lg font-semibold mb-2">What to do in the next few months</h2>
+      <p class="text-xs text-white/60 mb-2">
+        High-level plan combining gaps, micro-projects, and your time horizon.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div class="bg-white/5 rounded-xl p-3">
+          <h3 class="text-sm font-semibold mb-1">1. Lock the basics</h3>
+          <ul class="list-disc pl-4 text-[11px] text-white/80 space-y-0.5">
+            <li>Make sure Profile Portal reflects your latest projects &amp; internships.</li>
+            <li>Pick <strong>one</strong> role above as your primary target.</li>
+            <li>Align your resume headline and LinkedIn to that target.</li>
+          </ul>
+        </div>
+        <div class="bg-white/5 rounded-xl p-3">
+          <h3 class="text-sm font-semibold mb-1">2. Build 1–2 micro-projects</h3>
+          <ul class="list-disc pl-4 text-[11px] text-white/80 space-y-0.5">
+            {% if roles %}
+              {% for role in roles %}
+                {% for p in (role.micro_projects or [])[:1] %}
+                  <li>{{ p.title }} — {{ p.outcome }}</li>
+                {% endfor %}
+              {% endfor %}
+            {% else %}
+              <li>Pick a small project that shows your skills for one target role.</li>
+            {% endif %}
+          </ul>
+        </div>
+        <div class="bg-white/5 rounded-xl p-3">
+          <h3 class="text-sm font-semibold mb-1">3. Apply with intent</h3>
+          <ul class="list-disc pl-4 text-[11px] text-white/80 space-y-0.5">
+            <li>Target companies that actually hire for these titles in your region.</li>
+            <li>Use your micro-projects as portfolio links or bullet points.</li>
+            <li>Iterate every 4–6 weeks as your skills improve.</li>
+          </ul>
+        </div>
+      </div>
+
+      {% if skillmap.call_to_action %}
+        <p class="text-xs text-white/70 mt-3">
+          <span class="font-semibold">Model note:</span>
+          {{ skillmap.call_to_action }}
+        </p>
+      {% endif %}
+    </div>
+
+    {% if not is_pro %}
+    <div class="pro-lock-overlay">
+      <h3>Personalized action plan is Pro-only 🔒</h3>
+      <p>
+        Deep roadmap turns your roles, gaps, and time horizon into a concrete 3–12 month checklist for you.
+      </p>
+      <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px]">
+        Unlock full roadmap
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- FOOTER ACTIONS -->
+  <div class="text-center mt-4 space-x-3">
+    <a href="{{ url_for('skillmapper.index') }}" class="text-sm text-white/60 hover:text-white underline">
+      ← Back to Skill Mapper
+    </a>
+    <a href="{{ url_for('skillmapper.history') }}" class="text-sm text-white/60 hover:text-white underline">
+      History
+    </a>
+  </div>
+
+</div>
+{% endblock %}
