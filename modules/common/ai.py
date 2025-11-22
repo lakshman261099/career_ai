@@ -556,378 +556,291 @@ def generate_referral_messages(
         return (data, used_live_ai) if return_source else data
 
 # -------------------------------------------------------------------
-# SkillMapper — AI-only
+# SkillMapper — AI-only (simple, robust, live)
 # -------------------------------------------------------------------
-SKILLMAPPER_JSON_SCHEMA = r"""
-{
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["mode", "top_roles", "hiring_now", "call_to_action", "meta"],
-  "properties": {
-    "mode": { "type": "string", "enum": ["free", "pro"] },
-    "top_roles": {
-      "type": "array",
-      "minItems": 3,
-      "maxItems": 3,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "title", "seniority_target", "match_score",
-          "why_fit", "primary_skill_clusters",
-          "gaps", "micro_projects", "example_titles"
-        ],
-        "properties": {
-          "title": { "type": "string", "minLength": 3 },
-          "seniority_target": { "type": "string", "enum": ["intern", "junior", "entry", "mid"] },
-          "match_score": { "type": "integer", "minimum": 0, "maximum": 100 },
-          "why_fit": { "type": "string", "minLength": 10 },
-          "primary_skill_clusters": {
-            "type": "array",
-            "minItems": 2,
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["name", "skills"],
-              "properties": {
-                "name": { "type": "string" },
-                "skills": {
-                  "type": "array",
-                  "minItems": 3,
-                  "items": { "type": "string" }
-                }
-              }
+
+SIMPLE_SKILLMAPPER_INSTRUCTIONS = """\
+You are SkillMapper, an expert career coach for students and early-career engineers.
+
+Freshness: {freshness}
+
+Goal:
+- Suggest exactly THREE realistic roles for this student.
+- For each role, include:
+  - A specific job title (not generic "developer").
+  - Level: intern / entry / junior / mid (pick what fits the profile).
+  - A match score from 0–100 (be honest).
+  - 1–2 sentences on why this role fits ("why_fit").
+  - 5–10 key skills as a comma-separated list.
+  - 3–6 key gaps as a comma-separated list (topics/skills they should learn).
+  - 2–4 micro-project ideas as a semicolon-separated list.
+  - A realistic, directional salary band string (no scraping) like:
+    * "3–7 LPA (India internships)"
+    * "6–12 LPA (India entry-level product)"
+    * "₹25k–₹60k/month stipend (India, big city)"
+  - A short region/geo label like:
+    * "India · tier-1 cities"
+    * "India · remote-friendly"
+    * "Global remote"
+    * "Local city / tier-2"
+
+IMPORTANT:
+- You MUST follow the output format below exactly.
+- Do NOT include markdown, bullets, JSON, or explanations.
+- Do NOT use the '|' character inside any field values.
+- Be concise but useful (like you're talking to a smart student).
+"""
+
+SIMPLE_SKILLMAPPER_OUTPUT_FORMAT = """\
+OUTPUT FORMAT (exact):
+
+ROLE|<title>|<level>|<match_score_0_100>|<why_fit>|<skills_comma_separated>|<gaps_comma_separated>|<micro_projects_semicolon_separated>|<salary_band>|<region>
+ROLE|...
+ROLE|...
+
+STEPS|<4-8 short action steps separated by '; '>
+
+SUMMARY|<2-4 sentence summary of how these roles + steps help the student>
+"""
+
+def _build_skillmapper_prompt(pro_mode: bool, inputs: Dict[str, Any]) -> str:
+    profile_json = inputs.get("profile_json") or {}
+    resume_text = (inputs.get("resume_text") or "").strip()
+    free_text_skills = (inputs.get("free_text_skills") or "").strip()
+    hints = inputs.get("hints") or {}
+
+    region_hint = (
+        (hints.get("region_sector") if isinstance(hints, dict) else None)
+        or (hints.get("region_focus") if isinstance(hints, dict) else None)
+        or "India · early-career tech roles"
+    )
+
+    target_domain = ""
+    if isinstance(hints, dict):
+        target_domain = (hints.get("target_domain") or "").strip()
+
+    mode_label = "PRO" if pro_mode else "FREE"
+    extra_mode_text = (
+        "The student is a paying PRO user. You can assume they are a bit more serious and may handle slightly more ambitious roles and gaps."
+        if pro_mode
+        else "The student is on the FREE plan. Keep roles and projects friendly for beginners or early-career students."
+    )
+
+    prompt = SIMPLE_SKILLMAPPER_INSTRUCTIONS.format(freshness=FRESHNESS_NOTE)
+    prompt += "\n\n" + extra_mode_text + "\n\n"
+    prompt += f"Region / market emphasis: {region_hint}\n"
+    if target_domain:
+        prompt += f"Target domain hint from student: {target_domain}\n"
+    prompt += "\nStudent profile (JSON-like):\n"
+    prompt += json.dumps(profile_json, ensure_ascii=False)[:3000]
+    if resume_text:
+        prompt += "\n\nResume text (truncated):\n"
+        prompt += resume_text[:3000]
+    if free_text_skills:
+        prompt += "\n\nExtra free-text skills / context:\n"
+        prompt += free_text_skills[:1500]
+
+    prompt += "\n\n" + SIMPLE_SKILLMAPPER_OUTPUT_FORMAT
+    prompt += "\n\nRemember: Only output ROLE|, STEPS|, SUMMARY| lines. No other text."
+    return prompt
+
+
+def _parse_skillmapper_text(raw: str) -> Dict[str, Any]:
+    """
+    Parse the pipe-delimited SkillMapper output into a structured dict.
+
+    Expected lines:
+      ROLE|title|level|match_score|why_fit|skills_csv|gaps_csv|projects_semi|salary_band|region
+      STEPS|step1; step2; ...
+      SUMMARY|some text...
+
+    We are tolerant: if a line is slightly malformed, we skip or trim.
+    """
+    roles: List[Dict[str, Any]] = []
+    next_steps: List[str] = []
+    impact_summary = ""
+
+    raw = (raw or "").strip()
+    if not raw:
+        raise ValueError("Empty SkillMapper response")
+
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        if line.startswith("ROLE|"):
+            parts = line.split("|")
+            # Expected 10 fields including "ROLE"
+            # [0]=ROLE, 1=title, 2=level, 3=match_score, 4=why_fit,
+            # 5=skills, 6=gaps, 7=projects, 8=salary, 9=region
+            while len(parts) < 10:
+                parts.append("")
+            _, title, level, ms_str, why_fit, skills_csv, gaps_csv, proj_semi, salary_band, region = parts[:10]
+
+            title = title.strip() or "Suggested role"
+            level = level.strip() or "entry"
+            why_fit = why_fit.strip()
+            if not why_fit:
+                why_fit = "This role aligns with your current skills and growth potential."
+            try:
+                match_score = int(ms_str.strip())
+            except Exception:
+                match_score = 0
+
+            skills = [
+                s.strip() for s in skills_csv.split(",") if s.strip()
+            ] if skills_csv else []
+
+            gaps_raw = [
+                g.strip() for g in gaps_csv.split(",") if g.strip()
+            ] if gaps_csv else []
+
+            projects_raw = [
+                p.strip() for p in proj_semi.split(";") if p.strip()
+            ] if proj_semi else []
+
+            # Build role structure compatible with templates + history
+            primary_skill_clusters = []
+            if skills:
+                primary_skill_clusters.append(
+                    {"name": "Core skills", "skills": skills}
+                )
+
+            gaps = []
+            for g in gaps_raw:
+                gaps.append(
+                    {
+                        "skill": g,
+                        "priority": 3,
+                        "how_to_learn": "",
+                        "time_weeks": 4,
+                    }
+                )
+
+            micro_projects = []
+            for p in projects_raw:
+                micro_projects.append(
+                    {
+                        "title": p,
+                        "outcome": "",
+                    }
+                )
+
+            comp_obj = {
+                "range": salary_band.strip(),
+                "ctc_range": salary_band.strip(),
+                "entry": salary_band.strip(),
+                "entry_level": salary_band.strip(),
+                "intern_range": salary_band.strip(),
+                "stipend": salary_band.strip(),
             }
-          },
-          "gaps": {
-            "type": "array",
-            "minItems": 2,
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["skill", "priority", "how_to_learn", "time_estimate_weeks"],
-              "properties": {
-                "skill": { "type": "string" },
-                "priority": { "type": "integer", "minimum": 1, "maximum": 5 },
-                "how_to_learn": { "type": "string" },
-                "time_estimate_weeks": { "type": "integer", "minimum": 1, "maximum": 24 }
-              }
+
+            role = {
+                "title": title,
+                "level": level,
+                "match_score": match_score,
+                "why_fit": why_fit,
+                "summary": why_fit,
+                "primary_skill_clusters": primary_skill_clusters,
+                "gaps": gaps,
+                "micro_projects": micro_projects,
+                "example_titles": [],
+                "skills": skills,
+                "stack": skills,  # reuse skills as stack hint
+                "salary": salary_band.strip(),
+                "compensation": comp_obj,
+                "region": region.strip(),
+                "geo": region.strip(),
             }
-          },
-          "micro_projects": {
-            "type": "array",
-            "minItems": 2,
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["title", "outcome", "deliverables", "difficulty"],
-              "properties": {
-                "title": { "type": "string" },
-                "outcome": { "type": "string" },
-                "deliverables": {
-                  "type": "array",
-                  "minItems": 2,
-                  "items": { "type": "string" }
-                },
-                "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] }
-              }
-            }
-          },
-          "example_titles": {
-            "type": "array",
-            "minItems": 3,
-            "items": { "type": "string" }
-          }
-        }
-      }
-    },
-    "hiring_now": {
-      "type": "array",
-      "minItems": 3,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["role_group", "roles", "share_estimate_pct", "est_count_estimate_global", "note"],
-        "properties": {
-          "role_group": { "type": "string" },
-          "roles": {
-            "type": "array",
-            "minItems": 2,
-            "items": { "type": "string" }
-          },
-          "share_estimate_pct": { "type": "number", "minimum": 0, "maximum": 100 },
-          "est_count_estimate_global": { "type": "integer", "minimum": 1000 },
-          "note": { "type": "string" }
-        }
-      }
-    },
-    "call_to_action": { "type": "string", "minLength": 8 },
-    "meta": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["generated_at_utc", "inputs_digest"],
-      "properties": {
-        "generated_at_utc": { "type": "string" },
-        "inputs_digest": { "type": "string" }
-      }
+            roles.append(role)
+
+        elif line.startswith("STEPS|"):
+            payload = line[len("STEPS|") :].strip()
+            if payload:
+                parts = [p.strip() for p in payload.split(";") if p.strip()]
+                next_steps.extend(parts)
+
+        elif line.startswith("SUMMARY|") and not impact_summary:
+            impact_summary = line[len("SUMMARY|") :].strip()
+
+    return {
+        "roles": roles,
+        "top_roles": roles,  # for back-compat with _normalize_roles
+        "hiring_now": [],    # not used in new UI; keep key for safety
+        "market_insights": {},
+        "learning_paths": [],
+        "next_steps": next_steps,
+        "impact_summary": impact_summary,
     }
-  }
-}
-"""
-
-PRO_SKILLMAPPER_PROMPT = """\
-You are SkillMapper, an expert career coach embedded in a Flask multi-tenant app.
-Return ONLY valid JSON matching the provided JSON Schema—no markdown or code fences.
-
-Freshness: {freshness}
-
-Region & market emphasis:
-{region_line}
-
-Planning horizon:
-The student has a {time_horizon_months}-month time horizon.
-{horizon_text}
-
-Style rules:
-{style_rules}
-
-Context & Rules:
-- Mode: "pro".
-- The profile object is authoritative: {profile_json}
-- If resume_text is provided, prefer profile fields, then use resume_text to fill gaps.
-- Produce three DISTINCT, specialized roles (not generic reskins).
-- Match depth to the domain in profile; avoid vague titles.
-- Give a candid match_score (0–100); avoid clustering all scores together.
-- "hiring_now" is MODEL ESTIMATES (directional), not scraped; include a brief regional/sector note if relevant.
-- Gaps must be specific, prioritized, and time-bounded with weeks.
-- Micro-projects must be resume-ready with concrete deliverables.
-- Keep language concise and recruiter-friendly.
-
-JSON Schema:
-{json_schema}
-
-Respond with JSON only.
-"""
-
-FREE_SKILLMAPPER_PROMPT = """\
-You are SkillMapper, an expert career coach for Free users in a Flask app.
-Return ONLY valid JSON matching the provided JSON Schema—no markdown or commentary.
-
-Freshness: {freshness}
-
-Region & market emphasis:
-{region_line}
-
-{target_domain_line}
-
-Context & Rules:
-- Mode: "free".
-- Primary signal is profile_json (skills, projects, education) plus resume_text.
-- free_text_skills is optional; treat it as an extra hint only.
-- Infer a plausible target domain and produce three DISTINCT, specialized roles within that domain.
-- Keep outputs actionable but concise; assume beginner to entry level.
-- "hiring_now" is MODEL ESTIMATES (directional), not scraped.
-- Micro-projects should be simple but portfolio-worthy.
-
-Inputs:
-- profile_json (optional): {profile_json}
-- resume_text (optional): {resume_text}
-- extra_free_text_skills: {free_text_skills}
-
-JSON Schema:
-{json_schema}
-
-Respond with JSON only.
-"""
-
-def build_skillmapper_messages(pro_mode: bool, inputs: Dict[str, Any]) -> List[Dict[str, str]]:
-    if pro_mode:
-        profile_json = inputs.get("profile_json") or {}
-        hints = inputs.get("hints") or {}
-
-        opts: Dict[str, Any] = {}
-        if isinstance(profile_json, dict):
-            opts = profile_json.get("_skillmapper_options") or {}
-
-        def _pick(name: str, default: Any = None) -> Any:
-            if isinstance(hints, dict) and hints.get(name) not in (None, ""):
-                return hints.get(name)
-            if isinstance(opts, dict) and opts.get(name) not in (None, ""):
-                return opts.get(name)
-            return default
-
-        # Time horizon (months)
-        raw_horizon = _pick("time_horizon_months", 6)
-        try:
-            time_horizon = int(raw_horizon)
-        except Exception:
-            time_horizon = 6
-        time_horizon = max(3, min(12, time_horizon))
-
-        region_sector = str(_pick("region_sector", "") or "").strip()
-        region_line = (
-            f"Emphasize region/sector context: {region_sector}."
-            if region_sector
-            else "Emphasize global hiring context (no specific region provided)."
-        )
-
-        # Horizon narrative used in prompt
-        if time_horizon <= 4:
-            horizon_text = (
-                "Treat this as a short 3–4 month horizon: "
-                "prioritize quick wins and near-fit roles. Limit major skill gaps "
-                "and keep micro-projects small (2–4 weeks each). Avoid recommending "
-                "large pivots that would realistically take more than a few months."
-            )
-        elif time_horizon <= 8:
-            horizon_text = (
-                "Treat this as a medium 6–8 month horizon: "
-                "it's reasonable to recommend 2–3 substantial gaps and a moderate "
-                "career step up. Micro-projects can span 4–8 weeks and should build "
-                "toward a stronger role within the same lane."
-            )
-        else:
-            horizon_text = (
-                "Treat this as a longer 9–12 month horizon: "
-                "larger pivots are acceptable if justified. You may recommend more "
-                "ambitious roles with several gaps, but micro-projects and learning "
-                "plans must still be realistic for 12 months of focused work."
-            )
-
-        style_rules = "\n".join(
-            [
-                "- Use tight, recruiter-friendly language.",
-                "- Roles must be distinct; avoid duplicates and near-duplicates.",
-                "- Target level is junior/intern/entry unless the profile clearly supports mid.",
-                "- For each gap: include priority (1–5), a concrete learning step, and a realistic time_estimate_weeks.",
-                "- Micro-projects should align with the stated time horizon (shorter and simpler for 3 months, deeper for 12).",
-            ]
-        )
-
-        prompt = PRO_SKILLMAPPER_PROMPT.format(
-            profile_json=json.dumps(profile_json, ensure_ascii=False),
-            json_schema=SKILLMAPPER_JSON_SCHEMA,
-            freshness=FRESHNESS_NOTE,
-            region_line=region_line,
-            time_horizon_months=time_horizon,
-            horizon_text=horizon_text,
-            style_rules=style_rules,
-        )
-        resume_text = (inputs.get("resume_text") or "").strip()
-        if resume_text:
-            prompt += f"\n\nAdditional resume_text (truncated as needed):\n{resume_text[:4000]}"
-    else:
-        free_text = (inputs.get("free_text_skills") or "").strip()
-        profile_json = inputs.get("profile_json") or {}
-        resume_text = (inputs.get("resume_text") or "").strip()
-        hints = inputs.get("hints") or {}
-
-        target_domain = ""
-        region_focus = ""
-        if isinstance(hints, dict):
-            target_domain = (hints.get("target_domain") or "").strip()
-            region_focus = (
-                hints.get("region_focus")
-                or hints.get("region_sector")
-                or ""
-            )
-            region_focus = str(region_focus).strip()
-
-        target_domain_line = (
-            f"Target domain hint from user: {target_domain}"
-            if target_domain
-            else "No explicit domain; infer a logical domain from the text + profile."
-        )
-        region_line = (
-            f"Emphasize roles aligned with this region/sector: {region_focus}."
-            if region_focus
-            else "Assume India early-career tech roles as the default market."
-        )
-
-        prompt = FREE_SKILLMAPPER_PROMPT.format(
-            free_text_skills=free_text[:2000],
-            profile_json=json.dumps(profile_json, ensure_ascii=False)[:3000],
-            resume_text=resume_text[:3000],
-            json_schema=SKILLMAPPER_JSON_SCHEMA,
-            freshness=FRESHNESS_NOTE,
-            target_domain_line=target_domain_line,
-            region_line=region_line,
-        )
-
-    return [
-        {"role": "system", "content": "You output only valid JSON and nothing else."},
-        {"role": "user", "content": prompt},
-    ]
 
 
 def _light_validate_skillmap(data: Any) -> Dict[str, Any]:
+    """
+    Keep structure predictable for templates/routes.
+    """
     if not isinstance(data, dict):
-        return {
-            "mode": "free",
-            "top_roles": [],
-            "hiring_now": [],
-            "call_to_action": "",
-            "meta": {},
-        }
-    for k in ["mode", "top_roles", "hiring_now", "call_to_action", "meta"]:
-        if k not in data:
-            if k in ("top_roles", "hiring_now"):
-                data[k] = []
-            elif k == "meta":
-                data[k] = {}
-            else:
-                data[k] = ""
-    if data["mode"] not in ("free", "pro"):
-        data["mode"] = "free"
-    if not isinstance(data.get("top_roles"), list):
-        data["top_roles"] = []
-    else:
-        data["top_roles"] = data["top_roles"][:3]
-    if not isinstance(data.get("hiring_now"), list):
-        data["hiring_now"] = []
-    elif len(data["hiring_now"]) > 5:
-        data["hiring_now"] = data["hiring_now"][:5]
-    if not isinstance(data.get("meta"), dict):
-        data["meta"] = {}
-    return data
+        data = {}
 
+    mode = data.get("mode") or "free"
+    if mode not in ("free", "pro"):
+        mode = "free"
 
-def _parse_skillmap_json(raw: str) -> Dict[str, Any]:
-    """
-    Try strict JSON first, then relaxed parsing:
-    - Strip ```json fences if present.
-    - Take substring between first '{' and last '}'.
-    If everything fails, re-raise so caller can handle.
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        raise ValueError("Empty response from model")
+    roles = data.get("roles") or data.get("top_roles") or []
+    if not isinstance(roles, list):
+        roles = []
 
-    # 1) Direct parse
-    try:
-        return json.loads(raw)
-    except Exception:
-        pass
+    cleaned_roles = []
+    for r in roles[:3]:
+        if not isinstance(r, dict):
+            continue
+        role = dict(r)
+        role.setdefault("title", "Suggested role")
+        role.setdefault("level", "entry")
+        role.setdefault("match_score", 0)
+        role.setdefault("why_fit", "")
+        role.setdefault("summary", role.get("why_fit", ""))
+        role.setdefault("primary_skill_clusters", [])
+        role.setdefault("gaps", [])
+        role.setdefault("micro_projects", [])
+        role.setdefault("example_titles", [])
+        role.setdefault("salary", "")
+        role.setdefault("compensation", {"range": role.get("salary", "")})
+        role.setdefault("region", "")
+        role.setdefault("geo", role.get("region", ""))
+        cleaned_roles.append(role)
 
-    # 2) Strip code fences like ```json ... ```
-    if raw.startswith("```"):
-        stripped = raw.strip("`")
-        if stripped.lower().startswith("json"):
-            stripped = stripped[4:].lstrip()
-        try:
-            return json.loads(stripped)
-        except Exception:
-            raw = stripped  # continue with stripped
+    hiring_now = data.get("hiring_now") or []
+    if not isinstance(hiring_now, list):
+        hiring_now = []
 
-    # 3) Substring between first { and last }
-    first = raw.find("{")
-    last = raw.rfind("}")
-    if first != -1 and last != -1 and last > first:
-        candidate = raw[first : last + 1]
-        return json.loads(candidate)
+    learning_paths = data.get("learning_paths") or []
+    if not isinstance(learning_paths, list):
+        learning_paths = []
 
-    # If still not parseable, let caller handle
-    raise ValueError("Unable to parse SkillMapper JSON")
+    next_steps = data.get("next_steps") or []
+    if not isinstance(next_steps, list):
+        next_steps = []
+
+    impact_summary = data.get("impact_summary") or ""
+    call_to_action = data.get("call_to_action") or ""
+    meta = data.get("meta") or {}
+    if not isinstance(meta, dict):
+        meta = {}
+
+    out = {
+        "mode": mode,
+        "roles": cleaned_roles,
+        "top_roles": cleaned_roles,
+        "hiring_now": hiring_now[:5],
+        "market_insights": data.get("market_insights") or {},
+        "learning_paths": learning_paths,
+        "next_steps": next_steps,
+        "impact_summary": impact_summary,
+        "call_to_action": call_to_action,
+        "meta": meta,
+    }
+    return out
 
 
 def generate_skillmap(
@@ -939,13 +852,22 @@ def generate_skillmap(
     return_source: bool = False,
     hints: Dict[str, Any] | None = None,
 ) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
+    """
+    Main SkillMapper entry.
+
+    IMPORTANT:
+    - We no longer ask the model for JSON.
+    - Instead we ask for a simple pipe-delimited text format and parse it ourselves.
+    - This avoids all JSON delimiter / brace / schema errors.
+    """
     from openai import OpenAI
 
     client = OpenAI()
 
     used_live_ai = False
+    inputs: Dict[str, Any]
     if pro_mode:
-        inputs: Dict[str, Any] = {
+        inputs = {
             "profile_json": profile_json or {},
             "resume_text": (resume_text or "").strip(),
             "hints": hints or {},
@@ -959,19 +881,36 @@ def generate_skillmap(
         }
 
     try:
-        messages = build_skillmapper_messages(pro_mode, inputs)
+        prompt = _build_skillmapper_prompt(pro_mode, inputs)
 
         resp = client.chat.completions.create(
             model=OPENAI_MODEL_DEEP if pro_mode else OPENAI_MODEL_FAST,
-            messages=messages,
-            temperature=0.4 if pro_mode else 0.6,
-            max_tokens=1400 if pro_mode else 900,
-            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You follow the instructions exactly and output ONLY the specified line format.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.45 if pro_mode else 0.6,
+            max_tokens=1200 if pro_mode else 900,
         )
-        raw = (resp.choices[0].message.content or "").strip()
 
-        # Robust parsing instead of plain json.loads
-        data = _parse_skillmap_json(raw)
+        raw = (resp.choices[0].message.content or "").strip()
+        parsed = _parse_skillmapper_text(raw)
+
+        data = {
+            "mode": "pro" if pro_mode else "free",
+            "roles": parsed.get("roles") or [],
+            "top_roles": parsed.get("top_roles") or parsed.get("roles") or [],
+            "hiring_now": parsed.get("hiring_now") or [],
+            "market_insights": parsed.get("market_insights") or {},
+            "learning_paths": parsed.get("learning_paths") or [],
+            "next_steps": parsed.get("next_steps") or [],
+            "impact_summary": parsed.get("impact_summary") or "",
+            "call_to_action": parsed.get("impact_summary") or "",
+            "meta": {},
+        }
 
         data = _light_validate_skillmap(data)
 
@@ -980,12 +919,11 @@ def generate_skillmap(
             meta["generated_at_utc"] = _utc_now_iso()
         if "inputs_digest" not in meta:
             meta["inputs_digest"] = _inputs_digest(inputs)
-
-        # Extra meta for UI
         meta.setdefault("source", "pro" if pro_mode else "free")
         meta.setdefault("using_profile", bool(inputs.get("profile_json")))
-        region_hint = None
+
         hints_obj = inputs.get("hints") or {}
+        region_hint = None
         if isinstance(hints_obj, dict):
             region_hint = (
                 hints_obj.get("region_sector")
@@ -996,7 +934,7 @@ def generate_skillmap(
             meta.setdefault("region_focus", region_hint)
         meta.setdefault("version", CAREER_AI_VERSION)
 
-        # Optional profile snapshot for Pro (used in right-rail UI)
+        # Optional profile snapshot for UI
         try:
             prof = inputs.get("profile_json") or {}
             if isinstance(prof, dict) and prof:
@@ -1017,25 +955,29 @@ def generate_skillmap(
                     "key_skills": key_skills[:20],
                 }
         except Exception:
-            # Snapshot is optional; never break generation
             pass
 
         data["meta"] = meta
-
         used_live_ai = True
+
         return (data, used_live_ai) if return_source else data
 
     except Exception as e:
-        data = _light_validate_skillmap(
-            {
-                "mode": "pro" if pro_mode else "free",
-                "top_roles": [],
-                "hiring_now": [],
-                "call_to_action": "ERROR: " + str(e),
-                "meta": {
-                    "generated_at_utc": _utc_now_iso(),
-                    "inputs_digest": _inputs_digest({"error": True}),
-                },
-            }
-        )
+        # Hard fail: return empty but safe payload; routes/templates will show debug note
+        fallback = {
+            "mode": "pro" if pro_mode else "free",
+            "roles": [],
+            "top_roles": [],
+            "hiring_now": [],
+            "market_insights": {},
+            "learning_paths": [],
+            "next_steps": [],
+            "impact_summary": "",
+            "call_to_action": "ERROR: " + str(e),
+            "meta": {
+                "generated_at_utc": _utc_now_iso(),
+                "inputs_digest": _inputs_digest({"error": True}),
+            },
+        }
+        data = _light_validate_skillmap(fallback)
         return (data, used_live_ai) if return_source else data

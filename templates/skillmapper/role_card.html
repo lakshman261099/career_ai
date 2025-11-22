@@ -1,0 +1,33 @@
+<div class="sm-role-card">
+  <h3 class="sm-role-title">{{ role.title }}</h3>
+  <p class="sm-role-sub">{{ role.why_fit }}</p>
+
+  {% if role.primary_skill_clusters %}
+    <div>
+      <strong>Skill match</strong><br>
+      {% for cluster in role.primary_skill_clusters %}
+        {% for s in cluster.skills %}
+          <span class="sm-chip sm-chip-match">{{ s }}</span>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if role.gaps %}
+    <div style="margin-top:0.5rem">
+      <strong>Gaps</strong><br>
+      {% for g in role.gaps %}
+        <span class="sm-chip sm-chip-gap">{{ g.skill }}</span>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if role.micro_projects %}
+    <div style="margin-top:0.5rem">
+      <strong>Micro Projects</strong><br>
+      {% for p in role.micro_projects %}
+        <div>{{ p.title }} — {{ p.outcome }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>

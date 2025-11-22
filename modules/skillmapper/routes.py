@@ -77,6 +77,33 @@ def json_dumps_safe(obj) -> str:
         return "{}"
 
 
+def _normalize_roles(skillmap: dict) -> dict:
+    """
+    Make sure templates always see skillmap['roles'] as a list.
+
+    Older / different model variants might return:
+      - 'role_roadmap'
+      - 'top_roles'
+      - 'role_cards'
+      - 'primary_roles'
+    etc. We map the first one we find onto 'roles' if it's missing.
+    """
+    if not isinstance(skillmap, dict):
+        return {}
+
+    maybe_roles = skillmap.get("roles")
+    if isinstance(maybe_roles, list):
+        return skillmap
+
+    for alt in ("role_roadmap", "top_roles", "role_cards", "primary_roles"):
+        alt_val = skillmap.get(alt)
+        if isinstance(alt_val, list):
+            skillmap["roles"] = alt_val
+            break
+
+    return skillmap
+
+
 # ---------------------- new HTML-first flow ----------------------
 
 
@@ -150,6 +177,7 @@ def index():
                 mode=mode,
                 is_pro_user=is_pro_user,
                 profile_snapshot=profile_snapshot,
+                CAREER_AI_VERSION=CAREER_AI_VERSION,
             )
 
         try:
@@ -166,6 +194,7 @@ def index():
                         mode=mode,
                         is_pro_user=is_pro_user,
                         profile_snapshot=profile_snapshot,
+                        CAREER_AI_VERSION=CAREER_AI_VERSION,
                     )
 
                 hints = {
@@ -220,7 +249,12 @@ def index():
                 mode=mode,
                 is_pro_user=is_pro_user,
                 profile_snapshot=profile_snapshot,
+                CAREER_AI_VERSION=CAREER_AI_VERSION,
             )
+
+        # Ensure we have a dict and normalize roles for the templates
+        if isinstance(skillmap, dict):
+            skillmap = _normalize_roles(skillmap)
 
         # Persist snapshot (best-effort)
         try:
@@ -270,6 +304,7 @@ def index():
             from_history=False,
             snapshot=snapshot,
             profile_snapshot=profile_snapshot,
+            CAREER_AI_VERSION=CAREER_AI_VERSION,
         )
 
     # GET
@@ -278,6 +313,7 @@ def index():
         mode=mode,
         is_pro_user=is_pro_user,
         profile_snapshot=profile_snapshot,
+        CAREER_AI_VERSION=CAREER_AI_VERSION,
     )
 
 
@@ -302,6 +338,7 @@ def history():
         "skillmapper/history.html",
         snapshots=snapshots,
         pagination=pagination,
+        CAREER_AI_VERSION=CAREER_AI_VERSION,
     )
 
 
@@ -322,6 +359,9 @@ def snapshot(snapshot_id: int):
         raw = {}
 
     skillmap = raw if isinstance(raw, dict) else {}
+    # Normalize roles when reopening from history too
+    skillmap = _normalize_roles(skillmap)
+
     meta = skillmap.get("meta") or {}
     if not isinstance(meta, dict):
         meta = {}
@@ -341,6 +381,7 @@ def snapshot(snapshot_id: int):
         from_history=True,
         snapshot=snap,
         profile_snapshot=profile_snapshot,
+        CAREER_AI_VERSION=CAREER_AI_VERSION,
     )
 
 
@@ -411,6 +452,10 @@ def run_free():
             return_source=True,
             hints=free_hints,
         )
+
+        # Normalize roles for API clients too
+        if isinstance(data, dict):
+            data = _normalize_roles(data)
 
         log.info(
             "SM/free used_live_ai=%s extra_len=%d domain_hint=%s has_profile=%s has_resume=%s",
@@ -514,6 +559,10 @@ def run_pro():
             return_source=True,
             hints=hints,
         )
+
+        # Normalize roles for API clients
+        if isinstance(data, dict):
+            data = _normalize_roles(data)
 
         log.info(
             "SM/pro used_live_ai=%s profile_keys=%s resume_len=%d region=%s",
