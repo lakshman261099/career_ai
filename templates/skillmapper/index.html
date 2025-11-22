@@ -15,6 +15,18 @@
           then build a 3-role roadmap with skills, gaps, micro-projects and market data.
         </p>
 
+        <!-- Clear “how to use this” note -->
+        <p class="text-[11px] text-white/60 mt-2 max-w-xl">
+          Start here after you’ve filled your <span class="font-semibold">Profile Portal</span>:
+          <span class="font-semibold text-white/80">1)</span> run Skill Mapper to pick <span class="font-semibold">one focus role</span>,
+          <span class="font-semibold text-white/80">2)</span> use
+          <a href="{{ feature_paths.portfolio }}" class="underline hover:text-white">Portfolio</a>
+          to build projects for that role,
+          <span class="font-semibold text-white/80">3)</span> use
+          <a href="{{ feature_paths.jobpack }}" class="underline hover:text-white">Job Packs</a>
+          to compare real job postings and prep.
+        </p>
+
         {% if profile_snapshot %}
           <div class="mt-3 text-xs text-white/70 flex flex-wrap items-center gap-2">
             <span class="px-2 py-1 rounded-full bg-white/5 border border-white/15">
@@ -30,6 +42,14 @@
               Update Profile Portal →
             </a>
           </div>
+        {% else %}
+          <div class="mt-3 text-[11px] text-white/60">
+            Your Profile Portal looks empty. You can still paste skills below, but
+            <a href="{{ url_for('settings.profile') }}" class="underline hover:text-white">
+              filling your Profile Portal
+            </a>
+            will make Skill Mapper much smarter.
+          </div>
         {% endif %}
       </div>
 
@@ -44,7 +64,7 @@
           </div>
           <div class="space-y-0.5 text-[11px] text-white/70">
             <p>🪙 <strong>Free:</strong> 1 full role + preview of the rest.</p>
-            <p>⭐ <strong>Deep (Pro):</strong> Full 3-role roadmap, market data & action plan.</p>
+            <p>⭐ <strong>Deep (Pro):</strong> Full 3-role roadmap, market data &amp; action plan.</p>
           </div>
         </div>
       </div>
@@ -131,7 +151,7 @@
               <span>
                 Deep roadmap (Pro ⭐)
                 <span class="block text-[11px] text-white/60">
-                  3 roles, market data, micro-projects & learning plan.
+                  3 roles, market data, micro-projects &amp; learning plan.
                 </span>
               </span>
             </label>
@@ -159,6 +179,42 @@
         </div>
       </div>
     </form>
+  </div>
+
+  <!-- How Skill Mapper fits into CareerAI -->
+  <div class="glass-card rounded-2xl p-4 sm:p-5 space-y-2 text-[11px] sm:text-xs text-white/70">
+    <p class="font-semibold text-white/80 text-xs sm:text-sm">
+      How Skill Mapper fits into your CareerAI journey
+    </p>
+    <p>
+      Think of this as your <span class="font-semibold">roadmap step</span>. First, make your Profile Portal strong.
+      Then use Skill Mapper to pick a focus role. After that:
+    </p>
+    <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+      <span class="px-2 py-1 rounded-full bg-white/5 border border-white/15">
+        1️⃣ Profile Portal
+      </span>
+      <span>→</span>
+      <span class="px-2 py-1 rounded-full bg-indigo-500/20 border border-indigo-300/60">
+        2️⃣ Skill Mapper (this page)
+      </span>
+      <span>→</span>
+      <a href="{{ feature_paths.portfolio }}" class="px-2 py-1 rounded-full bg-fuchsia-500/20 border border-fuchsia-300/70 hover:bg-fuchsia-500/30">
+        3️⃣ Portfolio: build projects
+      </a>
+      <span>→</span>
+      <a href="{{ feature_paths.jobpack }}" class="px-2 py-1 rounded-full bg-emerald-500/20 border border-emerald-300/70 hover:bg-emerald-500/30">
+        4️⃣ Job Packs: decode JDs
+      </a>
+      <span>→</span>
+      <a href="{{ feature_paths.internships }}" class="px-2 py-1 rounded-full bg-sky-500/20 border border-sky-300/70 hover:bg-sky-500/30">
+        5️⃣ Internships
+      </a>
+      <span>+</span>
+      <a href="{{ feature_paths.referral }}" class="px-2 py-1 rounded-full bg-amber-500/20 border border-amber-300/70 hover:bg-amber-500/30">
+        Referrals
+      </a>
+    </div>
   </div>
 </section>
 {% endblock %}

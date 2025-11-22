@@ -56,111 +56,150 @@
         </div>
       </div>
 
-      <!-- Feature list (hover expands) -->
-      <a href="{{ feature_paths.jobpack }}"
-         class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
-        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-             style="background: radial-gradient(circle at right, rgba(56,189,248,.20), transparent 55%);"></div>
-        <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-sky-300/60 grid place-items-center text-lg shadow-lg shadow-sky-500/40">
-          💼
+      <!-- How CareerAI works strip -->
+      <div class="glass-card p-4 space-y-2">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">
+            How CareerAI Works
+          </h3>
+          <span class="text-[10px] text-white/50">
+            Start with <span class="font-semibold">Profile Portal</span> after you sign in.
+          </span>
         </div>
-        <div class="relative flex-1">
-          <div class="flex items-center gap-2">
-            <h3 class="text-sm font-semibold">Job Pack Reports</h3>
-            <span class="tier-badge free text-[9px]">Free</span>
-            <span class="tier-badge pro text-[9px]">Pro</span>
-          </div>
-          <p class="text-xs text-white/70 mt-1">
-            Paste any JD and get ATS score, skill gaps, suggested resume edits, and interview prep
-            — built for Indian fresher roles.
-          </p>
-        </div>
-      </a>
-
-      <a href="{{ feature_paths.skillmapper }}"
-         class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
-        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-             style="background: radial-gradient(circle at right, rgba(129,140,248,.22), transparent 55%);"></div>
-        <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-indigo-300/70 grid place-items-center text-lg shadow-lg shadow-indigo-500/40">
-          🧭
-        </div>
-        <div class="relative flex-1">
-          <div class="flex items-center gap-2">
-            <h3 class="text-sm font-semibold">Skill Mapper</h3>
-            <span class="tier-badge free text-[9px]">Free</span>
-            <span class="tier-badge pro text-[9px]">Pro</span>
-          </div>
-          <p class="text-xs text-white/70 mt-1">
-            Map your current skills to real roles in India (e.g., Data Analyst, SDE, DevOps),
-            see demand levels, salary bands, and missing skills.
-          </p>
-        </div>
-      </a>
-
-      <a href="{{ feature_paths.internships }}"
-         class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
-        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-             style="background: radial-gradient(circle at right, rgba(52,211,153,.22), transparent 55%);"></div>
-        <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-emerald-300/70 grid place-items-center text-lg shadow-lg shadow-emerald-500/40">
-          📚
-        </div>
-        <div class="relative flex-1">
-          <div class="flex items-center gap-2">
-            <h3 class="text-sm font-semibold">Internship Analyzer</h3>
-            <span class="tier-badge free text-[9px]">Free</span>
-            <span class="tier-badge pro text-[9px]">Pro</span>
-          </div>
-          <p class="text-xs text-white/70 mt-1">
-            Paste any internship and see: skill gain, CV impact, portfolio value, and what
-            full-time roles it actually leads to.
-          </p>
-        </div>
-      </a>
-
-      <a href="{{ feature_paths.portfolio }}"
-         class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
-        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-             style="background: radial-gradient(circle at right, rgba(251,191,36,.24), transparent 55%);"></div>
-        <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-amber-300/70 grid place-items-center text-lg shadow-lg shadow-amber-500/40">
-          🧪
-        </div>
-        <div class="relative flex-1">
-          <div class="flex items-center gap-2">
-            <h3 class="text-sm font-semibold">Portfolio Builder</h3>
-            <span class="tier-badge free text-[9px]">Free</span>
-            <span class="tier-badge pro text-[9px]">Pro</span>
-          </div>
-          <p class="text-xs text-white/70 mt-1">
-            Turn your skills + internships into 1–3 solid project ideas with tasks, tech stack,
-            and impact bullets ready to paste into your resume.
-          </p>
-        </div>
-      </a>
-
-      <a href="{{ feature_paths.referral }}"
-         class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
-        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-             style="background: radial-gradient(circle at right, rgba(244,114,182,.24), transparent 55%);"></div>
-        <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-pink-300/70 grid place-items-center text-lg shadow-lg shadow-pink-500/40">
-          🔗
-        </div>
-        <div class="relative flex-1">
-          <div class="flex items-center gap-2">
-            <h3 class="text-sm font-semibold">Referral Trainer</h3>
-            <span class="tier-badge free text-[9px]">Free</span>
-            <span class="tier-badge pro text-[9px]">Pro (soon)</span>
-          </div>
-          <p class="text-xs text-white/70 mt-1">
-            Get warm + cold outreach drafts and polite follow-ups, tuned for Indian LinkedIn culture
-            (no cringe “synergy” buzzwords).
-          </p>
-        </div>
-      </a>
+        <ol class="space-y-1.5 text-[11px] text-white/75">
+          <li>
+            <span class="font-semibold">1) Fill Profile Portal</span> &nbsp;— in Settings → Profile Portal.
+            This is the heart of CareerAI; all tools read from here.
+          </li>
+          <li>
+            <span class="font-semibold">2) Run Skill Mapper</span> &nbsp;— get 3 best-fit roles, skill gaps,
+            and micro-project ideas tailored to your profile.
+          </li>
+          <li>
+            <span class="font-semibold">3) Build projects in Portfolio</span> &nbsp;— turn your chosen role into
+            1–3 strong projects and bullets.
+          </li>
+          <li>
+            <span class="font-semibold">4) Analyze real roles</span> &nbsp;— use
+            <span class="font-semibold">Job Packs</span> <span class="text-white/60">(for job JDs)</span>
+            and <span class="font-semibold">Internship Analyzer</span>
+            <span class="text-white/60">(for internship JDs)</span> on actual postings for that role.
+          </li>
+          <li>
+            <span class="font-semibold">5) Reach people</span> &nbsp;— use
+            <span class="font-semibold">Referral Trainer</span> to send warm outreach for those jobs or internships.
+          </li>
+        </ol>
+      </div>
     </div>
   </div>
 
+  <!-- FEATURE LIST (hover cards) -->
+  <div>
+    <!-- Feature list (hover expands) -->
+    <a href="{{ feature_paths.jobpack }}"
+       class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3">
+      <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+           style="background: radial-gradient(circle at right, rgba(56,189,248,.20), transparent 55%);"></div>
+      <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-sky-300/60 grid place-items-center text-lg shadow-lg shadow-sky-500/40">
+        💼
+      </div>
+      <div class="relative flex-1">
+        <div class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold">Job Pack Reports</h3>
+          <span class="tier-badge free text-[9px]">Free</span>
+          <span class="tier-badge pro text-[9px]">Pro</span>
+        </div>
+        <p class="text-xs text-white/70 mt-1">
+          Paste any JD and get ATS score, skill gaps, suggested resume edits, and interview prep
+          — built for Indian fresher roles.
+        </p>
+      </div>
+    </a>
+
+    <a href="{{ feature_paths.skillmapper }}"
+       class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3 mt-3">
+      <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+           style="background: radial-gradient(circle at right, rgba(129,140,248,.22), transparent 55%);"></div>
+      <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-indigo-300/70 grid place-items-center text-lg shadow-lg shadow-indigo-500/40">
+        🧭
+      </div>
+      <div class="relative flex-1">
+        <div class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold">Skill Mapper</h3>
+          <span class="tier-badge free text-[9px]">Free</span>
+          <span class="tier-badge pro text-[9px]">Pro</span>
+        </div>
+        <p class="text-xs text-white/70 mt-1">
+          Map your current skills to real roles in India (e.g., Data Analyst, SDE, DevOps),
+          see demand levels, salary bands, and missing skills.
+        </p>
+      </div>
+    </a>
+
+    <a href="{{ feature_paths.internships }}"
+       class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3 mt-3">
+      <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+           style="background: radial-gradient(circle at right, rgba(52,211,153,.22), transparent 55%);"></div>
+      <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-emerald-300/70 grid place-items-center text-lg shadow-lg shadow-emerald-500/40">
+        📚
+      </div>
+      <div class="relative flex-1">
+        <div class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold">Internship Analyzer</h3>
+          <span class="tier-badge free text-[9px]">Free</span>
+          <span class="tier-badge pro text-[9px]">Pro</span>
+        </div>
+        <p class="text-xs text-white/70 mt-1">
+          Paste any internship and see: skill gain, CV impact, portfolio value, and what
+          full-time roles it actually leads to.
+        </p>
+      </div>
+    </a>
+
+    <a href="{{ feature_paths.portfolio }}"
+       class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3 mt-3">
+      <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+           style="background: radial-gradient(circle at right, rgba(251,191,36,.24), transparent 55%);"></div>
+      <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-amber-300/70 grid place-items-center text-lg shadow-lg shadow-amber-500/40">
+        🧪
+      </div>
+      <div class="relative flex-1">
+        <div class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold">Portfolio Builder</h3>
+          <span class="tier-badge free text-[9px]">Free</span>
+          <span class="tier-badge pro text-[9px]">Pro</span>
+        </div>
+        <p class="text-xs text-white/70 mt-1">
+          Turn your skills + internships into 1–3 solid project ideas with tasks, tech stack,
+          and impact bullets ready to paste into your resume.
+        </p>
+      </div>
+    </a>
+
+    <a href="{{ feature_paths.referral }}"
+       class="glass-card relative overflow-hidden group px-4 py-3 flex items-start gap-3 mt-3">
+      <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+           style="background: radial-gradient(circle at right, rgba(244,114,182,.24), transparent 55%);"></div>
+      <div class="relative flex-shrink-0 h-9 w-9 rounded-xl bg-slate-900/80 border border-pink-300/70 grid place-items-center text-lg shadow-lg shadow-pink-500/40">
+        🔗
+      </div>
+      <div class="relative flex-1">
+        <div class="flex items-center gap-2">
+          <h3 class="text-sm font-semibold">Referral Trainer</h3>
+          <span class="tier-badge free text-[9px]">Free</span>
+          <span class="tier-badge pro text-[9px]">Pro (soon)</span>
+        </div>
+        <p class="text-xs text-white/70 mt-1">
+          Get warm + cold outreach drafts and polite follow-ups, tuned for Indian LinkedIn culture
+          (no cringe “synergy” buzzwords).
+        </p>
+      </div>
+    </a>
+  </div>
+
   <!-- FEATURE GRID (deep dive cards with images) -->
-  <div class="mt-4">
+  <div class="mt-8">
     <h2 class="text-lg font-semibold text-white/90 mb-3">Explore each tool in detail</h2>
     <p class="text-xs text-white/60 mb-4">
       Every feature has a Free mode (🪙) and a Pro mode (⭐). Free lets you try; Pro goes deeper with

@@ -256,11 +256,11 @@
           </div>
 
           {% if current_user.is_authenticated %}
-            <!-- Profile Portal is now the central base input for all tools -->
+            <!-- Profile Portal is the first step and powers all tools -->
             <a href="{{ feature_paths.profile }}"
                class="btn-ghost hidden sm:inline {% if request.endpoint=='settings.profile' %}nav-active{% endif %}">
               <span>Profile Portal</span>
-              <span class="hidden md:inline text-[10px] opacity-70">· powers all tools</span>
+              <span class="hidden md:inline text-[10px] opacity-70">· start here · powers all tools</span>
             </a>
             <a href="{{ feature_paths.settings }}"
                class="btn-ghost hidden sm:inline {% if request.endpoint and request.endpoint.startswith('settings.') and request.endpoint != 'settings.profile' %}nav-active{% endif %}">
@@ -294,6 +294,20 @@
       {% endif %}
     {% endwith %}
   </div>
+
+  {% if current_user.is_authenticated %}
+    <!-- Global "how to use" strip so students see the flow everywhere -->
+    <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 mt-3">
+      <div class="glass-card rounded-2xl px-4 py-2.5 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
+        <span class="font-semibold text-white/80">Simple way to use CareerAI:</span>
+        <span>1) <strong>Fill Profile Portal</strong></span>
+        <span class="hidden sm:inline">→ 2) Run <strong>Skill Mapper</strong></span>
+        <span class="hidden sm:inline">→ 3) Build <strong>Projects in Portfolio</strong></span>
+        <span class="hidden sm:inline">→ 4) Use <strong>Job Packs &amp; Internship Analyzer</strong></span>
+        <span class="hidden sm:inline">→ 5) Send <strong>Referral messages</strong></span>
+      </div>
+    </div>
+  {% endif %}
 
   <!-- Page content -->
   <main class="relative z-0">
