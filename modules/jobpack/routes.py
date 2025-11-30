@@ -20,10 +20,12 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-from limits import authorize_and_consume, can_use_pro, consume_pro
 from models import JobPackReport, db
 from modules.jobpack.utils_ats import analyze_jobpack
 from modules.common.profile_loader import load_profile_snapshot
+
+# Phase 4: central credits engine
+from modules.credits.engine import can_afford, deduct_free, deduct_pro
 
 jobpack_bp = Blueprint("jobpack", __name__, template_folder="../../templates/jobpack")
 
@@ -101,8 +103,8 @@ def _coerce_skill_names(skills_any: Any) -> List[str]:
 def index():
     """
     Job Pack — AI-powered ATS + Resume Evaluator
-    Free: standard match analysis (gpt-4o-mini).
-    Pro: CareerAI Deep Evaluation (gpt-4o).
+    Free: standard match analysis (gpt-4o-mini) using Silver 🪙.
+    Pro: CareerAI Deep Evaluation (gpt-4o) using Gold ⭐.
     Profile Portal is the main resume source for ALL runs.
     """
     mode = (request.form.get("mode") or "basic").lower()
@@ -113,6 +115,14 @@ def index():
     profile_resume_text = profile_snapshot.get("resume_text") or ""
 
     if request.method == "POST":
+        # 🔒 Email verification guard (only for running AI)
+        if not getattr(current_user, "verified", False):
+            flash(
+                "Please verify your email with a login code before using Job Pack.",
+                "warning",
+            )
+            return redirect(url_for("auth.otp_request"))
+
         jd_text = (request.form.get("jd") or "").strip()
 
         if not jd_text:
@@ -124,15 +134,29 @@ def index():
                 profile_snapshot=profile_snapshot,
             )
 
-        # Credits
+        # ------------------ Credits: check BEFORE AI, deduct AFTER success ------------------
         if is_pro_run:
-            if not can_use_pro(current_user, "jobpack"):
-                flash("Not enough Pro credits to run Deep Evaluation.", "warning")
+            # Pro mode requires Pro subscription + Gold credits
+            if not current_user.is_pro:
+                flash(
+                    "Job Pack Deep Evaluation is available for Pro ⭐ members only.",
+                    "warning",
+                )
+                return redirect(url_for("billing.index"))
+
+            if not can_afford(current_user, "jobpack_pro", currency="gold"):
+                flash(
+                    "You don’t have enough Gold ⭐ credits to run Deep Evaluation. "
+                    "Upgrade your plan or add more credits in the Coins Shop.",
+                    "warning",
+                )
                 return redirect(url_for("billing.index"))
         else:
-            if not authorize_and_consume(current_user, "jobpack"):
+            # Free/basic mode uses Silver credits
+            if not can_afford(current_user, "jobpack_free", currency="silver"):
                 flash(
-                    "You’ve used your free Job Pack today. Upgrade to Pro ⭐ to continue.",
+                    "You don’t have enough Silver 🪙 credits to run Job Pack. "
+                    "Upgrade to Pro ⭐ or add more credits in the Coins Shop.",
                     "warning",
                 )
                 return redirect(url_for("billing.index"))
@@ -155,6 +179,7 @@ def index():
             flash(
                 "An error occurred during analysis. Please try again later.", "danger"
             )
+            # No credits deducted, because AI call failed.
             return render_template(
                 "jobpack/index.html",
                 result=None,
@@ -168,16 +193,8 @@ def index():
         if not resume_text:
             result["resume_missing"] = True
 
-        # Deduct ⭐ for pro runs AFTER successful AI call
-        if is_pro_run:
-            try:
-                consume_pro(current_user, "jobpack")
-            except Exception as e:
-                current_app.logger.warning(
-                    "Pro credit consume failed after analysis: %s", e
-                )
-
-        # Persist (best-effort)
+        # Persist (best-effort) BEFORE deducting credits, so we can attach run_id if needed
+        report_id = None
         try:
             report = JobPackReport(
                 user_id=current_user.id,
@@ -189,12 +206,49 @@ def index():
             )
             db.session.add(report)
             db.session.commit()
+            report_id = report.id
         except Exception as e:
             current_app.logger.warning("JobPack report save failed: %s", e)
             try:
                 db.session.rollback()
             except Exception:
                 pass
+
+        # Deduct credits AFTER successful AI call
+        try:
+            if is_pro_run:
+                # Gold ⭐ debit
+                if not deduct_pro(current_user, "jobpack_pro", run_id=report_id):
+                    current_app.logger.warning(
+                        "JobPack: deduct_pro failed after analysis for user %s",
+                        current_user.id,
+                    )
+                    flash(
+                        "Deep Evaluation completed, but your Pro credits could not be updated. "
+                        "Please contact support if this keeps happening.",
+                        "warning",
+                    )
+            else:
+                # Silver 🪙 debit
+                if not deduct_free(current_user, "jobpack_free", run_id=report_id):
+                    current_app.logger.warning(
+                        "JobPack: deduct_free failed after analysis for user %s",
+                        current_user.id,
+                    )
+                    flash(
+                        "Job Pack analysis completed, but your credits could not be updated. "
+                        "Please contact support if this keeps happening.",
+                        "warning",
+                    )
+        except Exception as e:
+            current_app.logger.exception(
+                "JobPack credit deduction error after analysis: %s", e
+            )
+            flash(
+                "Your analysis completed, but we had trouble updating your credits. "
+                "Please contact support if this keeps happening.",
+                "warning",
+            )
 
         # SAFE RENDER: if the template raises, show a small inline debug view
         try:

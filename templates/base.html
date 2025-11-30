@@ -245,6 +245,14 @@
              href="{{ feature_paths.jobpack }}">Job Packs</a>
           <a class="nav-link {% if request.endpoint and request.endpoint.startswith('billing.') %}nav-active{% endif %}"
              href="{{ feature_paths.billing }}">Pricing</a>
+
+          {# Admin nav item – only visible for admin users (role or ADMIN_EMAILS) #}
+          {% if nav_is_admin %}
+            <a class="nav-link {% if request.endpoint and request.endpoint.startswith('admin.') %}nav-active{% endif %}"
+               href="{{ url_for('admin.dashboard') }}">
+              Admin
+            </a>
+          {% endif %}
         </nav>
 
         <!-- Right cluster: coins + auth buttons -->
@@ -294,6 +302,23 @@
       {% endif %}
     {% endwith %}
   </div>
+
+  {# 🔔 Global email verification banner (only when logged in & not verified) #}
+  {% if current_user.is_authenticated and not current_user.verified %}
+    <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-3">
+      <div class="glass-card rounded-2xl border border-yellow-400/70 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-amber-100">
+        <div class="space-y-0.5">
+          <p class="font-semibold">Verify your email to unlock AI features.</p>
+          <p class="text-amber-100/80 text-[11px] sm:text-xs">
+            You can browse all tools, but AI actions (analyze, generate, etc.) need a one-time email code.
+          </p>
+        </div>
+        <a href="{{ url_for('auth.otp_request') }}" class="btn-primary text-xs whitespace-nowrap">
+          Get login code
+        </a>
+      </div>
+    </div>
+  {% endif %}
 
   {% if current_user.is_authenticated %}
     <!-- Global "how to use" strip so students see the flow everywhere -->

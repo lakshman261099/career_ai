@@ -34,6 +34,13 @@
       </div>
     {% endif %}
 
+    <!-- Token balances -->
+    <div class="text-[11px] text-white/60 mb-3">
+      Balance:
+      <span class="font-semibold">{{ user_free|default(0) }} 🪙 Silver</span> ·
+      <span class="font-semibold">{{ user_pro|default(0) }} ⭐ Gold</span>
+    </div>
+
     <form method="POST">
       <label class="block text-sm mb-1">Job Description (paste)</label>
       <textarea name="jd" rows="8"
@@ -45,20 +52,32 @@
         You don’t need to paste your resume here.
       </p>
 
-      <div class="mt-4 flex items-center gap-3 text-sm">
+      <!-- Mode selection with per-run costs -->
+      <div class="mt-4 flex items-center gap-6 text-sm">
         <label class="inline-flex items-center gap-2">
           <input type="radio" name="mode" value="basic" {% if mode != 'pro' %}checked{% endif %}>
-          <span>Basic (🪙)</span>
+          <span class="flex flex-col leading-tight">
+            <span>Basic (🪙)</span>
+            <span class="text-[10px] text-white/70">1 Silver 🪙 / run</span>
+          </span>
         </label>
+
         <label class="inline-flex items-center gap-2">
           <input type="radio" name="mode" value="pro" {% if mode == 'pro' %}checked{% endif %}>
-          <span>Deep (Pro ⭐)</span>
+          <span class="flex flex-col leading-tight">
+            <span>Deep (Pro ⭐)</span>
+            <span class="text-[10px] text-white/70">3 Gold ⭐ / run</span>
+          </span>
         </label>
       </div>
 
-      <div class="mt-4 flex flex-wrap gap-2">
+      <div class="mt-4 flex flex-wrap gap-2 items-center">
         <button class="btn-primary" type="submit">Analyze</button>
         <a class="btn-ghost" href="{{ feature_paths.billing }}">Get Pro</a>
+        <p class="text-[11px] text-white/50 ml-1">
+          Basic uses <span class="font-semibold">1 Silver 🪙</span> per run.
+          Deep uses <span class="font-semibold">3 Gold ⭐</span> per run.
+        </p>
       </div>
     </form>
   </div>

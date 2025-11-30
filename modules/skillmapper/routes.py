@@ -20,10 +20,13 @@ from flask import (
 from flask_login import current_user, login_required
 from sqlalchemy import desc
 
-from limits import authorize_and_consume
 from models import ResumeAsset, SkillMapSnapshot, UserProfile, db
 from modules.common.ai import generate_skillmap
 from modules.common.profile_loader import load_profile_snapshot
+from modules.auth.guards import require_verified_email
+
+# Phase 4: central credits engine
+from modules.credits.engine import can_afford, deduct_free, deduct_pro
 
 from . import bp
 
@@ -118,12 +121,13 @@ def index():
 
     Free runs:
       - Use Profile Portal + resume + optional extra skills.
-      - Cost Silver (FEATURE_KEY = "skillmapper").
+      - Cost Silver 🪙 (feature_key='skill_mapper_free') for ALL users.
       - Show 1 full role + Pro preview (blurred) of the rest.
 
     Pro runs:
       - Require Pro subscription.
       - Use Profile Portal + resume.
+      - Cost Gold ⭐ (feature_key='skill_mapper_pro').
       - Show full 3-role roadmap + hiring snapshot + action plan.
     """
     is_pro_user = bool(getattr(current_user, "is_pro", False))
@@ -139,23 +143,40 @@ def index():
     snapshot = None
 
     if request.method == "POST":
+        # 🔒 Email verification guard
+        if not getattr(current_user, "verified", False):
+            flash(
+                "Please verify your email with a login code before using Skill Mapper.",
+                "warning",
+            )
+            return redirect(url_for("auth.otp_request"))
+
         # Simple preference inputs
         extra_skills = (request.form.get("free_text_skills") or "").strip()
         target_domain = (request.form.get("target_domain") or "").strip()
         region_focus = (request.form.get("region_focus") or "").strip()
         time_horizon = (request.form.get("time_horizon") or "").strip()  # months
 
-        # Access controls / credits
+        # ------------------ Credits: check BEFORE AI, deduct AFTER success ------------------
         if pro_mode:
+            # Pro mode requires Pro subscription + Gold ⭐ credits
             if not is_pro_user:
-                flash("Skill Mapper Pro requires a Pro subscription.", "warning")
+                flash("Skill Mapper Pro is available for Pro ⭐ members only.", "warning")
+                return redirect(url_for("billing.index"))
+
+            if not can_afford(current_user, "skill_mapper_pro", currency="gold"):
+                flash(
+                    "You don’t have enough Gold ⭐ credits to run Skill Mapper Pro. "
+                    "Upgrade your plan or add more credits in the Coins Shop.",
+                    "warning",
+                )
                 return redirect(url_for("billing.index"))
         else:
-            ok = authorize_and_consume(current_user, FEATURE_KEY)
-            if not ok:
+            # Free/basic mode always uses Silver 🪙
+            if not can_afford(current_user, "skill_mapper_free", currency="silver"):
                 flash(
-                    "Not enough Silver credits to run Skill Mapper. "
-                    "Upgrade to Pro ⭐ for unlimited deep roadmaps.",
+                    "You don’t have enough Silver 🪙 credits to run Skill Mapper. "
+                    "Upgrade to Pro ⭐ or add more credits in the Coins Shop.",
                     "warning",
                 )
                 return redirect(url_for("billing.index"))
@@ -244,6 +265,7 @@ def index():
                 "Please try again in a bit.",
                 "danger",
             )
+            # No credits deducted, because AI call failed.
             return render_template(
                 "skillmapper/index.html",
                 mode=mode,
@@ -256,7 +278,8 @@ def index():
         if isinstance(skillmap, dict):
             skillmap = _normalize_roles(skillmap)
 
-        # Persist snapshot (best-effort)
+        # Persist snapshot (best-effort) BEFORE deducting credits
+        snapshot = None
         try:
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
@@ -282,6 +305,48 @@ def index():
             db.session.rollback()
             current_app.logger.warning(
                 "SkillMapper snapshot save failed.", exc_info=True
+            )
+
+        # Deduct credits AFTER successful AI call + snapshot
+        try:
+            if pro_mode:
+                if not deduct_pro(
+                    current_user,
+                    "skill_mapper_pro",
+                    run_id=(snapshot.id if snapshot is not None else None),
+                ):
+                    log.warning(
+                        "SkillMapper: deduct_pro failed after analysis for user %s",
+                        current_user.id,
+                    )
+                    flash(
+                        "Your Pro roadmap was generated, but your Pro credits "
+                        "could not be updated correctly. Please contact support if this keeps happening.",
+                        "warning",
+                    )
+            else:
+                if not deduct_free(
+                    current_user,
+                    "skill_mapper_free",
+                    run_id=(snapshot.id if snapshot is not None else None),
+                ):
+                    log.warning(
+                        "SkillMapper: deduct_free failed after analysis for user %s",
+                        current_user.id,
+                    )
+                    flash(
+                        "Your Skill Mapper run completed, but your Silver credits "
+                        "could not be updated correctly. Please contact support if this keeps happening.",
+                        "warning",
+                    )
+        except Exception as e:
+            current_app.logger.exception(
+                "SkillMapper credit deduction error after analysis: %s", e
+            )
+            flash(
+                "Your roadmap was generated, but we had trouble updating your credits. "
+                "Please contact support if this keeps happening.",
+                "warning",
             )
 
         # Enrich meta a bit for the template
@@ -390,27 +455,28 @@ def snapshot(snapshot_id: int):
 
 @bp.route("/free", methods=["POST"])
 @login_required
+@require_verified_email
 def run_free():
     """
     Skill Mapper Free (JSON API):
     - Always uses Profile Portal + latest resume as the *primary* source.
     - Extra pasted text is just a hint (optional).
+    - Costs Silver 🪙 (feature_key='skill_mapper_free') for ALL users.
     - Returns a compact roadmap JSON; Pro-only sections are *not* generated here.
     """
     try:
-        # Silver credit check for non-Pro users
-        if not current_user.is_pro:
-            ok = authorize_and_consume(current_user, FEATURE_KEY)
-            if not ok:
-                return (
-                    jsonify(
-                        {
-                            "ok": False,
-                            "error": "Not enough Silver credits to run Skill Mapper.",
-                        }
-                    ),
-                    402,
-                )
+        # Silver credit check for all users (Free runs use 🪙)
+        if not can_afford(current_user, "skill_mapper_free", currency="silver"):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "Not enough Silver credits to run Skill Mapper. "
+                        "Upgrade to Pro ⭐ or add more credits in the Coins Shop.",
+                    }
+                ),
+                402,
+            )
 
         payload = request.get_json(silent=True) or {}
         extra_text = (payload.get("free_text_skills") or "").strip()
@@ -431,7 +497,8 @@ def run_free():
                 jsonify(
                     {
                         "ok": False,
-                        "error": "We couldn’t find a Profile Portal or resume yet. Add your basics in Profile Portal, then try again.",
+                        "error": "We couldn’t find a Profile Portal or resume yet. "
+                        "Add your basics in Profile Portal, then try again.",
                     }
                 ),
                 400,
@@ -467,6 +534,7 @@ def run_free():
         )
 
         # Persist snapshot (best-effort)
+        snapshot = None
         try:
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
@@ -484,9 +552,24 @@ def run_free():
             )
             db.session.add(snap)
             db.session.commit()
+            snapshot = snap
         except Exception:
             db.session.rollback()
             log.warning("SkillMapper snapshot save failed (free).", exc_info=True)
+
+        # Deduct Silver 🪙 AFTER successful AI + snapshot
+        try:
+            if not deduct_free(
+                current_user,
+                "skill_mapper_free",
+                run_id=(snapshot.id if snapshot is not None else None),
+            ):
+                log.warning(
+                    "SkillMapper /free: deduct_free failed after analysis for user %s",
+                    current_user.id,
+                )
+        except Exception:
+            log.exception("SkillMapper /free credit deduction error")
 
         return jsonify({"ok": True, "data": data, "used_live_ai": used_live_ai})
     except Exception as e:
@@ -504,10 +587,12 @@ def run_free():
 
 @bp.route("/pro", methods=["POST"])
 @login_required
+@require_verified_email
 def run_pro():
     """
     Skill Mapper Pro (JSON API):
     - Uses Profile Portal + latest resume (or pasted override).
+    - Requires Pro subscription + Gold ⭐ credits.
     - Focus is “current snapshot” for India by default.
     - Deep roadmap + richer India market context.
     """
@@ -523,6 +608,20 @@ def run_pro():
                 403,
             )
 
+        # Gold credit check
+        if not can_afford(current_user, "skill_mapper_pro", currency="gold"):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "You don’t have enough Gold credits to run "
+                        "Skill Mapper Pro. Upgrade your plan or add more credits "
+                        "in the Coins Shop.",
+                    }
+                ),
+                402,
+            )
+
         payload = request.get_json(silent=True) or {}
         use_profile = bool(payload.get("use_profile", True))
         pasted_resume_text = (payload.get("resume_text") or "").strip()
@@ -535,7 +634,8 @@ def run_pro():
                 jsonify(
                     {
                         "ok": False,
-                        "error": "Your Profile Portal looks empty. Please add basic details and skills first.",
+                        "error": "Your Profile Portal looks empty. "
+                        "Please add basic details and skills first.",
                     }
                 ),
                 400,
@@ -573,6 +673,7 @@ def run_pro():
         )
 
         # Persist snapshot (best-effort)
+        snapshot = None
         try:
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
@@ -586,9 +687,24 @@ def run_pro():
             )
             db.session.add(snap)
             db.session.commit()
+            snapshot = snap
         except Exception:
             db.session.rollback()
             log.warning("SkillMapper snapshot save failed (pro).", exc_info=True)
+
+        # Deduct Gold ⭐ AFTER successful AI + snapshot
+        try:
+            if not deduct_pro(
+                current_user,
+                "skill_mapper_pro",
+                run_id=(snapshot.id if snapshot is not None else None),
+            ):
+                log.warning(
+                    "SkillMapper /pro: deduct_pro failed after analysis for user %s",
+                    current_user.id,
+                )
+        except Exception:
+            log.exception("SkillMapper /pro credit deduction error")
 
         return jsonify({"ok": True, "data": data, "used_live_ai": used_live_ai})
     except Exception as e:

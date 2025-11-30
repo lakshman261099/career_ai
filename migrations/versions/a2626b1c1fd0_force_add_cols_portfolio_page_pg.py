@@ -1,69 +1,55 @@
-"""force add is_public and meta_json to portfolio_page (Postgres-safe)"""
+"""force add is_public and meta_json to portfolio_page (dual: Postgres + SQLite)"""
 
 from alembic import op
+import sqlalchemy as sa
+from sqlalchemy import inspect
 
+# revision identifiers, used by Alembic.
 revision = "a2626b1c1fd0"
-down_revision = "20250826_add_project_table"  # <-- REPLACE with your current head id (add_project_table)
+down_revision = "20250826_add_project_table"
 branch_labels = None
 depends_on = None
 
 
 def upgrade():
+    bind = op.get_bind()
+    dialect = bind.dialect.name.lower()
+    inspector = inspect(bind)
+
+    # Get existing columns on portfolio_page
+    columns = [col["name"] for col in inspector.get_columns("portfolio_page")]
+
     # Add is_public if missing
-    op.execute(
-        """
-    DO $$
-    BEGIN
-        IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name='portfolio_page' AND column_name='is_public'
-        ) THEN
-            ALTER TABLE portfolio_page ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT FALSE;
-        END IF;
-    END$$;
-    """
-    )
+    if "is_public" not in columns:
+        op.add_column(
+            "portfolio_page",
+            sa.Column(
+                "is_public",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("0")  # SQLite & Postgres compatible enough
+            ),
+        )
 
     # Add meta_json if missing
-    op.execute(
-        """
-    DO $$
-    BEGIN
-        IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name='portfolio_page' AND column_name='meta_json'
-        ) THEN
-            ALTER TABLE portfolio_page ADD COLUMN meta_json JSONB DEFAULT '{}'::jsonb;
-        END IF;
-    END$$;
-    """
-    )
+    if "meta_json" not in columns:
+        op.add_column(
+            "portfolio_page",
+            sa.Column(
+                "meta_json",
+                sa.JSON(),  # In SQLite this will be TEXT, in Postgres proper JSON
+                nullable=True,
+            ),
+        )
 
 
 def downgrade():
-    op.execute(
-        """
-    DO $$
-    BEGIN
-        IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name='portfolio_page' AND column_name='meta_json'
-        ) THEN
-            ALTER TABLE portfolio_page DROP COLUMN meta_json;
-        END IF;
-    END$$;
-    """
-    )
-    op.execute(
-        """
-    DO $$
-    BEGIN
-        IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name='portfolio_page' AND column_name='is_public'
-        ) THEN
-            ALTER TABLE portfolio_page DROP COLUMN is_public;
-        END IF;
-    END$$;
-    """
-    )
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    columns = [col["name"] for col in inspector.get_columns("portfolio_page")]
+
+    if "meta_json" in columns:
+        op.drop_column("portfolio_page", "meta_json")
+
+    if "is_public" in columns:
+        op.drop_column("portfolio_page", "is_public")

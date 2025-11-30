@@ -1,0 +1,203 @@
+{# templates/admin/analytics.html #}
+{% extends "admin/_layout.html" %}
+
+{% block title %}Admin · Analytics · CareerAI{% endblock %}
+{% set active_tab = 'analytics' %}
+
+{% block admin_body %}
+<div>
+
+  <h1 class="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
+    University Analytics · {{ tenant.name if tenant else "Unknown University" }}
+  </h1>
+
+  <!-- Top Stats -->
+  <div class="grid gap-4 md:grid-cols-3 mb-6 text-[13px]">
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="text-[11px] uppercase tracking-[0.16em] text-slate-400/80 mb-1">
+        Total users
+      </div>
+      <div class="text-2xl font-semibold text-white">
+        {{ total_users }}
+      </div>
+      <p class="mt-1 text-[11px] text-slate-400/80">
+        All accounts linked to this university.
+      </p>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="text-[11px] uppercase tracking-[0.16em] text-slate-400/80 mb-1">
+        Students
+      </div>
+      <div class="text-2xl font-semibold text-white">
+        {{ total_students }}
+      </div>
+      <p class="mt-1 text-[11px] text-slate-400/80">
+        Users with role = <span class="font-mono">student</span>.
+      </p>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="text-[11px] uppercase tracking-[0.16em] text-slate-400/80 mb-1">
+        University admins
+      </div>
+      <div class="text-2xl font-semibold text-white">
+        {{ total_university_admins }}
+      </div>
+      <p class="mt-1 text-[11px] text-slate-400/80">
+        Admin accounts for this university.
+      </p>
+    </div>
+  </div>
+
+  <!-- Credit Summary + Recent Adjustments -->
+  <div class="grid gap-5 md:grid-cols-2 mb-6 text-[13px]">
+
+    <div class="glass-card rounded-2xl px-4 py-4">
+      <h2 class="text-sm font-semibold mb-2">Credit usage summary</h2>
+      <p class="text-[12px] text-slate-300/80 mb-3">
+        Aggregate credit movement for students in this university (all time).
+      </p>
+      <div class="space-y-2 text-[12px]">
+        <div class="flex items-center justify-between">
+          <span class="text-slate-300/80">Total debits (spent)</span>
+          <span class="font-semibold">{{ total_debits }}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-300/80">Total credits / refunds</span>
+          <span class="font-semibold">{{ total_credits }}</span>
+        </div>
+      </div>
+      <p class="mt-2 text-[11px] text-slate-400/80">
+        This includes tool runs, admin adjustments, and refunds for failed runs.
+      </p>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-4">
+      <h2 class="text-sm font-semibold mb-2">Recent admin adjustments</h2>
+      {% if admin_adjust_txs %}
+        <div class="overflow-x-auto -mx-2 text-[11px]">
+          <table class="min-w-full">
+            <thead class="bg-slate-900/80 text-slate-200/80">
+              <tr>
+                <th class="px-3 py-2 text-left font-semibold">When</th>
+                <th class="px-3 py-2 text-left font-semibold">Student</th>
+                <th class="px-3 py-2 text-left font-semibold">Type</th>
+                <th class="px-3 py-2 text-right font-semibold">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tx in admin_adjust_txs %}
+              <tr class="border-t border-slate-700/60">
+                <td class="px-3 py-2 text-slate-200/80">
+                  {{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else '' }}
+                </td>
+                <td class="px-3 py-2 text-slate-100/90">
+                  {{ tx.user.email if tx.user else '—' }}
+                </td>
+                <td class="px-3 py-2 text-slate-200/80">
+                  {{ tx.tx_type|capitalize }} ({{ tx.currency }})
+                </td>
+                <td class="px-3 py-2 text-right text-slate-100/90">
+                  {% if tx.tx_type == 'debit' %}
+                    -{{ tx.amount }}
+                  {% else %}
+                    +{{ tx.amount }}
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-[11px] text-slate-400/80">
+          No recent admin adjustments for this university.
+        </p>
+      {% endif %}
+      <p class="mt-2 text-[11px] text-slate-400/80">
+        Use this to verify manual credit changes made by admins.
+      </p>
+    </div>
+
+  </div>
+
+  <!-- Skills & Roles Charts -->
+  <div class="grid gap-5 md:grid-cols-2 mb-6 text-[13px]">
+    <div class="glass-card rounded-2xl px-4 py-4">
+      <h2 class="text-sm font-semibold mb-2">Top skills (from Skill Mapper)</h2>
+      <p class="text-[11px] text-slate-400/80 mb-2">
+        Most common skills inferred from Skill Mapper runs in your university.
+      </p>
+      <div style="height:220px;">
+        <canvas id="chartSkillsTop"></canvas>
+      </div>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-4">
+      <h2 class="text-sm font-semibold mb-2">Top target roles (from Job Packs)</h2>
+      <p class="text-[11px] text-slate-400/80 mb-2">
+        Roles students are most often analyzing with Job Packs.
+      </p>
+      <div style="height:220px;">
+        <canvas id="chartRolesTop"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Internships & Tool Usage -->
+  <div class="grid gap-5 md:grid-cols-2 mb-6 text-[13px]">
+    <div class="glass-card rounded-2xl px-4 py-4">
+      <h2 class="text-sm font-semibold mb-2">Internship search roles</h2>
+      <p class="text-[11px] text-slate-400/80 mb-2">
+        Most common internship titles students are exploring.
+      </p>
+      <div style="height:220px;">
+        <canvas id="chartInternshipRoles"></canvas>
+      </div>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-4">
+      <h2 class="text-sm font-semibold mb-2">Tool usage by credits spent</h2>
+      <p class="text-[11px] text-slate-400/80 mb-2">
+        Breakdown of credit spend per feature (Job Pack, Skill Mapper, Internship Finder, etc.).
+      </p>
+      <div style="height:220px;">
+        <canvas id="chartToolDebits"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credits Over Time -->
+  <div class="glass-card rounded-2xl px-4 py-4 mb-4 text-[13px]">
+    <h2 class="text-sm font-semibold mb-2">Daily credit usage (Silver 🪙 vs Gold ⭐)</h2>
+    <p class="text-[11px] text-slate-400/80 mb-2">
+      See how credit consumption trends over time across your students.
+    </p>
+    <div style="height:260px;">
+      <canvas id="chartDailyCredits"></canvas>
+    </div>
+  </div>
+
+  <p class="text-[11px] text-slate-400/80">
+    Deeper analytics (skills clusters, job outcomes, and project categories) can be added later
+    as more data flows through Skill Mapper, Job Packs, and Portfolio tools.
+  </p>
+
+  {# -------------------------------------------------------------- #}
+  {# Analytics payload + scripts                                   #}
+  {# -------------------------------------------------------------- #}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    window.CAREERAI_ANALYTICS = {
+      skillsTop: {{ skills_top|tojson }},
+      rolesTop: {{ roles_top|tojson }},
+      internshipRoles: {{ internship_roles|tojson }},
+      dailyCredits: {{ daily_credits|tojson }},
+      toolDebits: {{ tool_debits|tojson }}
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/admin_analytics.js') }}"></script>
+
+</div>
+{% endblock %}

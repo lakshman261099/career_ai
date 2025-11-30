@@ -1,20 +1,94 @@
+{# templates/auth/login.html #}
 {% extends "base.html" %}
-{% block title %}Login — CareerAI{% endblock %}
+
+{% block title %}
+  {% if tenant_name %}
+    Login — {{ tenant_name }} Career Portal
+  {% else %}
+    Login — CareerAI
+  {% endif %}
+{% endblock %}
+
 {% block content %}
-<section class="mx-auto max-w-md px-4 sm:px-6 lg:px-8 pt-14">
-  <div class="glass-panel rounded-2xl p-6">
-    <h1 class="text-xl font-bold mb-3">Login</h1>
-    <form method="POST" action="{{ url_for('auth.login') }}">
-      <label class="block text-sm mb-1">Email</label>
-      <input type="email" name="email" required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      <label class="block text-sm mt-4 mb-1">Password</label>
-      <input type="password" name="password" required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      <button type="submit" class="btn-primary mt-4 w-full">Login</button>
+<section class="mx-auto max-w-md px-4 sm:px-6 lg:px-8 pt-14 pb-16">
+  <div class="glass-panel rounded-2xl p-6 relative overflow-hidden">
+    {% if tenant_name %}
+      <div class="absolute inset-0 pointer-events-none opacity-40"
+           style="background: radial-gradient(circle at top, rgba(56,189,248,.25), transparent 55%);"></div>
+    {% endif %}
+
+    <div class="relative space-y-3 mb-4">
+      {% if tenant_name %}
+        <p class="text-[11px] uppercase tracking-[0.18em] text-slate-300/80 flex items-center gap-2">
+          <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          {{ tenant_name }} · Career Portal
+        </p>
+        <h1 class="text-xl font-bold">
+          Sign in to your {{ tenant_name }} CareerAI account
+        </h1>
+        <p class="text-xs text-slate-200/80">
+          One account for Skill Mapper, Job Packs, Portfolio Builder, Internship Analyzer and more —
+          scoped to {{ tenant_name }} students.
+        </p>
+      {% else %}
+        <h1 class="text-xl font-bold mb-1">Login</h1>
+        <p class="text-xs text-slate-200/80">
+          Sign in to use Skill Mapper, Job Packs, Portfolio Builder and more.
+        </p>
+      {% endif %}
+    </div>
+
+    <!-- Google login -->
+    <a href="{{ url_for('auth.google_login') }}"
+       class="relative w-full inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 border border-white/30 bg-white/10 hover:bg-white/20 text-sm font-medium mb-4">
+      <span>Continue with Google</span>
+      {% if tenant_name %}
+        <span class="text-[10px] text-slate-200/80 hidden sm:inline">
+          (recommended for {{ tenant_name }} students)
+        </span>
+      {% endif %}
+    </a>
+
+    <div class="flex items-center gap-3 mb-4">
+      <div class="h-px flex-1 bg-white/15"></div>
+      <span class="text-xs text-white/50">or</span>
+      <div class="h-px flex-1 bg-white/15"></div>
+    </div>
+
+    <!-- Email + password login -->
+    <form method="POST" action="{{ url_for('auth.login') }}" class="relative space-y-3">
+      <div>
+        <label class="block text-xs font-semibold mb-1 text-slate-200/90">Email</label>
+        <input type="email" name="email" required
+               class="w-full rounded-xl px-3 py-2 bg-white/5 border border-white/15 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold mb-1 text-slate-200/90">Password</label>
+        <input type="password" name="password" required
+               class="w-full rounded-xl px-3 py-2 bg-white/5 border border-white/15 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+      </div>
+      <button type="submit" class="btn-primary mt-1 w-full justify-center">
+        Login with Email
+      </button>
     </form>
 
-    <div class="mt-4 flex items-center justify-between text-sm">
-      <a class="btn-ghost inline-flex" href="{{ url_for('auth.register') }}">Create account</a>
-      <a class="btn-ghost inline-flex" href="{{ url_for('auth.otp_request') }}">Login with OTP</a>
+    <div class="relative mt-4 flex flex-col gap-2 text-sm">
+      <a class="btn-ghost inline-flex justify-center" href="{{ url_for('auth.otp_request') }}">
+        Login with OTP
+      </a>
+      <a class="btn-ghost inline-flex justify-center" href="{{ url_for('auth.register') }}">
+        Create account with email
+      </a>
+    </div>
+
+    <div class="relative mt-4 border-t border-white/10 pt-3 flex items-center justify-between gap-2">
+      <p class="text-[10px] text-slate-300/80">
+        {% if tenant_name %}
+          Powered by <span class="font-semibold">CareerAI</span> for {{ tenant_name }} students.
+        {% else %}
+          Built for students &amp; new grads across India.
+        {% endif %}
+      </p>
     </div>
   </div>
 </section>

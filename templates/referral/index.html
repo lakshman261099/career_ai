@@ -11,7 +11,23 @@
           Turn your context into 2–3 short outreach messages you can tweak in your own voice.
           {% if updated_tag %}<span class="ml-1">Updated {{ updated_tag }}</span>{% endif %}
         </p>
+
+        <!-- Cost + balance row (Silver-only, 1 use per run) -->
+        <div class="mt-2 text-[11px] text-white/60 space-x-2">
+          <span>
+            Cost per run:
+            <span class="font-semibold">1 Silver 🪙</span>
+          </span>
+          <span class="inline-block h-3 w-px bg-white/20 align-middle"></span>
+          <span>
+            Balance:
+            <span class="font-semibold">{{ FREE|default(0) }} 🪙 Silver</span>
+            ·
+            <span class="font-semibold">{{ PRO|default(0) }} ⭐ Gold</span>
+          </span>
+        </div>
       </div>
+
       {% if used_live_ai is not none %}
         <span class="text-[11px] text-white/50">
           Engine: {{ "live" if used_live_ai else "fallback" }}
@@ -139,10 +155,13 @@
 
       <div class="mt-4 flex gap-2 items-center">
         <button class="btn-primary" type="submit">Generate messages</button>
+        <p class="text-[11px] text-white/60">
+          Uses <span class="font-semibold">1 Silver 🪙</span> from your free coins each time you generate.
+        </p>
       </div>
 
       <div class="text-xs text-white/60 mt-2">
-        Tip: after generating, always tweak the **first line** to mention something specific about the person (their project, talk, or post). That makes it feel like <em>you</em>, not AI.
+        Tip: after generating, always tweak the <strong>first line</strong> to mention something specific about the person (their project, talk, or post). That makes it feel like <em>you</em>, not AI.
       </div>
     </form>
   </div>

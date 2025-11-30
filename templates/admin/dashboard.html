@@ -1,0 +1,133 @@
+{# templates/admin/dashboard.html #}
+{% extends "admin/_layout.html" %}
+
+{% block title %}Admin · Overview · CareerAI{% endblock %}
+{% set active_tab = 'overview' %}
+
+{% block admin_body %}
+<div>
+
+  <div class="flex items-center justify-between gap-3 mb-4">
+    <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">
+      Admin · Overview
+    </h1>
+  </div>
+
+  <div class="grid gap-4 md:grid-cols-3 mb-6">
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-300/70 mb-1">
+        Users
+      </div>
+      <div class="text-2xl font-semibold">{{ total_users }}</div>
+      {% if tenant %}
+        <p class="mt-1 text-[11px] text-slate-400/80">
+          In <strong>{{ tenant.name }}</strong>
+        </p>
+      {% else %}
+        <p class="mt-1 text-[11px] text-slate-400/80">
+          Across all tenants
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-300/70 mb-1">
+        Universities
+      </div>
+      <div class="text-2xl font-semibold">{{ total_universities }}</div>
+      <p class="mt-1 text-[11px] text-slate-400/80">
+        Active tenants in this view
+      </p>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-300/70 mb-1">
+        Credit logs
+      </div>
+      <div class="text-2xl font-semibold">{{ total_transactions }}</div>
+      <p class="mt-1 text-[11px] text-slate-400/80">
+        <span class="inline-flex items-center gap-1">
+          Debits: <span class="font-semibold">{{ debit_sum }}</span>
+        </span>
+        <span class="mx-1 opacity-60">·</span>
+        <span class="inline-flex items-center gap-1">
+          Credits: <span class="font-semibold">{{ credit_sum }}</span>
+        </span>
+      </p>
+    </div>
+  </div>
+
+  <div class="grid gap-4 md:grid-cols-2">
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold">Recent credit transactions</h2>
+      </div>
+      {% if recent_txs %}
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-[11px]">
+            <thead class="bg-slate-900/80 text-slate-200/80">
+              <tr>
+                <th class="px-3 py-2 text-left font-semibold">When</th>
+                <th class="px-3 py-2 text-left font-semibold">User</th>
+                <th class="px-3 py-2 text-left font-semibold">Type</th>
+                <th class="px-3 py-2 text-right font-semibold">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tx in recent_txs %}
+              <tr class="border-t border-slate-700/60">
+                <td class="px-3 py-2 text-slate-200/90">
+                  {{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else '' }}
+                </td>
+                <td class="px-3 py-2">
+                  <div class="text-slate-100/90">
+                    {{ tx.user.email if tx.user else '—' }}
+                  </div>
+                  {% if tx.university %}
+                    <div class="text-[10px] text-slate-400/80">
+                      {{ tx.university.name }}
+                    </div>
+                  {% endif %}
+                </td>
+                <td class="px-3 py-2 text-slate-200/80">
+                  {{ tx.tx_type|capitalize }} ({{ tx.currency }})
+                  <div class="text-[10px] text-slate-400/80">
+                    {{ tx.feature }}
+                  </div>
+                </td>
+                <td class="px-3 py-2 text-right">
+                  {% if tx.tx_type == 'debit' %}
+                    -{{ tx.amount }}
+                  {% else %}
+                    +{{ tx.amount }}
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-[11px] text-slate-400/80">
+          No transactions yet in this scope.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-3 text-[12px]">
+      <h2 class="text-sm font-semibold mb-1">How to use this admin panel</h2>
+      <ol class="list-decimal list-inside space-y-1 text-slate-100/90 mt-2">
+        <li><strong>Universities</strong>: create a tenant (name, domain, slug).</li>
+        <li><strong>Users</strong>: assign students/admins to universities.</li>
+        <li><strong>Deals</strong>: log B2B packs (seats, pooled credits, notes).</li>
+        <li><strong>Vouchers</strong>: generate promo codes (global or per-university).</li>
+        <li><strong>Credits</strong>: manually adjust student wallets if needed.</li>
+      </ol>
+      <p class="mt-3 text-[11px] text-slate-400/90">
+        University admins will see a scoped version of this dashboard for their own tenant only.
+      </p>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,27 +1,76 @@
+# ---------------------------------------
+# Python / Virtual Env
+# ---------------------------------------
 .venv/
+env/
+venv/
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ---------------------------------------
+# Environment files (never commit secrets)
+# ---------------------------------------
 .env
-# Databases & instances
+.env.*
+!.env.example
+
+# ---------------------------------------
+# Databases (SQLite local dev)
+# ---------------------------------------
 *.db
+*.sqlite
+*.sqlite3
+career_ai.db
+instance/career_ai.db
+
+# Instance folder (Flask private storage)
 instance/*
 !instance/.keep
 
-# Local backups & archives
-backups/
-_archive/
-
-# Python caches
+# ---------------------------------------
+# Bytecode & caches
+# ---------------------------------------
 __pycache__/
 .pytest_cache/
+.mypy_cache/
+.cache/
 
-# Env
-.env
-.env.*
+# ---------------------------------------
+# Build / Distribution
+# ---------------------------------------
+build/
+dist/
+*.egg-info/
 
-# Reports / dev artifacts
+# ---------------------------------------
+# Node / Frontend (if used in future)
+# ---------------------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ---------------------------------------
+# Local backups, exports, debug dumps
+# ---------------------------------------
+backups/
+_archive/
+Export/
+Save/
+
+# ---------------------------------------
+# Generated reports / dev artifact files
+# ---------------------------------------
 repo_tree.txt
 size_report.txt
 vulture_report.txt
 flask_routes.txt
 all_templates.txt
 project_tree.txt
+
+# ---------------------------------------
+# OS files
+# ---------------------------------------
+.DS_Store
+Thumbs.db

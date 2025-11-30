@@ -7,10 +7,19 @@
     <p class="text-white/70 text-sm mb-4">We’ll email you a 6-digit code.</p>
     <form method="POST" action="{{ url_for('auth.otp_request') }}">
       <label class="block text-sm mb-1">Email</label>
-      <input type="email" name="email" required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+      <input type="email" name="email" required
+             class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
       <button type="submit" class="btn-primary mt-4 w-full">Send Code</button>
     </form>
-    <a class="btn-ghost mt-3 inline-flex" href="{{ url_for('auth.login') }}">Use password instead</a>
+
+    <div class="mt-4 flex flex-col gap-2 text-sm">
+      <a class="btn-ghost inline-flex justify-center" href="{{ url_for('auth.login') }}">
+        Use email &amp; password instead
+      </a>
+      <a class="btn-ghost inline-flex justify-center" href="{{ url_for('auth.google_login') }}">
+        Continue with Google
+      </a>
+    </div>
   </div>
 </section>
 {% endblock %}

@@ -1,0 +1,175 @@
+{# templates/admin/credits.html #}
+{% extends "base.html" %}
+
+{% block title %}Admin · Credits · CareerAI{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 mt-6 mb-16">
+
+  {# ---------- Shared Admin Sub-Nav (same as other admin pages) ---------- #}
+  {% macro admin_tab(label, endpoint_name, extra_endpoints) %}
+    {% set ep = request.endpoint or '' %}
+    {% set active = (ep == endpoint_name) or (ep in extra_endpoints) %}
+    <a href="{{ url_for(endpoint_name) }}"
+       class="px-3 py-1.5 rounded-full border text-xs
+              {% if active %}
+                bg-slate-900 text-white border-indigo-400
+              {% else %}
+                bg-slate-900/40 text-slate-200/80 border-slate-500/70 hover:border-indigo-400/80
+              {% endif %}">
+      {{ label }}
+    </a>
+  {% endmacro %}
+
+  <div class="glass-card rounded-2xl px-4 py-3 mb-5 flex flex-wrap items-center gap-2 text-[12px]">
+    {{ admin_tab("Overview", "admin.dashboard", []) }}
+    {{ admin_tab("Users", "admin.users", []) }}
+    {{ admin_tab("Credits", "admin.credits", []) }}
+    {{ admin_tab("Universities", "admin.universities", []) }}
+    {{ admin_tab("Deals", "admin.deals", []) }}
+    {{ admin_tab("Vouchers", "admin.vouchers", ["admin.voucher_detail"]) }}
+
+    <span class="ml-auto text-[11px] text-slate-400/80">
+      Admin · credit adjustments & logs
+    </span>
+  </div>
+
+  <h1 class="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
+    Admin · Credits
+  </h1>
+
+  <div class="glass-card px-4 py-4 mb-6 rounded-2xl">
+    <form method="post" class="space-y-3 text-[13px]">
+      <div class="grid gap-3 sm:grid-cols-3">
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
+            User email
+          </label>
+          <input type="email" name="email" required
+                 value="{{ request.args.get('email','') }}"
+                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
+            Amount
+          </label>
+          <input type="number" name="amount" min="1" required
+                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+        </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
+            Currency
+          </label>
+          <select name="currency"
+                  class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400">
+            <option value="silver">Silver 🪙</option>
+            <option value="gold">Gold ⭐</option>
+          </select>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
+            Reason / feature tag
+          </label>
+          <input type="text" name="reason" placeholder="admin_adjust, promo, bug_refund..."
+                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+        </div>
+      </div>
+
+      <div class="pt-2">
+        <button type="submit" class="btn-primary text-xs">
+          Add credits
+        </button>
+        <p class="mt-1 text-[11px] text-slate-300/80">
+          This will immediately adjust the user’s wallet and create a <code>credit_transaction</code> log entry.
+        </p>
+      </div>
+    </form>
+  </div>
+
+  {% if target %}
+  <div class="mb-3">
+    <h2 class="text-sm font-semibold mb-1">User snapshot</h2>
+    <div class="glass-card px-4 py-3 rounded-2xl text-[12px] flex flex-wrap gap-4">
+      <div>
+        <div class="font-semibold">{{ target.email }}</div>
+        <div class="text-slate-300/80">
+          {{ target.name or "No name" }}
+        </div>
+      </div>
+      <div class="h-10 w-px bg-slate-500/40 hidden sm:block"></div>
+      <div>
+        <div class="uppercase text-[10px] tracking-widest text-slate-300/70">Balances</div>
+        <div class="flex items-center gap-3 mt-0.5">
+          <span>🪙 <span class="font-semibold">{{ target.coins_free or 0 }}</span> Silver</span>
+          <span class="text-slate-400/60">·</span>
+          <span>⭐ <span class="font-semibold">{{ target.coins_pro or 0 }}</span> Gold</span>
+        </div>
+      </div>
+      <div class="h-10 w-px bg-slate-500/40 hidden sm:block"></div>
+      <div>
+        <div class="uppercase text-[10px] tracking-widest text-slate-300/70">Plan</div>
+        <div class="mt-0.5 text-[11px]">
+          {{ (target.subscription_status or "free") | capitalize }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <h2 class="text-sm font-semibold mb-2">Recent credit transactions</h2>
+    {% if recent_txs %}
+      <div class="glass-card rounded-2xl overflow-hidden">
+        <table class="min-w-full text-[11px]">
+          <thead class="bg-slate-900/80 text-slate-200/80">
+            <tr>
+              <th class="px-3 py-2 text-left font-semibold">When</th>
+              <th class="px-3 py-2 text-left font-semibold">Feature / Reason</th>
+              <th class="px-3 py-2 text-left font-semibold">Type</th>
+              <th class="px-3 py-2 text-right font-semibold">Amount</th>
+              <th class="px-3 py-2 text-right font-semibold">Before → After</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tx in recent_txs %}
+            <tr class="border-t border-slate-700/60">
+              <td class="px-3 py-2 text-slate-200/80">
+                {{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else '' }}
+              </td>
+              <td class="px-3 py-2">
+                <div class="text-slate-100/90">{{ tx.feature }}</div>
+                {% if tx.run_id %}
+                  <div class="text-slate-400/80 text-[10px]">run_id: {{ tx.run_id }}</div>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-slate-200/80">
+                {{ tx.tx_type|capitalize }} ({{ tx.currency }})
+              </td>
+              <td class="px-3 py-2 text-right">
+                {% if tx.tx_type == 'debit' %}
+                  -{{ tx.amount }}
+                {% else %}
+                  +{{ tx.amount }}
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-right text-slate-300/80">
+                {{ tx.before_balance }} → <span class="font-semibold">{{ tx.after_balance }}</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-[11px] text-slate-400/80">No recent transactions for this user.</p>
+    {% endif %}
+  </div>
+  {% else %}
+    <p class="text-[11px] text-slate-400/80">
+      Search for a user by email to view and adjust their credits.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

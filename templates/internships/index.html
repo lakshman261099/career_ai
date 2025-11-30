@@ -33,27 +33,44 @@
               AI: {{ 'live model' if used_live_ai else 'fallback / mock' }}
             </span>
           {% endif %}
+          <span class="inline-flex items-center px-2 py-1 rounded-full bg-white/5 border border-white/20">
+            Balance:
+            <span class="ml-1 font-semibold">{{ user_free|default(0) }} 🪙 Silver</span>
+            <span class="mx-1 text-white/40">·</span>
+            <span class="font-semibold">{{ user_pro|default(0) }} ⭐ Gold</span>
+          </span>
         </div>
       </div>
 
-      <!-- Mode chips / quick legend -->
-      <div class="ia-legend glass-card p-4 sm:p-5">
-        <h2 class="text-sm font-semibold mb-2 flex items-center gap-2">
-          <span class="ia-pill-dot ia-pill-free"></span>
-          Free vs Pro
-        </h2>
-        <div class="space-y-2 text-xs text-white/75">
-          <div class="flex gap-2 items-start">
-            <span class="ia-pill ia-pill-free">Free (🪙)</span>
-            <p>High-level learning, skill growth, and career impact overview.</p>
+      <!-- Right: legend + history -->
+      <div class="space-y-3">
+        <!-- Mode chips / quick legend -->
+        <div class="ia-legend glass-card p-4 sm:p-5">
+          <h2 class="text-sm font-semibold mb-2 flex items-center gap-2">
+            <span class="ia-pill-dot ia-pill-free"></span>
+            Free vs Pro
+          </h2>
+          <div class="space-y-2 text-xs text-white/75">
+            <div class="flex gap-2 items-start">
+              <span class="ia-pill ia-pill-free">Free (🪙)</span>
+              <p>High-level learning, skill growth, and career impact overview.</p>
+            </div>
+            <div class="flex gap-2 items-start">
+              <span class="ia-pill ia-pill-pro">Pro (⭐)</span>
+              <p>Profile-aware analysis with richer pathways and stronger resume bullets.</p>
+            </div>
           </div>
-          <div class="flex gap-2 items-start">
-            <span class="ia-pill ia-pill-pro">Pro (⭐)</span>
-            <p>Profile-aware analysis with richer pathways and stronger resume bullets.</p>
+          <div class="mt-3 text-[11px] text-white/50">
+            Pro uses your Profile Portal (when available) to personalize recommendations.
           </div>
         </div>
-        <div class="mt-3 text-[11px] text-white/50">
-          Pro uses your Profile Portal (when available) to personalize recommendations.
+
+        <!-- History link -->
+        <div class="flex justify-end">
+          <a href="{{ url_for('internships.history') }}"
+             class="text-[11px] text-white/70 hover:text-white underline">
+            View past analyses →
+          </a>
         </div>
       </div>
     </header>
@@ -103,6 +120,9 @@
               <div class="ia-mode-title">
                 <span class="ia-dot ia-dot-free"></span>
                 Free (🪙)
+                <span class="ml-1 text-[10px] text-white/70">
+                  1 Silver 🪙 / run
+                </span>
               </div>
               <p class="ia-mode-sub">
                 Quick “Is this worth it?” view: skills, leveling, and future roles.
@@ -121,6 +141,9 @@
               <div class="ia-mode-title">
                 <span class="ia-dot ia-dot-pro"></span>
                 Deep (Pro ⭐)
+                <span class="ml-1 text-[10px] text-white/70">
+                  2 Gold ⭐ / run
+                </span>
               </div>
               <p class="ia-mode-sub">
                 Uses your Profile Portal (when available) for tailored growth paths &amp; resume bullets.
@@ -137,7 +160,8 @@
             Get Pro
           </a>
           <p class="text-[11px] text-white/50 ml-1">
-            Free uses 🪙 credits. Pro uses ⭐ and gives deeper, profile-aware guidance.
+            Free uses <span class="font-semibold">1 Silver 🪙</span> per run.
+            Pro uses <span class="font-semibold">2 Gold ⭐</span> per run.
           </p>
         </div>
       </form>

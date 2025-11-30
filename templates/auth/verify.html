@@ -3,7 +3,7 @@
 {% block content %}
 <section class="mx-auto max-w-md px-4 sm:px-6 lg:px-8 pt-12">
   <div class="glass-panel rounded-3xl p-6">
-    <h1 class="text-2xl font-bold mb-6">Verify your account</h1>
+    <h1 class="text-2xl font-bold mb-6">Verify account (admin)</h1>
     <form method="post" class="space-y-4">
       <div>
         <label class="block text-sm text-white/70 mb-1">Email</label>
@@ -11,7 +11,9 @@
       </div>
       <button class="btn-primary w-full">Mark as verified</button>
     </form>
-    <p class="text-xs text-white/60 mt-3">Email OTP wiring coming next; this button unblocks login for now.</p>
+    <p class="text-xs text-white/60 mt-3">
+      Normal users should use OTP or Google login. This screen is for manual overrides.
+    </p>
   </div>
 </section>
 {% endblock %}

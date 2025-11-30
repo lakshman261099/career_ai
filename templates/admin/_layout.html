@@ -1,0 +1,76 @@
+{# templates/admin/_layout.html #}
+{% extends "base.html" %}
+
+{% block title %}Admin · CareerAI{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 mt-6 mb-16">
+
+  {# ------------------------------------------------------------------ #}
+  {# Admin sub-navigation — fully role-aware                             #}
+  {# ------------------------------------------------------------------ #}
+  <div class="glass-card rounded-2xl px-3 py-2 mb-4">
+    <nav class="flex flex-wrap gap-2 text-[11px]">
+
+      {# Always visible ------------------------------------------------ #}
+      <a href="{{ url_for('admin.dashboard') }}"
+         class="nav-link {% if active_tab == 'overview' %}nav-active{% endif %}">
+        Overview
+      </a>
+
+      <a href="{{ url_for('admin.users') }}"
+         class="nav-link {% if active_tab == 'users' %}nav-active{% endif %}">
+        Users
+      </a>
+
+      <a href="{{ url_for('admin.credits') }}"
+         class="nav-link {% if active_tab == 'credits' %}nav-active{% endif %}">
+        Credits
+      </a>
+
+      {# University Admin – show Analytics only ------------------------- #}
+      {% if current_user.role == 'university_admin' %}
+        <a href="{{ url_for('admin.analytics') }}"
+           class="nav-link {% if active_tab == 'analytics' %}nav-active{% endif %}">
+          Analytics
+        </a>
+      {% endif %}
+
+      {# Global Admins (Super / Ultra) – show all global functions ------ #}
+      {% if current_user.is_super_admin or current_user.is_ultra_admin %}
+        <a href="{{ url_for('admin.universities') }}"
+           class="nav-link {% if active_tab == 'universities' %}nav-active{% endif %}">
+          Universities
+        </a>
+
+        <a href="{{ url_for('admin.deals') }}"
+           class="nav-link {% if active_tab == 'deals' %}nav-active{% endif %}">
+          Deals
+        </a>
+
+        <a href="{{ url_for('admin.vouchers') }}"
+           class="nav-link {% if active_tab == 'vouchers' %}nav-active{% endif %}">
+          Vouchers
+        </a>
+      {% endif %}
+
+      {# Ultra Admin ONLY – Audit -------------------------------------- #}
+      {% if current_user.is_ultra_admin %}
+        <a href="{{ url_for('admin.audit') }}"
+           class="nav-link {% if active_tab == 'audit' %}nav-active{% endif %}">
+          Audit
+        </a>
+      {% endif %}
+
+    </nav>
+  </div>
+
+  {# ------------------------------------------------------------------ #}
+  {# Actual page content                                                #}
+  {# ------------------------------------------------------------------ #}
+  <div>
+    {% block admin_body %}{% endblock %}
+  </div>
+
+</div>
+{% endblock %}

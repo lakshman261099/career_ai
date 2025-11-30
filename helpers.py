@@ -28,7 +28,7 @@ except Exception:  # pragma: no cover
 # ---------------------------------------------------------------------
 # Historical env flag retained for compatibility but **ignored** by helpers below.
 # Set MOCK=0 in your environment; this file does not emit mocked content.
-MOCK = False  # deprecated — do not rely on this flag anywhere else
+# LEGACY: MOCK flag removed. Always run real AI now.
 
 OPENAI_MODEL_DEEP = os.getenv("OPENAI_MODEL_DEEP", "gpt-4o")
 OPENAI_MODEL_FAST = os.getenv("OPENAI_MODEL_FAST", "gpt-4o-mini")

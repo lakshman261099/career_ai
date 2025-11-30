@@ -1,5 +1,3 @@
-# modules/portfolio/routes.py
-
 import json
 import os
 import uuid
@@ -18,8 +16,11 @@ from flask import (
 from flask_login import current_user, login_required
 from sqlalchemy import case, inspect, text
 
-from models import PortfolioPage, Project, UserProfile, db
+from models import PortfolioPage, Project, UserProfile, PortfolioIdeaRun, db
 from modules.common.ai import generate_project_suggestions  # AI entrypoint
+
+# Phase 4: central credits engine
+from modules.credits.engine import can_afford, deduct_free, deduct_pro
 
 portfolio_bp = Blueprint(
     "portfolio", __name__, template_folder="../../templates/portfolio"
@@ -400,10 +401,19 @@ def wizard():
             flash(f"Something went wrong loading the wizard (wz-{err_id}).", "error")
             return redirect(url_for("portfolio.index"))
 
+    # POST
+    # 🔒 Email verification guard for AI suggestions
+    if not getattr(current_user, "verified", False):
+        flash(
+            "Please verify your email with a login code before using AI suggestions.",
+            "warning",
+        )
+        return redirect(url_for("auth.otp_request"))
+
     action = (request.form.get("action") or "").strip().lower()
 
     try:
-        # ---- FREE MODE ----
+        # ---- FREE MODE (Silver 🪙, 1 idea) ----
         if action == "suggest_free":
             trg = (request.form.get("target_role_free") or "").strip()[:MAX_FIELD]
             ind = (request.form.get("industry_free") or "").strip()[:MAX_FIELD]
@@ -413,24 +423,77 @@ def wizard():
                 flash("Please enter both Target Role and Industry (Free).", "warning")
                 return render_template("portfolio/wizard.html", **ctx)
 
+            # Credits: Silver 🪙 check BEFORE AI
+            if not can_afford(current_user, "portfolio_idea_free", currency="silver"):
+                flash(
+                    "You don’t have enough Silver 🪙 credits to generate a free "
+                    "portfolio idea. Upgrade to Pro ⭐ or add more credits in the "
+                    "Coins Shop.",
+                    "warning",
+                )
+                return redirect(url_for("billing.index"))
+
             skills_list = (prof.skills if prof else []) or []
             ideas, used_live = generate_project_suggestions(
                 trg, ind, lvl, skills_list, False, return_source=True
             )
-            ctx.update({
-                "target_role": trg, "industry": ind, "experience_level": lvl,
-                "free_suggestions": ideas,
-                "mode": "free",
-            })
+
+            # Deduct Silver 🪙 AFTER successful AI
+            try:
+                if not deduct_free(current_user, "portfolio_idea_free", run_id=None):
+                    current_app.logger.warning(
+                        "Portfolio wizard free: deduct_free failed for user %s",
+                        current_user.id,
+                    )
+            except Exception as e:
+                current_app.logger.exception(
+                    "Portfolio wizard free credit deduction error: %s", e
+                )
+
+            # Store run in history
+            try:
+                run = PortfolioIdeaRun(
+                    user_id=current_user.id,
+                    mode="free",
+                    target_role=trg,
+                    industry=ind,
+                    experience_level=lvl,
+                    focus_area=[],
+                    time_budget=None,
+                    preferred_stack=[],
+                    suggestions_json=json.dumps(ideas or []),
+                )
+                db.session.add(run)
+                db.session.commit()
+            except Exception as e:
+                current_app.logger.exception(
+                    "Portfolio wizard free: failed to store history: %s", e
+                )
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+
+            ctx.update(
+                {
+                    "target_role": trg,
+                    "industry": ind,
+                    "experience_level": lvl,
+                    "free_suggestions": ideas,
+                    "mode": "free",
+                }
+            )
             flash("Free AI suggestion generated.", "success" if used_live else "warning")
             return render_template("portfolio/wizard.html", **ctx)
 
-        # ---- PRO MODE ----
+        # ---- PRO MODE (Gold ⭐, 3 deep ideas) ----
         if action == "suggest_pro":
-            is_pro_user = ((getattr(current_user, "subscription_status", "free") or "free").lower() == "pro")
+            is_pro_user = (
+                (getattr(current_user, "subscription_status", "free") or "free").lower()
+                == "pro"
+            )
             if not is_pro_user:
                 flash("Pro suggestions require a Pro plan. Upgrade to continue.", "warning")
-                # FIX: correct template path
                 return render_template("portfolio/wizard.html", **ctx)
 
             trg = (request.form.get("target_role_pro") or "").strip()[:MAX_FIELD]
@@ -440,6 +503,16 @@ def wizard():
                 flash("Please enter both Target Role and Industry (Pro).", "warning")
                 return render_template("portfolio/wizard.html", **ctx)
 
+            # Credits: Gold ⭐ check BEFORE AI
+            if not can_afford(current_user, "portfolio_idea_pro", currency="gold"):
+                flash(
+                    "You don’t have enough Gold ⭐ credits to generate Pro "
+                    "portfolio suggestions. Add more credits or adjust your plan "
+                    "in the Coins Shop.",
+                    "warning",
+                )
+                return redirect(url_for("billing.index"))
+
             # Focus (with 'Other') + time budget + preferred stack
             focus_area = request.form.getlist("focus_area")
             other_focus = (request.form.get("focus_other") or "").strip()[:60]
@@ -448,12 +521,18 @@ def wizard():
 
             time_budget = (request.form.get("time_budget") or "4w").strip()[:8]
 
-            preferred_stack_raw = (request.form.get("preferred_stack") or "").strip()[:MAX_TEXT]
+            preferred_stack_raw = (request.form.get("preferred_stack") or "").strip()[
+                :MAX_TEXT
+            ]
             preferred_stack = []
             if preferred_stack_raw:
-                preferred_stack = [p.strip() for p in preferred_stack_raw.replace(",", " ").split() if p.strip()]
+                preferred_stack = [
+                    p.strip()
+                    for p in preferred_stack_raw.replace(",", " ").split()
+                    if p.strip()
+                ]
 
-            use_profile = (request.form.get("use_profile") == "1")
+            use_profile = request.form.get("use_profile") == "1"
 
             skills_list = (prof.skills if prof else []) or []
             profile_payload = None
@@ -476,16 +555,60 @@ def wizard():
                 }
 
             ideas, used_live = generate_project_suggestions(
-                trg, ind, lvl, skills_list, True,
+                trg,
+                ind,
+                lvl,
+                skills_list,
+                True,
                 return_source=True,
                 profile_json=profile_payload,
             )
 
-            ctx.update({
-                "target_role": trg, "industry": ind, "experience_level": lvl,
-                "pro_suggestions": ideas,
-                "mode": "pro",
-            })
+            # Deduct Gold ⭐ AFTER successful AI
+            try:
+                if not deduct_pro(current_user, "portfolio_idea_pro", run_id=None):
+                    current_app.logger.warning(
+                        "Portfolio wizard pro: deduct_pro failed for user %s",
+                        current_user.id,
+                    )
+            except Exception as e:
+                current_app.logger.exception(
+                    "Portfolio wizard pro credit deduction error: %s", e
+                )
+
+            # Store run in history
+            try:
+                run = PortfolioIdeaRun(
+                    user_id=current_user.id,
+                    mode="pro",
+                    target_role=trg,
+                    industry=ind,
+                    experience_level=lvl,
+                    focus_area=focus_area,
+                    time_budget=time_budget,
+                    preferred_stack=preferred_stack,
+                    suggestions_json=json.dumps(ideas or []),
+                )
+                db.session.add(run)
+                db.session.commit()
+            except Exception as e:
+                current_app.logger.exception(
+                    "Portfolio wizard pro: failed to store history: %s", e
+                )
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+
+            ctx.update(
+                {
+                    "target_role": trg,
+                    "industry": ind,
+                    "experience_level": lvl,
+                    "pro_suggestions": ideas,
+                    "mode": "pro",
+                }
+            )
             flash("Pro AI suggestions generated.", "success" if used_live else "warning")
             return render_template("portfolio/wizard.html", **ctx)
 
@@ -499,7 +622,6 @@ def wizard():
         return render_template("portfolio/wizard.html", **ctx)
 
 
-
 @portfolio_bp.route("/publish", methods=["GET", "POST"], endpoint="publish")
 @login_required
 def publish():
@@ -510,6 +632,15 @@ def publish():
     ).lower() == "pro"
     if not is_pro_user:
         flash("Publishing is a Pro feature. Please upgrade to continue.", "warning")
+        return redirect(url_for("billing.index"))
+
+    # Credits: Gold ⭐ check BEFORE building
+    if not can_afford(current_user, "portfolio_publish", currency="gold"):
+        flash(
+            "You don’t have enough Gold ⭐ credits to publish your portfolio page. "
+            "Add more credits in the Coins Shop.",
+            "warning",
+        )
         return redirect(url_for("billing.index"))
 
     prof = _get_profile_safe()
@@ -560,6 +691,7 @@ def publish():
         return redirect(url_for("portfolio.index"))
 
     # Insert page with metadata for quality tracking
+    page = None
     try:
         page = PortfolioPage(
             user_id=current_user.id,
@@ -582,6 +714,23 @@ def publish():
         db.session.add(page)
         db.session.flush()
         db.session.commit()
+
+        # Deduct Gold ⭐ AFTER successfully creating the page
+        try:
+            if not deduct_pro(
+                current_user,
+                "portfolio_publish",
+                run_id=page.id if page is not None else None,
+            ):
+                current_app.logger.warning(
+                    "Portfolio publish: deduct_pro failed for user %s", current_user.id
+                )
+        except Exception as e:
+            current_app.logger.exception(
+                "Portfolio publish credit deduction error: %s", e
+            )
+            # Page is already created; user keeps it. Credits may not have updated.
+
         flash(
             "Portfolio page published! Share your link from the list below.", "success"
         )
@@ -653,3 +802,43 @@ def view(page_id):
         return render_template(
             "view.html", page=page, page_html=rendered, updated_tag=CAREER_AI_VERSION
         )
+
+
+@portfolio_bp.route("/history", methods=["GET"], endpoint="history")
+@login_required
+def history():
+    """Show recent Portfolio Wizard runs (Free + Pro)."""
+    try:
+        runs = (
+            PortfolioIdeaRun.query.filter_by(user_id=current_user.id)
+            .order_by(PortfolioIdeaRun.created_at.desc())
+            .limit(30)
+            .all()
+        )
+    except Exception as e:
+        current_app.logger.exception("Portfolio history query failed: %s", e)
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        runs = []
+
+    history_rows = []
+    for r in runs:
+        titles = []
+        try:
+            payload = json.loads(r.suggestions_json or "[]")
+            if isinstance(payload, list):
+                for it in payload[:3]:
+                    if isinstance(it, dict) and it.get("title"):
+                        titles.append(str(it["title"])[:120])
+        except Exception:
+            pass
+
+        history_rows.append({"run": r, "titles": titles})
+
+    return render_template(
+        "portfolio/history.html",
+        rows=history_rows,
+        updated_tag=CAREER_AI_VERSION,
+    )

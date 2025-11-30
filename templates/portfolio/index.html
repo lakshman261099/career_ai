@@ -29,6 +29,9 @@
             Updated {{ updated_tag }}
           </p>
         {% endif %}
+        <p class="text-[11px] text-white/60 mt-1">
+          Costs: Wizard Free <span class="font-semibold">1 🪙</span> · Wizard Pro <span class="font-semibold">2 ⭐</span> per run · Publish <span class="font-semibold">2 ⭐</span> per page.
+        </p>
       </div>
 
       <div class="flex flex-col items-end gap-3 text-xs">
@@ -39,11 +42,17 @@
           <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost">
             Live Preview from Profile
           </a>
+          <a href="{{ url_for('portfolio.history') }}" class="btn-ghost">
+            Ideas History
+          </a>
         </div>
         <div class="flex flex-wrap gap-2 justify-end text-[11px] text-white/60">
           {% if subscription_status|default('free')|lower == 'pro' %}
             <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-300/60 text-emerald-100">
               Pro ⭐ Publishing Unlocked
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/5 border border-white/25">
+              Publish cost: <strong>2 ⭐ / page</strong>
             </span>
           {% else %}
             <a href="{{ feature_paths.billing }}"
@@ -78,7 +87,7 @@
           Generate project ideas
         </div>
         <p class="text-xs text-white/60">
-          Use the Wizard for 1 free project idea, or 3 deep Pro ideas tailored to your profile.
+          Use the Wizard for 1 Free idea (<strong>1 🪙</strong>) or 3 deep Pro ideas (<strong>2 ⭐</strong> per run) tailored to your profile.
         </p>
         <a href="{{ url_for('portfolio.wizard') }}" class="text-[11px] underline mt-1">
           Open Wizard →
@@ -93,10 +102,11 @@
         </div>
         <p class="text-xs text-white/60">
           Pro users can ship a public portfolio page with a single click and share the link.
+          Each publish costs <strong>2 Gold ⭐</strong>.
         </p>
         {% if subscription_status|default('free')|lower == 'pro' %}
           <a href="{{ url_for('portfolio.publish') }}" class="text-[11px] underline mt-1">
-            Publish from Profile ⭐ →
+            Publish from Profile ⭐ (2 ⭐)
           </a>
         {% else %}
           <a href="{{ feature_paths.billing }}" class="text-[11px] underline mt-1">
@@ -171,7 +181,7 @@
           </a>
           {% if subscription_status|default('free')|lower == 'pro' %}
             <a href="{{ url_for('portfolio.publish') }}" class="btn-ghost">
-              Publish from Profile ⭐
+              Publish from Profile ⭐ (2 ⭐)
             </a>
           {% else %}
             <a class="btn-ghost" href="{{ feature_paths.billing }}">

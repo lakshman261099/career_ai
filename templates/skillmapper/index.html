@@ -63,8 +63,18 @@
             </span>
           </div>
           <div class="space-y-0.5 text-[11px] text-white/70">
-            <p>🪙 <strong>Free:</strong> 1 full role + preview of the rest.</p>
-            <p>⭐ <strong>Deep (Pro):</strong> Full 3-role roadmap, market data &amp; action plan.</p>
+            <p>
+              🪙 <strong>Free:</strong> 1 full role + preview of the rest.
+              <span class="ml-1 text-[10px] text-white/60">(1 🪙 / run)</span>
+            </p>
+            <p>
+              ⭐ <strong>Deep (Pro):</strong> Full 3-role roadmap, market data &amp; action plan.
+              <span class="ml-1 text-[10px] text-white/60">(3 ⭐ / run)</span>
+            </p>
+          </div>
+          <div class="mt-2 text-[11px] text-white/60">
+            Balance: <span class="font-semibold">{{ user_free|default(0) }} 🪙</span> ·
+            <span class="font-semibold">{{ user_pro|default(0) }} ⭐</span>
           </div>
         </div>
       </div>
@@ -141,6 +151,7 @@
               <input type="radio" name="mode" value="free" {% if mode != 'pro' %}checked{% endif %}>
               <span>
                 Free roadmap
+                <span class="text-[11px] text-white/70 ml-1">(1 🪙 / run)</span>
                 <span class="block text-[11px] text-white/60">
                   1 full role + preview of others.
                 </span>
@@ -150,6 +161,7 @@
               <input type="radio" name="mode" value="pro" {% if mode == 'pro' %}checked{% endif %} {% if not is_pro_user %}disabled{% endif %}>
               <span>
                 Deep roadmap (Pro ⭐)
+                <span class="text-[11px] text-white/70 ml-1">(3 ⭐ / run)</span>
                 <span class="block text-[11px] text-white/60">
                   3 roles, market data, micro-projects &amp; learning plan.
                 </span>
@@ -159,7 +171,7 @@
 
           {% if not is_pro_user %}
             <p class="text-[11px] text-white/60 mt-1">
-              You’re currently on Free. Upgrade to run Deep Skill Mapper as often as you like.
+              You’re currently on Free. Upgrade to run Deep Skill Mapper (3 ⭐ per run) as often as you like.
             </p>
           {% endif %}
         </div>
@@ -168,6 +180,10 @@
           <button type="submit" class="btn-primary justify-center">
             Generate Skill Roadmap
           </button>
+          <p class="text-[11px] text-white/60">
+            Free mode uses <span class="font-semibold">1 Silver 🪙</span> per run.
+            Deep (Pro) uses <span class="font-semibold">3 Gold ⭐</span> per run.
+          </p>
           {% if not is_pro_user %}
             <a href="{{ feature_paths.billing }}" class="btn-ghost justify-center text-xs">
               Get CareerAI Pro ⭐

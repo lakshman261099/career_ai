@@ -1,0 +1,123 @@
+{# templates/admin/universities.html #}
+{% extends "base.html" %}
+{% block title %}Admin · Universities · CareerAI{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 mt-6 mb-16">
+
+  {# ---------- Shared Admin Sub-Nav ---------- #}
+  {% macro admin_tab(label, endpoint_name, extra_endpoints) %}
+    {% set ep = request.endpoint or '' %}
+    {% set active = (ep == endpoint_name) or (ep in extra_endpoints) %}
+    <a href="{{ url_for(endpoint_name) }}"
+       class="px-3 py-1.5 rounded-full border text-xs
+              {% if active %}
+                bg-slate-900 text-white border-indigo-400
+              {% else %}
+                bg-slate-900/40 text-slate-200/80 border-slate-500/70 hover:border-indigo-400/80
+              {% endif %}">
+      {{ label }}
+    </a>
+  {% endmacro %}
+
+  <div class="glass-card rounded-2xl px-4 py-3 mb-5 flex flex-wrap items-center gap-2 text-[12px]">
+    {{ admin_tab("Overview", "admin.dashboard", []) }}
+    {{ admin_tab("Users", "admin.users", []) }}
+    {{ admin_tab("Credits", "admin.credits", []) }}
+    {{ admin_tab("Universities", "admin.universities", []) }}
+    {{ admin_tab("Deals", "admin.deals", []) }}
+    {{ admin_tab("Vouchers", "admin.vouchers", ["admin.voucher_detail"]) }}
+
+    <span class="ml-auto text-[11px] text-slate-400/80">
+      Admin · tenants &amp; routing
+    </span>
+  </div>
+
+  <div class="flex items-center justify-between gap-3 mb-4">
+    <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">
+      Admin · Universities
+    </h1>
+  </div>
+
+  <div class="grid gap-6 md:grid-cols-2">
+    <div class="glass-card rounded-2xl px-4 py-4">
+      <h2 class="text-sm font-semibold mb-2">Create university</h2>
+      <form method="post" class="space-y-3 text-[13px]">
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
+            Name
+          </label>
+          <input type="text" name="name" required
+                 placeholder="Veltech University"
+                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
+            Domain (optional)
+          </label>
+          <input type="text" name="domain"
+                 placeholder="veltech.edu"
+                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+          <p class="mt-1 text-[11px] text-slate-400/80">
+            Full email/web domain for this university. Used for automatic tenant detection.
+          </p>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
+            Tenant slug (optional)
+          </label>
+          <input type="text" name="tenant_slug"
+                 placeholder="veltech (for careerai.veltech.ai)"
+                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+          <p class="mt-1 text-[11px] text-slate-400/80">
+            Subdomain or slug used in your routing (e.g. careerai.<strong>veltech</strong>.ai).
+          </p>
+        </div>
+        <div class="pt-2">
+          <button type="submit" class="btn-primary text-xs">
+            Create university
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-4">
+      <h2 class="text-sm font-semibold mb-2">Existing universities</h2>
+      {% if universities %}
+        <div class="overflow-x-auto text-[11px]">
+          <table class="min-w-full">
+            <thead class="bg-slate-900/80 text-slate-200/80">
+              <tr>
+                <th class="px-3 py-2 text-left font-semibold">Name</th>
+                <th class="px-3 py-2 text-left font-semibold">Domain</th>
+                <th class="px-3 py-2 text-left font-semibold">Slug</th>
+                <th class="px-3 py-2 text-left font-semibold">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for uni in universities %}
+              <tr class="border-t border-slate-700/60">
+                <td class="px-3 py-2 text-slate-100/90">
+                  {{ uni.name }}
+                </td>
+                <td class="px-3 py-2 text-slate-200/80">
+                  {{ uni.domain or '—' }}
+                </td>
+                <td class="px-3 py-2 text-slate-200/80">
+                  {{ uni.tenant_slug or '—' }}
+                </td>
+                <td class="px-3 py-2 text-slate-300/80">
+                  {{ uni.created_at.strftime('%Y-%m-%d') if uni.created_at else '' }}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-[11px] text-slate-400/80">No universities yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

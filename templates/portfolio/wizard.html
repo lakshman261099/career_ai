@@ -26,6 +26,9 @@
             Updated {{ updated_tag }}
           </p>
         {% endif %}
+        <p class="text-[11px] text-white/60">
+          Costs: Free <span class="font-semibold">1 🪙</span> · Pro <span class="font-semibold">2 ⭐</span> per run.
+        </p>
       </div>
       <div class="flex flex-col items-end gap-2 text-xs">
         {% set _is_pro = (subscription_status|default('free')|lower == 'pro') %}
@@ -38,8 +41,12 @@
           {% endif %}
         </div>
         <p class="text-[11px] text-white/50">
-          Free: 1 idea. Pro: 3 deep ideas + publishing.
+          Free: 1 idea (1 🪙). Pro: 3 deep ideas (2 ⭐ / run) + publishing.
         </p>
+        <a href="{{ url_for('portfolio.history') }}"
+           class="text-[11px] text-white/60 hover:text-white underline">
+          View project ideas history →
+        </a>
       </div>
     </div>
   </header>
@@ -61,6 +68,7 @@
         </div>
         <div class="text-xs text-white/60 text-right">
           <div>You have: {{ user_free|default(0) }} 🪙</div>
+          <div class="text-[11px] text-white/60 mt-0.5">Cost: <strong>1 🪙 / run</strong></div>
         </div>
       </div>
 
@@ -102,9 +110,10 @@
 
         <button type="submit" class="btn-primary w-full">
           Get 1 suggestion
+          <span class="ml-2 text-[11px] text-white/85">(1 🪙)</span>
         </button>
         <p class="text-[11px] text-white/60">
-          Free uses a small number of tokens per run. Good for quick validation.
+          Free uses <span class="font-semibold">1 Silver 🪙 credit</span> per run.
         </p>
       </form>
 
@@ -180,6 +189,7 @@
           </div>
           <div class="text-xs text-white/60 text-right">
             <div>You have: {{ user_pro|default(0) }} ⭐</div>
+            <div class="text-[11px] text-white/60 mt-0.5">Cost: <strong>2 ⭐ / run</strong></div>
           </div>
         </div>
 
@@ -256,10 +266,14 @@
           {% if _is_pro %}
             <button type="submit" class="btn-primary w-full">
               Get 3 deep suggestions ⭐
+              <span class="ml-2 text-[11px] text-white/85">(2 ⭐)</span>
             </button>
+            <p class="text-[11px] text-white/60 mt-1">
+              Each Pro Wizard run uses <span class="font-semibold">2 Gold ⭐ credits</span>.
+            </p>
           {% else %}
             <a class="btn-primary w-full text-center" href="{{ feature_paths.billing }}">
-              Upgrade to Pro to unlock ⭐
+              Upgrade to Pro to unlock ⭐ (2 ⭐ / run)
             </a>
           {% endif %}
         </form>

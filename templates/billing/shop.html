@@ -1,0 +1,275 @@
+{# templates/billing/shop.html #}
+{% extends "base.html" %}
+
+{% block title %}Coins Shop & Pro Upgrade · CareerAI{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 mt-6 mb-16">
+  <!-- Header -->
+  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h1 class="text-xl sm:text-2xl font-semibold tracking-tight mb-1">
+        Coins Shop &amp; Pro Upgrade
+      </h1>
+      <p class="text-sm text-slate-200/80 max-w-2xl">
+        Use <span class="font-semibold">Silver 🪙</span> for Free tools and
+        <span class="font-semibold">Gold ⭐</span> for Pro features like Deep Job Packs, Skill Mapper Pro,
+        and Portfolio publishing.
+      </p>
+    </div>
+    <div class="glass-card px-4 py-3 flex items-center gap-4 text-[12px]">
+      <div class="flex flex-col">
+        <span class="uppercase text-[10px] tracking-widest text-slate-300/70">Current balance</span>
+        <div class="flex items-center gap-3 mt-0.5">
+          <span class="inline-flex items-center gap-1">
+            <span class="text-base">🪙</span>
+            <span class="font-semibold text-sm">{{ coins_free or 0 }}</span>
+            <span class="text-slate-300/70 text-[11px]">Silver</span>
+          </span>
+          <span class="text-slate-400/60">·</span>
+          <span class="inline-flex items-center gap-1">
+            <span class="text-base">⭐</span>
+            <span class="font-semibold text-sm">{{ coins_pro or 0 }}</span>
+            <span class="text-slate-300/70 text-[11px]">Gold</span>
+          </span>
+        </div>
+      </div>
+      <div class="h-10 w-px bg-slate-500/40 hidden sm:block"></div>
+      <div class="flex flex-col">
+        <span class="uppercase text-[10px] tracking-widest text-slate-300/70">Plan</span>
+        <span class="inline-flex items-center gap-1 text-xs mt-0.5">
+          {% set plan = (subscription_status or 'free') %}
+          {% if plan == 'pro' %}
+            <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-300/70 text-emerald-100 text-[10px] uppercase tracking-widest">
+              Pro
+            </span>
+          {% else %}
+            <span class="px-2 py-0.5 rounded-full bg-slate-800/80 border border-slate-400/50 text-slate-100 text-[10px] uppercase tracking-widest">
+              Free
+            </span>
+          {% endif %}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <div class="glass-card px-4 py-3 mb-6 text-[12px] text-slate-200/80">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div class="font-semibold text-[13px]">How credits work</div>
+      <div class="flex flex-wrap gap-x-4 gap-y-1">
+        <span>🪙 <span class="font-semibold">Silver</span> – Free-tier tools: Job Pack basic, Skill Mapper Free, Internship Analyzer, Referral Trainer.</span>
+        <span>⭐ <span class="font-semibold">Gold</span> – Pro-only: Deep Job Pack, Skill Mapper Pro, Portfolio publishing, richer insights.</span>
+        <span class="text-slate-300/70">Pro plans come with a monthly bundle of Gold ⭐.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-3 lg:items-start">
+    <!-- Silver Top-Ups -->
+    <section class="lg:col-span-1">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold">Silver 🪙 Top-Ups</h2>
+        <span class="text-[11px] text-slate-300/80">For Free tools</span>
+      </div>
+      {% if silver_packages %}
+        <div class="space-y-3">
+          {% for p in silver_packages %}
+          <div class="glass-card px-3.5 py-3 rounded-xl">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-[13px] font-semibold mb-0.5">{{ p.label }}</div>
+                {% if p.description %}
+                  <p class="text-[11px] text-slate-300/80 mb-1.5">{{ p.description }}</p>
+                {% endif %}
+              </div>
+              <div class="text-right text-[11px]">
+                <div class="font-semibold">
+                  {{ p.silver or p.coins or '—' }} 🪙
+                </div>
+                {% if p.price_display %}
+                  <div class="text-slate-200/80">{{ p.price_display }}</div>
+                {% elif p.price_inr %}
+                  <div class="text-slate-200/80">₹{{ p.price_inr }}</div>
+                {% else %}
+                  <div class="text-slate-400/70">Pricing TBA</div>
+                {% endif %}
+              </div>
+            </div>
+            <form method="post" action="{{ url_for('billing.shop_buy', code=p.code) }}" class="mt-2">
+              <button type="submit"
+                      class="w-full inline-flex items-center justify-center rounded-full border border-slate-500/70 bg-slate-900/70 px-3 py-1.5 text-[11px] text-slate-200/80 cursor-not-allowed opacity-60">
+                Coming soon
+              </button>
+            </form>
+            <p class="mt-1 text-[10px] text-slate-400/80">
+              Silver top-ups will be enabled soon. For now, focus on using your daily Free runs and try Pro for Gold ⭐.
+            </p>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-[11px] text-slate-400/80">No Silver packs configured yet.</p>
+      {% endif %}
+    </section>
+
+    <!-- Gold Top-Ups -->
+    <section class="lg:col-span-1">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold">Gold ⭐ Top-Ups</h2>
+        <span class="text-[11px] text-slate-300/80">Extra Pro credits</span>
+      </div>
+      {% if gold_packages %}
+        <div class="space-y-3">
+          {% for p in gold_packages %}
+          <div class="glass-card px-3.5 py-3 rounded-xl">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-[13px] font-semibold mb-0.5">{{ p.label }}</div>
+                {% if p.description %}
+                  <p class="text-[11px] text-slate-300/80 mb-1.5">{{ p.description }}</p>
+                {% endif %}
+              </div>
+              <div class="text-right text-[11px]">
+                <div class="font-semibold">
+                  {{ p.gold or p.coins or '—' }} ⭐
+                </div>
+                {% if p.price_display %}
+                  <div class="text-slate-200/80">{{ p.price_display }}</div>
+                {% elif p.price_inr %}
+                  <div class="text-slate-200/80">₹{{ p.price_inr }}</div>
+                {% else %}
+                  <div class="text-slate-400/70">Pricing TBA</div>
+                {% endif %}
+              </div>
+            </div>
+            <form method="post" action="{{ url_for('billing.shop_buy', code=p.code) }}" class="mt-2">
+              <button type="submit"
+                      class="w-full inline-flex items-center justify-center rounded-full border border-slate-500/70 bg-slate-900/70 px-3 py-1.5 text-[11px] text-slate-200/80 cursor-not-allowed opacity-60">
+                Coming soon
+              </button>
+            </form>
+            <p class="mt-1 text-[10px] text-slate-400/80">
+              Gold ⭐ top-ups are planned. Your Pro plan will already include a monthly Gold bundle.
+            </p>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-[11px] text-slate-400/80">No Gold packs configured yet.</p>
+      {% endif %}
+    </section>
+
+    <!-- Pro Plans + Voucher -->
+    <section class="lg:col-span-1">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold">Pro Plans ⭐</h2>
+        <span class="text-[11px] text-slate-300/80">Best for serious applicants</span>
+      </div>
+
+      <!-- Voucher code card -->
+      <div class="glass-card px-3.5 py-3 rounded-xl mb-3">
+        <form method="post" class="flex flex-col gap-2 text-[12px]">
+          <label class="text-xs font-semibold text-slate-200/90">
+            Have a voucher code?
+          </label>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              name="voucher_code"
+              value="{{ active_voucher.code if active_voucher else '' }}"
+              placeholder="VELTECH50, CAMPUS2025…"
+              class="flex-1 rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-1.5 text-xs uppercase focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            />
+            <button type="submit"
+                    class="btn-ghost text-[11px] px-3 py-1.5">
+              Apply
+            </button>
+          </div>
+          {% if active_voucher %}
+            <p class="text-[11px] text-emerald-300/90 mt-1">
+              Applied: <span class="font-semibold">{{ active_voucher.code }}</span>
+              —
+              {% if active_voucher.discount_percent %}
+                {{ active_voucher.discount_percent }}% off
+              {% endif %}
+              {% if active_voucher.bonus_silver %}
+                {% if active_voucher.discount_percent %}+{% endif %}
+                +{{ active_voucher.bonus_silver }} 🪙 Silver
+              {% endif %}
+              {% if active_voucher.bonus_gold %}
+                {% if active_voucher.discount_percent or active_voucher.bonus_silver %}+{% endif %}
+                +{{ active_voucher.bonus_gold }} ⭐ Gold
+              {% endif %}
+              {% if not (active_voucher.discount_percent or active_voucher.bonus_silver or active_voucher.bonus_gold) %}
+                Custom campaign
+              {% endif %}
+            </p>
+            {% if active_voucher.university %}
+              <p class="text-[10px] text-slate-300/80 mt-0.5">
+                For students of {{ active_voucher.university.name }}.
+              </p>
+            {% endif %}
+          {% else %}
+            <p class="text-[10px] text-slate-400/80 mt-1">
+              Enter a code shared by your university, mentor, or campus ambassador.
+              Valid codes will automatically add bonus credits after successful Pro purchase.
+            </p>
+          {% endif %}
+        </form>
+      </div>
+
+      {% if pro_plan_packages %}
+        <div class="space-y-3">
+          {% for p in pro_plan_packages %}
+          <div class="glass-card px-3.5 py-3 rounded-xl border border-indigo-400/50 shadow-glow">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-[13px] font-semibold mb-0.5 flex items-center gap-1.5">
+                  <span>{{ p.label }}</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-300/70 uppercase tracking-widest">Pro</span>
+                </div>
+                {% if p.description %}
+                  <p class="text-[11px] text-slate-300/80 mb-1.5">{{ p.description }}</p>
+                {% endif %}
+                <ul class="text-[11px] text-slate-100/80 list-disc list-inside space-y-0.5">
+                  <li>Skill Mapper Pro roadmaps</li>
+                  <li>Deep Job Pack evaluation</li>
+                  <li>Portfolio publishing from Profile Portal</li>
+                  <li>Higher Pro credit allowance (Gold ⭐)</li>
+                </ul>
+              </div>
+              <div class="text-right text-[11px]">
+                {% if p.gold %}
+                  <div class="font-semibold mb-0.5">
+                    {{ p.gold }} ⭐ / month
+                  </div>
+                {% endif %}
+                {% if p.price_display %}
+                  <div class="text-slate-200/80">{{ p.price_display }}</div>
+                {% elif p.price_inr %}
+                  <div class="text-slate-200/80">₹{{ p.price_inr }} / month</div>
+                {% else %}
+                  <div class="text-slate-400/70">Stripe pricing</div>
+                {% endif %}
+              </div>
+            </div>
+            <form method="post" action="{{ url_for('billing.shop_buy', code=p.code) }}" class="mt-3">
+              <button type="submit"
+                      class="w-full inline-flex items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 via-indigo-400 to-amber-400 px-4 py-1.5 text-[12px] font-semibold shadow-glow">
+                Upgrade to Pro ⭐
+              </button>
+            </form>
+            <p class="mt-1 text-[10px] text-slate-200/80">
+              You’ll be redirected to a secure Stripe checkout. CareerAI never asks for card details directly.
+            </p>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-[11px] text-slate-400/80">No Pro plans configured yet.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

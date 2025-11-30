@@ -53,6 +53,69 @@
           <span>→ 5) <strong>Referral Trainer</strong> — reach people for those roles</span>
         </div>
       </div>
+
+      {# Credits & Plan card #}
+      <div class="mt-3 grid gap-3 md:grid-cols-[minmax(0,1.7fr)_minmax(0,1.3fr)]">
+        <div class="glass-card rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-[12px]">
+          <div class="space-y-1">
+            <p class="uppercase tracking-[0.16em] text-[10px] text-white/60">
+              Credits &amp; plan
+            </p>
+            {% set plan = (subscription_status or 'free')|lower %}
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] uppercase tracking-widest
+                            {% if plan == 'pro' %}
+                              bg-emerald-500/15 border-emerald-300/70 text-emerald-100
+                            {% else %}
+                              bg-slate-900/80 border-slate-400/60 text-slate-100
+                            {% endif %}">
+                {{ 'Pro' if plan == 'pro' else 'Free' }}
+              </span>
+              <span class="text-white/60 text-[11px]">
+                Use Silver 🪙 for free tools and Gold ⭐ for Pro features.
+              </span>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-slate-900/80 border border-slate-500/60">
+              <span class="text-base">🪙</span>
+              <div class="flex flex-col leading-tight">
+                <span class="text-[11px] text-slate-300/80 uppercase tracking-[0.16em]">Silver</span>
+                <span class="text-sm font-semibold">{{ user_free or 0 }}</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-slate-900/80 border border-slate-500/60">
+              <span class="text-base">⭐</span>
+              <div class="flex flex-col leading-tight">
+                <span class="text-[11px] text-slate-300/80 uppercase tracking-[0.16em]">Gold</span>
+                <span class="text-sm font-semibold">{{ user_pro or 0 }}</span>
+              </div>
+            </div>
+            <a href="{{ feature_paths.billing }}"
+               class="btn-ghost text-[11px] whitespace-nowrap">
+              Open Coins Shop
+            </a>
+          </div>
+        </div>
+
+        {# Extra nudge on dashboard if not verified #}
+        {% if current_user.is_authenticated and not current_user.verified %}
+          <div class="glass-card rounded-2xl px-4 py-3 border border-amber-400/60 text-xs sm:text-sm text-amber-100">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p class="font-semibold">Finish email verification to use all AI features.</p>
+                <p class="text-amber-100/80 text-[11px] sm:text-xs">
+                  You can open every page now. When you click “Analyze” or “Generate”, we’ll ask for a one-time email code.
+                </p>
+              </div>
+              <a href="{{ url_for('auth.otp_request') }}"
+                 class="btn-primary text-xs whitespace-nowrap">
+                Get login code
+              </a>
+            </div>
+          </div>
+        {% endif %}
+      </div>
     </header>
 
     <!-- Features zig-zag -->
@@ -294,7 +357,7 @@
     transition:
       transform 220ms cubic-bezier(0.22,0.61,0.36,1),
       box-shadow 220ms cubic-bezier(0.22,0.61,0.36,1),
-      border-color 200ms ease-out,
+      border-color 200ms.ease-out,
       background 220ms ease-out;
   }
   .ca-feature-card:hover {
@@ -332,7 +395,7 @@
     text-decoration: none;
     transition:
       transform 160ms ease-out,
-      box-shadow 160ms ease-out,
+      box-shadow 160ms.ease-out,
       filter 160ms ease-out;
   }
   .ca-feature-cta:hover {

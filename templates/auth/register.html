@@ -4,20 +4,38 @@
 <section class="mx-auto max-w-md px-4 sm:px-6 lg:px-8 pt-14">
   <div class="glass-panel rounded-2xl p-6">
     <h1 class="text-xl font-bold mb-3">Create Account</h1>
+
+    <!-- Google signup/login -->
+    <a href="{{ url_for('auth.google_login') }}"
+       class="w-full inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 border border-white/30 bg-white/10 hover:bg.white/20 text-sm font-medium mb-4">
+      <span>Continue with Google</span>
+    </a>
+
+    <div class="flex items-center gap-3 mb-4">
+      <div class="h-px flex-1 bg-white/15"></div>
+      <span class="text-xs text-white/50">or create with email</span>
+      <div class="h-px flex-1 bg-white/15"></div>
+    </div>
+
     <form method="POST" action="{{ url_for('auth.register') }}">
       <label class="block text-sm mb-1">Name</label>
-      <input name="name" required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+      <input name="name" required
+             class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
 
       <label class="block text-sm mt-4 mb-1">Email</label>
-      <input type="email" name="email" required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+      <input type="email" name="email" required
+             class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
 
       <label class="block text-sm mt-4 mb-1">Password</label>
-      <input type="password" name="password" required class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
+      <input type="password" name="password" required
+             class="w-full rounded-xl px-3 py-2 bg-white/10 border border-white/20">
 
       <button type="submit" class="btn-primary mt-4 w-full">Create Account</button>
     </form>
     <div class="mt-4 text-center text-sm">
-      <a class="btn-ghost inline-flex" href="{{ url_for('auth.login') }}">Already have an account? Log in</a>
+      <a class="btn-ghost inline-flex justify-center" href="{{ url_for('auth.login') }}">
+        Already have an account? Log in
+      </a>
     </div>
   </div>
 </section>
