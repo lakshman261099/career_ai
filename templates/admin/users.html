@@ -7,6 +7,7 @@
 {% block admin_body %}
 <div>
 
+  <!-- Title + description -->
   <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <div>
       <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">
@@ -23,9 +24,11 @@
     </div>
   </div>
 
-  <!-- Filters / search -->
+  <!-- Filters -->
   <div class="glass-card rounded-2xl px-4 py-3 mb-4 text-[13px]">
     <form method="get" class="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+      
+      <!-- Search -->
       <div class="flex-1 w-full">
         <label class="block text-xs font-semibold mb-1 text-slate-200/90">
           Search (email or name)
@@ -38,6 +41,8 @@
           class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
         />
       </div>
+
+      <!-- Role filter -->
       <div class="w-full sm:w-40">
         <label class="block text-xs font-semibold mb-1 text-slate-200/90">
           Role
@@ -53,25 +58,31 @@
           <option value="ultra_admin" {% if role_filter=='ultra_admin' %}selected{% endif %}>Ultra admin</option>
         </select>
       </div>
+
       <div>
-        <button type="submit" class="btn-primary text-xs">
+        <button type="submit" class="btn-primary text-xs px-3 py-2">
           Apply filters
         </button>
       </div>
+
     </form>
+
     <p class="mt-2 text-[10px] text-slate-400/80">
-      Showing up to 100 users. Use the search box to narrow down.
+      Showing up to 100 users. Use filters to narrow down.
     </p>
   </div>
 
+  <!-- User list -->
   {% if users %}
     <div class="glass-card rounded-2xl overflow-hidden text-[11px]">
       <table class="min-w-full">
+
+        <!-- Table head -->
         <thead class="bg-slate-900/80 text-slate-200/80 text-[10px] uppercase tracking-[0.16em]">
           <tr>
             <th class="px-3 py-2 text-left">User</th>
             <th class="px-3 py-2 text-left">Role</th>
-            <th class="px-3 py-2 text-left">University &amp; Role edit</th>
+            <th class="px-3 py-2 text-left">University & Role edit</th>
             <th class="px-3 py-2 text-left">Plan</th>
             <th class="px-3 py-2 text-right">Balances</th>
             <th class="px-3 py-2 text-right">Joined</th>
@@ -79,23 +90,24 @@
           </tr>
         </thead>
 
+        <!-- Table body -->
         <tbody>
-          {% for u in users %}
-
-          {% set target_role = (u.role or 'student') %}
+        {% for u in users %}
+          {% set target_role = u.role or "student" %}
           {% set cannot_edit = false %}
 
-          {# Rule: Super admin CANNOT touch ultra admin #}
+          {# Permission rules ------------------------------------------------ #}
           {% if target_role == 'ultra_admin' and not is_ultra_admin %}
             {% set cannot_edit = true %}
           {% endif %}
 
-          {# Rule: University admins CANNOT modify any global admins #}
           {% if not is_super_admin and not is_ultra_admin and target_role in ['super_admin', 'ultra_admin'] %}
             {% set cannot_edit = true %}
           {% endif %}
 
           <tr class="border-t border-slate-700/60">
+            
+            <!-- User info -->
             <td class="px-3 py-2 align-top">
               <div class="font-semibold text-slate-50 text-[11px]">
                 {{ u.email }}
@@ -109,30 +121,38 @@
                 {{ u.name or "No name" }}
               </div>
               {% if u.university %}
-                <div class="mt-0.5 text-[10px] text-slate-400">
+                <div class="mt-0.5 text-[10px] text-slate-400/80">
                   {{ u.university.name }}
                 </div>
               {% endif %}
             </td>
 
+            <!-- Role badge -->
             <td class="px-3 py-2 align-top">
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-500/60 text-[10px] text-slate-100 bg-slate-900/80">
-                {{ u.role or "student" }}
+              {% set role_color = {
+                "student": "border-slate-500/60 bg-slate-900/80 text-slate-200",
+                "university_admin": "border-blue-400/50 bg-blue-500/10 text-blue-200",
+                "super_admin": "border-purple-400/50 bg-purple-500/10 text-purple-200",
+                "ultra_admin": "border-red-400/50 bg-red-500/10 text-red-200"
+              } %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] {{ role_color[target_role] }}">
+                {{ target_role }}
               </span>
             </td>
 
+            <!-- Edit form -->
             <td class="px-3 py-2 align-top">
               {% if universities %}
                 <form method="post" class="space-y-1">
                   <input type="hidden" name="user_id" value="{{ u.id }}"/>
 
-                  <label class="block text-[10px] text-slate-300/80 mb-0.5">
-                    University
-                  </label>
+                  <!-- University -->
+                  <label class="block text-[10px] text-slate-300/80 mb-0.5">University</label>
                   <select
                     name="university_id"
-                    class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1 text-[11px]"
-                    {% if cannot_edit %}disabled class="opacity-40 cursor-not-allowed"{% endif %}
+                    class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1 text-[11px]
+                           {% if cannot_edit %}opacity-40 cursor-not-allowed{% endif %}"
+                    {% if cannot_edit %}disabled{% endif %}
                   >
                     {% if is_super_admin or is_ultra_admin %}
                       <option value="" {% if not u.university_id %}selected{% endif %}>(None)</option>
@@ -150,13 +170,13 @@
                     {% endif %}
                   </select>
 
-                  <label class="block text-[10px] text-slate-300/80 mt-1 mb-0.5">
-                    Role
-                  </label>
+                  <!-- Role -->
+                  <label class="block text-[10px] text-slate-300/80 mt-1 mb-0.5">Role</label>
                   <select
                     name="role"
-                    class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1 text-[11px]"
-                    {% if cannot_edit %}disabled class="opacity-40 cursor-not-allowed"{% endif %}
+                    class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1 text-[11px]
+                           {% if cannot_edit %}opacity-40 cursor-not-allowed{% endif %}"
+                    {% if cannot_edit %}disabled{% endif %}
                   >
                     <option value="student" {% if target_role=='student' %}selected{% endif %}>Student</option>
                     <option value="university_admin" {% if target_role=='university_admin' %}selected{% endif %}>University admin</option>
@@ -164,12 +184,12 @@
                     {% if is_super_admin or is_ultra_admin %}
                       <option value="super_admin" {% if target_role=='super_admin' %}selected{% endif %}>Super admin</option>
                     {% endif %}
-
                     {% if is_ultra_admin %}
                       <option value="ultra_admin" {% if target_role=='ultra_admin' %}selected{% endif %}>Ultra admin</option>
                     {% endif %}
                   </select>
 
+                  <!-- Save -->
                   <div class="flex justify-end pt-1">
                     {% if cannot_edit %}
                       <button type="button"
@@ -191,10 +211,12 @@
               {% endif %}
             </td>
 
+            <!-- Plan -->
             <td class="px-3 py-2 align-top text-[11px]">
               {{ (u.subscription_status or "free") | capitalize }}
             </td>
 
+            <!-- Balances -->
             <td class="px-3 py-2 align-top text-right text-[11px]">
               <div>
                 🪙 <span class="font-semibold">{{ u.coins_free or 0 }}</span>
@@ -206,10 +228,12 @@
               </div>
             </td>
 
+            <!-- Joined -->
             <td class="px-3 py-2 align-top text-right text-[10px] text-slate-300/80">
-              {% if u.created_at %}{{ u.created_at.strftime('%Y-%m-%d') }}{% endif %}
+              {{ u.created_at.strftime('%Y-%m-%d') if u.created_at }}
             </td>
 
+            <!-- Actions -->
             <td class="px-3 py-2 align-top text-right text-[11px]">
               <a href="{{ url_for('admin.credits') }}?email={{ u.email | urlencode }}"
                  class="btn-ghost inline-flex justify-center text-[10px] px-2 py-1">
@@ -218,14 +242,14 @@
             </td>
 
           </tr>
-          {% endfor %}
+        {% endfor %}
         </tbody>
       </table>
     </div>
 
   {% else %}
     <p class="text-[11px] text-slate-400/80">
-      No users match this filter yet. Try clearing filters.
+      No users match this filter. Try clearing filters.
     </p>
   {% endif %}
 </div>

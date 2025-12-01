@@ -7,6 +7,49 @@
 <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 mt-6 mb-16">
 
   {# ------------------------------------------------------------------ #}
+  {# Admin header (role + tenant badge)                                 #}
+  {# ------------------------------------------------------------------ #}
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+    <div>
+      <div class="text-xs uppercase tracking-[0.2em] text-slate-400/80 mb-1">
+        Admin Panel
+      </div>
+      <div class="flex flex-wrap items-center gap-2 text-[12px] text-slate-300/80">
+        {% set role = (current_user.role or 'student') %}
+        <span class="inline-flex items-center rounded-full border border-slate-600/70 bg-slate-900/80 px-2 py-0.5 text-[11px]">
+          {% if role == 'ultra_admin' %}
+            Ultra Admin
+          {% elif role == 'super_admin' %}
+            Super Admin
+          {% elif role == 'university_admin' %}
+            University Admin
+          {% else %}
+            Student
+          {% endif %}
+        </span>
+
+        {% set tenant = g.current_tenant if g.current_tenant is defined else None %}
+        {% if tenant %}
+          <span class="inline-flex items-center rounded-full border border-indigo-400/60 bg-indigo-500/10 px-2 py-0.5 text-[11px]">
+            Tenant: {{ tenant.name }}
+          </span>
+        {% else %}
+          <span class="inline-flex items-center rounded-full border border-slate-500/60 bg-slate-800/70 px-2 py-0.5 text-[11px]">
+            Global view
+          </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="text-right text-[11px] text-slate-400/80">
+      <div>{{ current_user.email }}</div>
+      <div class="text-[10px]">
+        Admin tools are tenant-scoped and fully audit-logged.
+      </div>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------------ #}
   {# Admin sub-navigation — fully role-aware                             #}
   {# ------------------------------------------------------------------ #}
   <div class="glass-card rounded-2xl px-3 py-2 mb-4">
@@ -28,8 +71,10 @@
         Credits
       </a>
 
-      {# University Admin – show Analytics only ------------------------- #}
-      {% if current_user.role == 'university_admin' %}
+      {# University Admin – show Analytics only (tenant-scoped) -------- #}
+      {% if current_user.role == 'university_admin'
+            and not current_user.is_super_admin
+            and not current_user.is_ultra_admin %}
         <a href="{{ url_for('admin.analytics') }}"
            class="nav-link {% if active_tab == 'analytics' %}nav-active{% endif %}">
           Analytics
@@ -38,6 +83,9 @@
 
       {# Global Admins (Super / Ultra) – show all global functions ------ #}
       {% if current_user.is_super_admin or current_user.is_ultra_admin %}
+        <span class="inline-flex items-center px-1 text-slate-500/80 text-[10px] ml-1">
+          · Platform
+        </span>
         <a href="{{ url_for('admin.universities') }}"
            class="nav-link {% if active_tab == 'universities' %}nav-active{% endif %}">
           Universities
@@ -56,12 +104,18 @@
 
       {# Ultra Admin ONLY – Audit -------------------------------------- #}
       {% if current_user.is_ultra_admin %}
+        <span class="inline-flex items-center px-1 text-slate-500/80 text-[10px] ml-1">
+          · Security
+        </span>
         <a href="{{ url_for('admin.audit') }}"
            class="nav-link {% if active_tab == 'audit' %}nav-active{% endif %}">
           Audit
         </a>
       {% endif %}
 
+      <span class="ml-auto text-[11px] text-slate-400/80">
+        Changes are tenant-scoped unless you're a global admin.
+      </span>
     </nav>
   </div>
 

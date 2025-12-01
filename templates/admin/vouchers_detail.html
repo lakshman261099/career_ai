@@ -1,46 +1,33 @@
 {# templates/admin/voucher_detail.html #}
-{% extends "base.html" %}
+{% extends "admin/_layout.html" %}
+
 {% block title %}Admin · Voucher {{ campaign.code }} · CareerAI{% endblock %}
+{% set active_tab = 'vouchers' %}
 
-{% block content %}
-<div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 mt-6 mb-16">
+{% block admin_body %}
+<div>
 
-  {# ---------- Shared Admin Sub-Nav ---------- #}
-  {% macro admin_tab(label, endpoint_name, extra_endpoints) %}
-    {% set ep = request.endpoint or '' %}
-    {% set active = (ep == endpoint_name) or (ep in extra_endpoints) %}
-    <a href="{{ url_for(endpoint_name) }}"
-       class="px-3 py-1.5 rounded-full border text-xs
-              {% if active %}
-                bg-slate-900 text-white border-indigo-400
-              {% else %}
-                bg-slate-900/40 text-slate-200/80 border-slate-500/70 hover:border-indigo-400/80
-              {% endif %}">
-      {{ label }}
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">
+      Voucher · {{ campaign.code }}
+    </h1>
+    <a
+      href="{{ url_for('admin.vouchers') }}"
+      class="btn-ghost text-[11px] px-3 py-1.5"
+    >
+      ← Back to vouchers
     </a>
-  {% endmacro %}
-
-  <div class="glass-card rounded-2xl px-4 py-3 mb-5 flex flex-wrap items-center gap-2 text-[12px]">
-    {{ admin_tab("Overview", "admin.dashboard", []) }}
-    {{ admin_tab("Users", "admin.users", []) }}
-    {{ admin_tab("Credits", "admin.credits", []) }}
-    {{ admin_tab("Universities", "admin.universities", []) }}
-    {{ admin_tab("Deals", "admin.deals", []) }}
-    {{ admin_tab("Vouchers", "admin.vouchers", ["admin.voucher_detail"]) }}
-
-    <span class="ml-auto text-[11px] text-slate-400/80">
-      Admin · voucher detail
-    </span>
   </div>
 
-  <h1 class="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
-    Voucher · {{ campaign.code }}
-  </h1>
-
+  <!-- Voucher summary -->
   <div class="glass-card rounded-2xl px-4 py-4 mb-6 text-[12px]">
     <div class="flex flex-wrap gap-4 justify-between">
+
+      <!-- Code + description + scope -->
       <div>
-        <div class="text-sm font-semibold mb-1">{{ campaign.code }}</div>
+        <div class="text-sm font-semibold mb-1">
+          {{ campaign.code }}
+        </div>
         <div class="text-slate-300/80 mb-1">
           {{ campaign.description or "No description" }}
         </div>
@@ -53,6 +40,8 @@
           {% endif %}
         </div>
       </div>
+
+      <!-- Offer -->
       <div>
         <div class="uppercase text-[10px] tracking-widest text-slate-300/70 mb-1">
           Offer
@@ -78,6 +67,8 @@
           {% if campaign.max_uses %}/ {{ campaign.max_uses }}{% endif %}
         </div>
       </div>
+
+      <!-- Status / expiry -->
       <div>
         <div class="uppercase text-[10px] tracking-widest text-slate-300/70 mb-1">
           Status
@@ -97,11 +88,14 @@
           </div>
         {% endif %}
       </div>
+
     </div>
   </div>
 
+  <!-- Redemptions table -->
   <div class="glass-card rounded-2xl px-4 py-4 text-[12px]">
     <h2 class="text-sm font-semibold mb-3">Redemptions</h2>
+
     {% if redemptions %}
       <div class="overflow-x-auto -mx-2">
         <table class="min-w-full text-[11px]">
@@ -143,5 +137,6 @@
       </p>
     {% endif %}
   </div>
+
 </div>
 {% endblock %}

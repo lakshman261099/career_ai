@@ -7,9 +7,56 @@
 {% block admin_body %}
 <div>
 
-  <h1 class="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
-    University Analytics · {{ tenant.name if tenant else "Unknown University" }}
-  </h1>
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">
+      University Analytics · {{ tenant.name if tenant else "Unknown University" }}
+    </h1>
+    <a href="{{ url_for('admin.analytics_export') }}" class="btn-ghost text-[11px] px-3 py-1.5">
+      Download CSV
+    </a>
+  </div>
+
+  {% if analytics_insights %}
+  <!-- Insights Summary -->
+  <div class="glass-card rounded-2xl px-4 py-4 mb-5 text-[12px]">
+    <h2 class="text-sm font-semibold mb-1">Quick insights</h2>
+    <p class="text-[11px] text-slate-300/80 mb-3">
+      A quick, human-readable summary of how your students are using CareerAI.
+    </p>
+
+    <div class="space-y-1.5 text-[12px]">
+      {% if analytics_insights.headline %}
+      <div class="text-slate-100/90">
+        {{ analytics_insights.headline }}
+      </div>
+      {% endif %}
+
+      {% if analytics_insights.skill_summary %}
+      <div class="text-slate-300/90">
+        • {{ analytics_insights.skill_summary }}
+      </div>
+      {% endif %}
+
+      {% if analytics_insights.role_summary %}
+      <div class="text-slate-300/90">
+        • {{ analytics_insights.role_summary }}
+      </div>
+      {% endif %}
+
+      {% if analytics_insights.tool_summary %}
+      <div class="text-slate-300/90">
+        • {{ analytics_insights.tool_summary }}
+      </div>
+      {% endif %}
+
+      {% if analytics_insights.credits_summary %}
+      <div class="text-slate-300/90">
+        • {{ analytics_insights.credits_summary }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Top Stats -->
   <div class="grid gap-4 md:grid-cols-3 mb-6 text-[13px]">

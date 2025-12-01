@@ -1,118 +1,142 @@
 {# templates/admin/deals.html #}
-{% extends "base.html" %}
+{% extends "admin/_layout.html" %}
+
 {% block title %}Admin · Deals · CareerAI{% endblock %}
+{% set active_tab = 'deals' %}
 
-{% block content %}
-<div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 mt-6 mb-16">
-
-  {# ---------- Shared Admin Sub-Nav ---------- #}
-  {% macro admin_tab(label, endpoint_name, extra_endpoints) %}
-    {% set ep = request.endpoint or '' %}
-    {% set active = (ep == endpoint_name) or (ep in extra_endpoints) %}
-    <a href="{{ url_for(endpoint_name) }}"
-       class="px-3 py-1.5 rounded-full border text-xs
-              {% if active %}
-                bg-slate-900 text-white border-indigo-400
-              {% else %}
-                bg-slate-900/40 text-slate-200/80 border-slate-500/70 hover:border-indigo-400/80
-              {% endif %}">
-      {{ label }}
-    </a>
-  {% endmacro %}
-
-  <div class="glass-card rounded-2xl px-4 py-3 mb-5 flex flex-wrap items-center gap-2 text-[12px]">
-    {{ admin_tab("Overview", "admin.dashboard", []) }}
-    {{ admin_tab("Users", "admin.users", []) }}
-    {{ admin_tab("Credits", "admin.credits", []) }}
-    {{ admin_tab("Universities", "admin.universities", []) }}
-    {{ admin_tab("Deals", "admin.deals", []) }}
-    {{ admin_tab("Vouchers", "admin.vouchers", ["admin.voucher_detail"]) }}
-
-    <span class="ml-auto text-[11px] text-slate-400/80">
-      Admin · university deals & seat packs
-    </span>
-  </div>
+{% block admin_body %}
+<div>
 
   <h1 class="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
     Admin · University Deals
   </h1>
 
-  <div class="grid gap-5 lg:grid-cols-2 mb-6 text-[13px]">
+  {% if not current_user.is_super_admin and not current_user.is_ultra_admin %}
+    <p class="text-[12px] text-amber-300/80 mb-4">
+      You do not have permission to view or modify university deals.
+    </p>
+  {% else %}
+
+  <div class="grid gap-6 lg:grid-cols-2 mb-6 text-[13px]">
+
+    <!-- Create deal -->
     <div class="glass-card rounded-2xl px-4 py-4">
-      <h2 class="text-sm font-semibold mb-3">Create deal</h2>
+      <h2 class="text-sm font-semibold mb-3">Create a new deal</h2>
 
       {% if not universities %}
         <p class="text-[11px] text-slate-400/80">
-          You need at least one university before creating deals.
+          No universities exist yet. Create one first.
         </p>
       {% else %}
         <form method="post" class="space-y-3">
+
+          <!-- University -->
           <div>
             <label class="block text-xs font-semibold mb-1 text-slate-200/90">
               University
             </label>
             <select name="university_id" required
-                    class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400">
+              class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400">
               <option value="">Select university…</option>
               {% for uni in universities %}
-                <option value="{{ uni.id }}">{{ uni.name }}{% if uni.tenant_slug %} · {{ uni.tenant_slug }}{% endif %}</option>
+                <option value="{{ uni.id }}">
+                  {{ uni.name }}{% if uni.tenant_slug %} · {{ uni.tenant_slug }}{% endif %}
+                </option>
               {% endfor %}
             </select>
           </div>
 
+          <!-- Deal name -->
           <div>
             <label class="block text-xs font-semibold mb-1 text-slate-200/90">
               Deal name
             </label>
-            <input type="text" name="name" required placeholder="Veltech 2025 pilot, BITS full-year, …"
-                   class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+            <input
+              type="text"
+              name="name"
+              required
+              placeholder="Veltech 2025 pack, BITS 1-year pilot, …"
+              class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            />
           </div>
 
+          <!-- Seats & credits -->
           <div class="grid gap-3 sm:grid-cols-3">
             <div>
               <label class="block text-xs font-semibold mb-1 text-slate-200/90">
-                Seats (students)
+                Seats
               </label>
-              <input type="number" name="seats_total" min="1" placeholder="e.g. 200"
-                     class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+              <input
+                type="number"
+                name="seats_total"
+                min="1"
+                placeholder="200"
+                class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+              />
             </div>
+
             <div>
               <label class="block text-xs font-semibold mb-1 text-slate-200/90">
                 Silver total
               </label>
-              <input type="number" name="silver_credits_total" min="0" placeholder="e.g. 50000"
-                     class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+              <input
+                type="number"
+                name="silver_credits_total"
+                min="0"
+                placeholder="50000"
+                class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+              />
             </div>
+
             <div>
               <label class="block text-xs font-semibold mb-1 text-slate-200/90">
                 Gold total
               </label>
-              <input type="number" name="gold_credits_total" min="0" placeholder="e.g. 20000"
-                     class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+              <input
+                type="number"
+                name="gold_credits_total"
+                min="0"
+                placeholder="20000"
+                class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+              />
             </div>
           </div>
 
+          <!-- Pricing + status -->
           <div class="grid gap-3 sm:grid-cols-3">
             <div>
               <label class="block text-xs font-semibold mb-1 text-slate-200/90">
                 Price (cents)
               </label>
-              <input type="number" name="price_cents" min="0" placeholder="e.g. 2500000"
-                     class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+              <input
+                type="number"
+                name="price_cents"
+                min="0"
+                placeholder="2500000"
+                class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+              />
             </div>
+
             <div>
               <label class="block text-xs font-semibold mb-1 text-slate-200/90">
                 Currency
               </label>
-              <input type="text" name="currency_code" value="INR"
-                     class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+              <input
+                type="text"
+                name="currency_code"
+                value="INR"
+                class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+              />
             </div>
+
             <div>
               <label class="block text-xs font-semibold mb-1 text-slate-200/90">
                 Status
               </label>
-              <select name="status"
-                      class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400">
+              <select
+                name="status"
+                class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+              >
                 <option value="draft">Draft</option>
                 <option value="active" selected>Active</option>
                 <option value="paused">Paused</option>
@@ -121,44 +145,59 @@
             </div>
           </div>
 
+          <!-- Dates -->
           <div class="grid gap-3 sm:grid-cols-2">
             <div>
               <label class="block text-xs font-semibold mb-1 text-slate-200/90">
                 Start date
               </label>
-              <input type="date" name="start_date"
-                     class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+              <input
+                type="date"
+                name="start_date"
+                class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+              />
             </div>
+
             <div>
               <label class="block text-xs font-semibold mb-1 text-slate-200/90">
                 End date
               </label>
-              <input type="date" name="end_date"
-                     class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+              <input
+                type="date"
+                name="end_date"
+                class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+              />
             </div>
           </div>
 
+          <!-- Notes -->
           <div>
             <label class="block text-xs font-semibold mb-1 text-slate-200/90">
-              Notes (internal)
+              Notes
             </label>
-            <textarea name="notes" rows="3"
-                      class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                      placeholder="Deal terms, invoice notes, contact person, etc."></textarea>
+            <textarea
+              name="notes"
+              rows="3"
+              placeholder="Invoice notes, contract terms, internal references…"
+              class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+            ></textarea>
           </div>
 
           <button type="submit" class="btn-primary text-xs mt-1">
             Create deal
           </button>
+
         </form>
       {% endif %}
     </div>
 
+    <!-- Existing deals -->
     <div class="glass-card rounded-2xl px-4 py-4 text-[12px]">
       <h2 class="text-sm font-semibold mb-3">Existing deals</h2>
+
       {% if deals %}
-        <div class="overflow-x-auto -mx-2">
-          <table class="min-w-full text-[11px]">
+        <div class="overflow-x-auto text-[11px]">
+          <table class="min-w-full">
             <thead class="bg-slate-900/80 text-slate-200/80">
               <tr>
                 <th class="px-3 py-2 text-left font-semibold">University</th>
@@ -169,20 +208,27 @@
                 <th class="px-3 py-2 text-left font-semibold">Status</th>
               </tr>
             </thead>
+
             <tbody>
               {% for d in deals %}
               <tr class="border-t border-slate-700/60">
+
+                <!-- University -->
                 <td class="px-3 py-2 text-slate-100/90">
-                  {{ d.university.name if d.university else '—' }}
+                  {{ d.university.name if d.university else "—" }}
                 </td>
+
+                <!-- Deal name -->
                 <td class="px-3 py-2">
-                  <div class="text-slate-100/90">{{ d.name }}</div>
+                  <div class="text-slate-100/90 font-semibold">{{ d.name }}</div>
                   {% if d.start_date or d.end_date %}
-                    <div class="text-slate-400/80 text-[10px]">
+                    <div class="text-[10px] text-slate-400/80">
                       {{ d.start_date or '—' }} → {{ d.end_date or '—' }}
                     </div>
                   {% endif %}
                 </td>
+
+                <!-- Seats -->
                 <td class="px-3 py-2 text-slate-200/80">
                   {% if d.seats_total is not none %}
                     {{ d.seats_used or 0 }} / {{ d.seats_total }}
@@ -190,6 +236,8 @@
                     —
                   {% endif %}
                 </td>
+
+                <!-- Silver credits -->
                 <td class="px-3 py-2 text-slate-200/80">
                   {% if d.silver_credits_total is not none %}
                     {{ d.silver_credits_used or 0 }} / {{ d.silver_credits_total }}
@@ -197,6 +245,8 @@
                     —
                   {% endif %}
                 </td>
+
+                <!-- Gold credits -->
                 <td class="px-3 py-2 text-slate-200/80">
                   {% if d.gold_credits_total is not none %}
                     {{ d.gold_credits_used or 0 }} / {{ d.gold_credits_total }}
@@ -204,9 +254,24 @@
                     —
                   {% endif %}
                 </td>
-                <td class="px-3 py-2 text-slate-200/80">
-                  {{ d.status|capitalize }}
+
+                <!-- Status badge -->
+                <td class="px-3 py-2 text-slate-200/90">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px]
+                    {% if d.status == 'active' %}
+                      border-emerald-400/50 bg-emerald-500/10 text-emerald-200
+                    {% elif d.status == 'paused' %}
+                      border-amber-400/50 bg-amber-500/10 text-amber-200
+                    {% elif d.status == 'closed' %}
+                      border-red-400/50 bg-red-500/10 text-red-200
+                    {% else %}
+                      border-slate-500/50 bg-slate-800/40 text-slate-200
+                    {% endif %}
+                  ">
+                    {{ d.status|capitalize }}
+                  </span>
                 </td>
+
               </tr>
               {% endfor %}
             </tbody>
@@ -214,10 +279,14 @@
         </div>
       {% else %}
         <p class="text-[11px] text-slate-400/80">
-          No deals yet. Create a deal to track bulk seats & credits sold to a university.
+          No deals have been created yet.
         </p>
       {% endif %}
     </div>
+
   </div>
+
+  {% endif %}
+
 </div>
 {% endblock %}

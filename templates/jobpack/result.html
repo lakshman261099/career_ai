@@ -2,15 +2,24 @@
 {% block title %}CareerAI Deep Evaluation Report{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto px-4 mt-10 space-y-6 text-white">
+<div class="max-w-4xl mx-auto px-4 mt-10 mb-16 space-y-6 text-white">
 
   <!-- HEADER -->
-  <div class="glass-card p-6 rounded-2xl flex justify-between items-center border border-white/10 shadow-lg">
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">
-        {{ "CareerAI Deep Evaluation" if is_pro else "Job Pack Report" }}
+  <div class="glass-card p-6 rounded-2xl flex justify-between items-center border border-white/10 shadow-lg relative overflow-hidden">
+    <div class="pointer-events-none absolute inset-0 opacity-50">
+      <div class="w-full h-full bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.25),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(129,140,248,0.25),transparent_55%)]"></div>
+    </div>
+
+    <div class="relative">
+      <h1 class="text-2xl font-bold tracking-tight flex items-center gap-2">
+        {% if is_pro %}
+          <i data-lucide="star" class="w-5 h-5 text-amber-300"></i>
+        {% else %}
+          <i data-lucide="file-badge" class="w-5 h-5 text-white/80"></i>
+        {% endif %}
+        <span>{{ "CareerAI Deep Evaluation" if is_pro else "Job Pack Report" }}</span>
       </h1>
-      <p class="text-sm text-white/70">
+      <p class="text-sm text-white/70 mt-1">
         {{ "Professional-grade analysis powered by CareerAI (GPT-4o)" if is_pro else "AI-powered fit, ATS score & resume optimization" }}
       </p>
       {% if from_history %}
@@ -23,14 +32,17 @@
         this job description. Update your profile to get sharper results.
       </p>
     </div>
-    <div class="flex flex-col items-end gap-1">
+
+    <div class="relative flex flex-col items-end gap-1">
       {% if is_pro %}
-        <span class="px-3 py-1 bg-emerald-500/20 border border-emerald-400/40 rounded-full text-xs font-semibold text-emerald-300">
-          Deep Evaluation ⭐
+        <span class="px-3 py-1 bg-emerald-500/20 border border-emerald-400/40 rounded-full text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+          <span>Deep Evaluation ⭐</span>
         </span>
       {% else %}
-        <span class="px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-white/70">
-          Free 🪙
+        <span class="px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-white/70 flex items-center gap-1.5">
+          <i data-lucide="wand-2" class="w-3.5 h-3.5"></i>
+          <span>Free 🪙</span>
         </span>
       {% endif %}
       <a href="{{ url_for('jobpack.history') }}"
@@ -188,7 +200,7 @@
             <div class="space-y-1">
               <div class="flex justify-between">
                 <span class="text-white/60">Quantifiable impact</span>
-                <span id="sub-impact-num" data-target="{{ subs.quantifiable_impact or 0 }}">0%</span>
+                <span id="sub-impact-num" data-target="{{ subs.quantifiable_impact or 0 }}">0%">0%</span>
               </div>
               <div class="bg-white/10 h-2 rounded-full overflow-hidden">
                 <div id="sub-impact-bar" class="h-2 bg-white/80" style="width:0%"></div>
@@ -251,7 +263,8 @@
   <div class="glass-card p-6 rounded-2xl border border-emerald-400/30 bg-emerald-600/5 pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
     <div class="pro-lock-blur">
       <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-        Resume ATS Audit
+        <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+        <span>Resume ATS Audit</span>
         <span class="text-xs text-emerald-400 font-normal">(Structure, keywords, exact fixes)</span>
       </h2>
 
@@ -543,7 +556,7 @@
   </div>
   {% endif %}
 
-  <!-- APPLICATION CHECKLIST (Pro-locked but could be lightly previewed) -->
+  <!-- APPLICATION CHECKLIST (Pro-locked) -->
   {% if result.application_checklist %}
   <div class="glass-card p-6 rounded-2xl pro-lock-wrapper {% if not is_pro %}pro-locked{% endif %}">
     <div class="pro-lock-blur">
@@ -564,7 +577,7 @@
   </div>
   {% endif %}
 
-  <!-- IMPACT SUMMARY (visible; keeps it satisfying even for Free) -->
+  <!-- IMPACT SUMMARY (visible) -->
   <div class="glass-card p-6 rounded-2xl text-center text-sm text-white/70 italic border border-emerald-400/20">
     {{ result.impact_summary or "Evaluation complete. Thank you for using CareerAI." }}
   </div>
@@ -578,14 +591,16 @@
         {% else %}
           <input type="hidden" name="data" value='{{ result | tojson | forceescape }}'>
         {% endif %}
-        <button class="btn-primary px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-lg">
-          Download Deep Evaluation PDF ⭐
+        <button class="btn-primary px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-lg inline-flex items-center gap-1">
+          <i data-lucide="download" class="w-4 h-4"></i>
+          <span>Download Deep Evaluation PDF ⭐</span>
         </button>
       </form>
     {% else %}
       <a href="{{ url_for('billing.index') }}"
-         class="btn-primary px-5 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500 transition text-white shadow-lg">
-        Upgrade to Deep Evaluation ⭐
+         class="btn-primary px-5 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500 transition text-white shadow-lg inline-flex items-center gap-1">
+        <i data-lucide="star" class="w-4 h-4"></i>
+        <span>Upgrade to Deep Evaluation ⭐</span>
       </a>
     {% endif %}
   </div>
@@ -610,7 +625,8 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Chart.js for the radar (CDN) -->
+<!-- Lucide + Chart.js for the radar -->
+<script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 function animateValue(el, target){
@@ -640,6 +656,10 @@ function copyFixes(){
 }
 
 document.addEventListener("DOMContentLoaded", function(){
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+
   // animated numbers / bars
   animateValue(document.getElementById("ats-main-number"));
   animateBar(document.getElementById("ats-main-bar"));

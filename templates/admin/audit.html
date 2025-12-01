@@ -7,12 +7,194 @@
 {% block admin_body %}
 <div>
 
-  <h1 class="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
-    Ultra Admin · Audit
-  </h1>
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">
+      Ultra Admin · Audit
+    </h1>
+  </div>
+
+  <!-- Admin Action Log (filterable) -->
+  <div class="glass-card rounded-2xl px-4 py-4 mb-6 text-[12px]">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+      <div>
+        <h2 class="text-sm font-semibold mb-1">Admin action log</h2>
+        <p class="text-[11px] text-slate-400/80">
+          View recent privileged actions (role changes, credit adjustments, deals, vouchers, universities).
+        </p>
+      </div>
+      <a
+        href="{{ url_for('admin.audit_export', type=action_type_filter, admin_email=admin_email_filter, target_email=target_email_filter) }}"
+        class="btn-ghost text-[11px] px-3 py-1.5"
+      >
+        Download CSV
+      </a>
+    </div>
+
+    <!-- Filters -->
+    <form method="get" class="grid gap-3 md:grid-cols-4 mb-3 text-[11px]">
+      <div>
+        <label class="block mb-1 text-slate-200/80">Action type</label>
+        <select
+          name="type"
+          class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1.5 text-[11px]"
+        >
+          <option value="">All</option>
+          {% for t in action_types %}
+            <option value="{{ t }}" {% if action_type_filter == t %}selected{% endif %}>
+              {{ t }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block mb-1 text-slate-200/80">Admin email contains</label>
+        <input
+          type="text"
+          name="admin_email"
+          value="{{ admin_email_filter }}"
+          class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1.5 text-[11px]"
+          placeholder="admin@university.edu"
+        />
+      </div>
+
+      <div>
+        <label class="block mb-1 text-slate-200/80">Target email contains</label>
+        <input
+          type="text"
+          name="target_email"
+          value="{{ target_email_filter }}"
+          class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1.5 text-[11px]"
+          placeholder="student@university.edu"
+        />
+      </div>
+
+      <div class="flex items-end justify-end gap-2">
+        <button type="submit" class="btn-primary text-[10px] px-3 py-1.5">
+          Apply filters
+        </button>
+        <a href="{{ url_for('admin.audit') }}" class="btn-ghost text-[10px] px-3 py-1.5">
+          Clear
+        </a>
+      </div>
+    </form>
+
+    {% if admin_logs %}
+      <div class="overflow-x-auto -mx-2 text-[11px]">
+        <table class="min-w-full">
+          <thead class="bg-slate-900/80 text-slate-200/80">
+            <tr>
+              <th class="px-3 py-2 text-left font-semibold">When</th>
+              <th class="px-3 py-2 text-left font-semibold">Admin</th>
+              <th class="px-3 py-2 text-left font-semibold">Action</th>
+              <th class="px-3 py-2 text-left font-semibold">Target</th>
+              <th class="px-3 py-2 text-left font-semibold">University</th>
+              <th class="px-3 py-2 text-left font-semibold">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in admin_logs %}
+            {% set meta = log.meta_json or {} %}
+            <tr class="border-t border-slate-700/60 align-top">
+              <td class="px-3 py-2 text-slate-200/90 whitespace-nowrap">
+                {{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '' }}
+              </td>
+              <td class="px-3 py-2">
+                {% if log.performed_by %}
+                  <div class="text-slate-100/90">
+                    {{ log.performed_by.email }}
+                  </div>
+                  <div class="text-[10px] text-slate-400/80">
+                    {{ log.performed_by.name or '' }}
+                  </div>
+                {% else %}
+                  <span class="text-slate-500/80">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2">
+                <div class="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-500/60 text-[10px] bg-slate-900/70 text-slate-100">
+                  {{ log.action_type }}
+                </div>
+                {% if meta.super_admin_change or meta.ultra_admin_change %}
+                  <div class="mt-0.5 text-[10px] text-amber-300/80">
+                    {% if meta.super_admin_change %}
+                      Super admin change:
+                      {{ meta.super_admin_change.before }} → {{ meta.super_admin_change.after }}
+                    {% endif %}
+                    {% if meta.ultra_admin_change %}
+                      <br>
+                      Ultra admin change:
+                      {{ meta.ultra_admin_change.before }} → {{ meta.ultra_admin_change.after }}
+                    {% endif %}
+                  </div>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2">
+                {% if log.target_user %}
+                  <div class="text-slate-100/90">
+                    {{ log.target_user.email }}
+                  </div>
+                  <div class="text-[10px] text-slate-400/80">
+                    {{ log.target_user.name or '' }}
+                  </div>
+                {% else %}
+                  <span class="text-slate-500/80">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2">
+                {% if log.university %}
+                  <div class="text-slate-100/90">
+                    {{ log.university.name }}
+                  </div>
+                  <div class="text-[10px] text-slate-400/80">
+                    ID: {{ log.university.id }}
+                  </div>
+                {% else %}
+                  <span class="text-slate-500/80">Global / None</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2">
+                {% if meta.changes %}
+                  <div class="text-[10px] text-slate-200/90">
+                    {% for field, info in meta.changes.items() %}
+                      <div>
+                        <span class="font-semibold">{{ field }}</span>:
+                        <span class="text-slate-300/90">{{ info.before }}</span>
+                        <span class="mx-1 text-slate-500/80">→</span>
+                        <span class="text-slate-100/95">{{ info.after }}</span>
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                {% if meta.amount %}
+                  <div class="mt-0.5 text-[10px] text-slate-300/90">
+                    Amount: {{ meta.amount }}
+                    ({{ meta.currency or 'n/a' }}) · Reason: {{ meta.reason or '—' }}
+                  </div>
+                {% endif %}
+                {% if not meta.changes and not meta.amount %}
+                  <div class="text-[10px] text-slate-400/80">
+                    {{ meta | tojson | truncate(160, True, '…') }}
+                  </div>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="mt-2 text-[10px] text-slate-400/80">
+          Showing up to 250 recent actions. Narrow down using filters above.
+        </p>
+      </div>
+    {% else %}
+      <p class="text-[11px] text-slate-400/80">
+        No admin actions recorded yet.
+      </p>
+    {% endif %}
+  </div>
 
   <!-- Super Admin List + Recent Admin Credit Adjustments -->
-  <div class="grid gap-5 md:grid-cols-2 mb-6 text-[13px]">
+  <div class="grid gap-5 md:grid-cols-2 mb-6 text-[12px]">
 
     <!-- Super Admins -->
     <div class="glass-card rounded-2xl px-4 py-4">
@@ -160,7 +342,7 @@
 
   <p class="mt-3 text-[11px] text-slate-400/80">
     This audit page is read-only. Ultra admins can always see global actions
-    by super admins, but never tenant-level student analytics.
+    by super admins and tenant admins, but never student-level analytics.
   </p>
 
 </div>

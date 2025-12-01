@@ -1,123 +1,148 @@
 {# templates/admin/universities.html #}
-{% extends "base.html" %}
+{% extends "admin/_layout.html" %}
+
 {% block title %}Admin · Universities · CareerAI{% endblock %}
+{% set active_tab = 'universities' %}
 
-{% block content %}
-<div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 mt-6 mb-16">
+{% block admin_body %}
+<div>
 
-  {# ---------- Shared Admin Sub-Nav ---------- #}
-  {% macro admin_tab(label, endpoint_name, extra_endpoints) %}
-    {% set ep = request.endpoint or '' %}
-    {% set active = (ep == endpoint_name) or (ep in extra_endpoints) %}
-    <a href="{{ url_for(endpoint_name) }}"
-       class="px-3 py-1.5 rounded-full border text-xs
-              {% if active %}
-                bg-slate-900 text-white border-indigo-400
-              {% else %}
-                bg-slate-900/40 text-slate-200/80 border-slate-500/70 hover:border-indigo-400/80
-              {% endif %}">
-      {{ label }}
-    </a>
-  {% endmacro %}
+  <h1 class="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
+    Admin · Universities
+  </h1>
 
-  <div class="glass-card rounded-2xl px-4 py-3 mb-5 flex flex-wrap items-center gap-2 text-[12px]">
-    {{ admin_tab("Overview", "admin.dashboard", []) }}
-    {{ admin_tab("Users", "admin.users", []) }}
-    {{ admin_tab("Credits", "admin.credits", []) }}
-    {{ admin_tab("Universities", "admin.universities", []) }}
-    {{ admin_tab("Deals", "admin.deals", []) }}
-    {{ admin_tab("Vouchers", "admin.vouchers", ["admin.voucher_detail"]) }}
-
-    <span class="ml-auto text-[11px] text-slate-400/80">
-      Admin · tenants &amp; routing
-    </span>
-  </div>
-
-  <div class="flex items-center justify-between gap-3 mb-4">
-    <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">
-      Admin · Universities
-    </h1>
-  </div>
+  {% if not current_user.is_super_admin and not current_user.is_ultra_admin %}
+    <p class="text-[12px] text-amber-300/80 mb-4">
+      You do not have permission to view or manage universities.
+    </p>
+  {% else %}
 
   <div class="grid gap-6 md:grid-cols-2">
+
+    <!-- Create university -->
     <div class="glass-card rounded-2xl px-4 py-4">
       <h2 class="text-sm font-semibold mb-2">Create university</h2>
+
       <form method="post" class="space-y-3 text-[13px]">
+
+        <!-- Name -->
         <div>
           <label class="block text-xs font-semibold mb-1 text-slate-200/90">
             Name
           </label>
-          <input type="text" name="name" required
-                 placeholder="Veltech University"
-                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+          <input
+            type="text"
+            name="name"
+            required
+            placeholder="Veltech University"
+            class="w-full rounded-lg border border-slate-600/60 bg-slate-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
         </div>
+
+        <!-- Domain -->
         <div>
           <label class="block text-xs font-semibold mb-1 text-slate-200/90">
             Domain (optional)
           </label>
-          <input type="text" name="domain"
-                 placeholder="veltech.edu"
-                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+          <input
+            type="text"
+            name="domain"
+            placeholder="veltech.edu"
+            class="w-full rounded-lg border border-slate-600/60 bg-slate-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
           <p class="mt-1 text-[11px] text-slate-400/80">
-            Full email/web domain for this university. Used for automatic tenant detection.
+            Used for tenant auto-detection via email domains.
           </p>
         </div>
+
+        <!-- Tenant slug -->
         <div>
           <label class="block text-xs font-semibold mb-1 text-slate-200/90">
             Tenant slug (optional)
           </label>
-          <input type="text" name="tenant_slug"
-                 placeholder="veltech (for careerai.veltech.ai)"
-                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+          <input
+            type="text"
+            name="tenant_slug"
+            placeholder="veltech (for careerai.veltech.ai)"
+            class="w-full rounded-lg border border-slate-600/60 bg-slate-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
           <p class="mt-1 text-[11px] text-slate-400/80">
-            Subdomain or slug used in your routing (e.g. careerai.<strong>veltech</strong>.ai).
+            Required only if you run a subdomain routing model.
           </p>
         </div>
+
         <div class="pt-2">
-          <button type="submit" class="btn-primary text-xs">
+          <button type="submit" class="btn-primary text-xs px-4 py-1.5">
             Create university
           </button>
         </div>
+
       </form>
     </div>
 
+
+    <!-- Existing universities -->
     <div class="glass-card rounded-2xl px-4 py-4">
       <h2 class="text-sm font-semibold mb-2">Existing universities</h2>
+
       {% if universities %}
         <div class="overflow-x-auto text-[11px]">
           <table class="min-w-full">
-            <thead class="bg-slate-900/80 text-slate-200/80">
+            <thead class="bg-slate-900/80 text-slate-200/80 text-[10px] uppercase tracking-[0.16em]">
               <tr>
-                <th class="px-3 py-2 text-left font-semibold">Name</th>
-                <th class="px-3 py-2 text-left font-semibold">Domain</th>
-                <th class="px-3 py-2 text-left font-semibold">Slug</th>
-                <th class="px-3 py-2 text-left font-semibold">Created</th>
+                <th class="px-3 py-2 text-left">Name</th>
+                <th class="px-3 py-2 text-left">Domain</th>
+                <th class="px-3 py-2 text-left">Slug</th>
+                <th class="px-3 py-2 text-left">Created</th>
               </tr>
             </thead>
+
             <tbody>
               {% for uni in universities %}
-              <tr class="border-t border-slate-700/60">
-                <td class="px-3 py-2 text-slate-100/90">
-                  {{ uni.name }}
-                </td>
-                <td class="px-3 py-2 text-slate-200/80">
-                  {{ uni.domain or '—' }}
-                </td>
-                <td class="px-3 py-2 text-slate-200/80">
-                  {{ uni.tenant_slug or '—' }}
-                </td>
-                <td class="px-3 py-2 text-slate-300/80">
-                  {{ uni.created_at.strftime('%Y-%m-%d') if uni.created_at else '' }}
-                </td>
-              </tr>
+                <tr class="border-t border-slate-700/60">
+
+                  <!-- Name -->
+                  <td class="px-3 py-2 text-slate-100/90">
+                    <div class="font-semibold">{{ uni.name }}</div>
+
+                    {% if g.current_tenant and g.current_tenant.id == uni.id %}
+                      <span class="inline-flex mt-1 px-2 py-0.5 text-[10px] rounded-full border border-indigo-400/60 bg-indigo-500/10 text-indigo-200">
+                        Active tenant
+                      </span>
+                    {% endif %}
+                  </td>
+
+                  <!-- Domain -->
+                  <td class="px-3 py-2 text-slate-200/80">
+                    {{ uni.domain or '—' }}
+                  </td>
+
+                  <!-- Slug -->
+                  <td class="px-3 py-2 text-slate-200/80">
+                    {{ uni.tenant_slug or '—' }}
+                  </td>
+
+                  <!-- Created -->
+                  <td class="px-3 py-2 text-slate-300/80">
+                    {{ uni.created_at.strftime('%Y-%m-%d') if uni.created_at else '' }}
+                  </td>
+
+                </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
+
       {% else %}
-        <p class="text-[11px] text-slate-400/80">No universities yet.</p>
+        <p class="text-[11px] text-slate-400/80">
+          No universities yet.
+        </p>
       {% endif %}
+
     </div>
   </div>
+
+  {% endif %}
+
 </div>
 {% endblock %}

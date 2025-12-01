@@ -10,58 +10,95 @@
     </div>
   </div>
 
-  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
+  {% set plan = (subscription_status or 'free')|lower %}
+
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 space-y-8 sm:space-y-10">
     <!-- Hero / Welcome -->
     <header class="space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="space-y-1">
-          <p class="text-xs text-white/60 uppercase tracking-[0.16em]">
-            Dashboard
-          </p>
-          <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="space-y-2">
+          <div class="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-white/60">
+            <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 inline-flex items-center gap-1">
+              <span class="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+              <span>Student Dashboard</span>
+            </span>
+            {% if tenant_name %}
+            <span class="hidden sm:inline text-white/40">·</span>
+            <span class="hidden sm:inline px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
+              {{ tenant_name }}
+            </span>
+            {% endif %}
+          </div>
+          <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight">
             Welcome{% if current_user.is_authenticated %}, {{ current_user.email }}{% endif %}
           </h1>
-          <p class="text-sm sm:text-base text-slate-200 max-w-xl">
-            Use these five tools together as your AI career control center — map your skills, decode jobs,
-            design projects, and reach warm referrals. Everything works best when your Profile Portal is complete.
+          <p class="text-sm sm:text-base text-slate-200 max-w-2xl">
+            Use CareerAI as your AI career control center — map your skills, decode real jobs, design projects,
+            and reach warm referrals. Everything works best once your Profile Portal is complete.
           </p>
         </div>
+
         <div class="flex flex-col items-end gap-2 text-xs">
           <a href="{{ feature_paths.profile }}"
-             class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/15 text-slate-100 hover:bg-white/10 transition">
-            <span class="text-[11px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/60 text-emerald-200">
+             class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/15 text-slate-100 hover:bg-white/10 hover:border-white/40 transition">
+            <span class="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/60 text-emerald-200">
+              <i data-lucide="id-card" class="w-3.5 h-3.5"></i>
               Profile Portal
             </span>
             <span class="hidden sm:inline text-slate-200/90">
-              Start here · filled once, used everywhere
+              Fill once · reused by every tool
+            </span>
+            <span class="sm:hidden text-slate-200/90 text-[11px]">
+              Complete your profile
             </span>
           </a>
-          <p class="text-[10px] text-white/40">
-            Step 1 for every student: complete your Profile Portal. Then use the tools below.
+          <p class="text-[10px] text-white/40 text-right max-w-xs">
+            Step 1 for every student: complete your Profile Portal. Then run Skill Mapper, Job Packs, Portfolio & more.
           </p>
         </div>
       </div>
 
-      <!-- Simple “how to use the app” strip (dashboard-specific) -->
-      <div class="glass-card rounded-2xl px-4 py-3 text-[11px] text-white/70 mt-2">
-        <p class="font-semibold text-white/80 mb-1">Your career path with CareerAI:</p>
-        <div class="flex flex-wrap gap-x-3 gap-y-1">
-          <span>1) <strong>Profile Portal</strong> — add your basics, skills &amp; projects</span>
-          <span>→ 2) <strong>Skill Mapper</strong> — pick one target role</span>
-          <span>→ 3) <strong>Portfolio</strong> — build projects for that role</span>
-          <span>→ 4) <strong>Job Packs &amp; Internship Analyzer</strong> — compare real JDs &amp; internships</span>
-          <span>→ 5) <strong>Referral Trainer</strong> — reach people for those roles</span>
+      <!-- How to use strip -->
+      <div class="glass-card rounded-2xl px-4 py-3 text-[11px] text-white/70 mt-1.5 border border-white/10 shadow-lg/40">
+        <p class="font-semibold text-white/80 mb-1">Your CareerAI path:</p>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span class="inline-flex items-center gap-1">
+            <span class="font-semibold">1)</span> <strong>Profile Portal</strong> — basics, skills &amp; projects
+          </span>
+          <span class="inline-flex items-center gap-1">
+            → <strong>Skill Mapper</strong> — choose target roles
+          </span>
+          <span class="inline-flex items-center gap-1">
+            → <strong>Portfolio</strong> — build role-based projects
+          </span>
+          <span class="inline-flex items-center gap-1">
+            → <strong>Job Packs &amp; Internship Analyzer</strong> — test real JDs &amp; internships
+          </span>
+          <span class="inline-flex items-center gap-1">
+            → <strong>Referral Trainer</strong> — reach people at those companies
+          </span>
         </div>
       </div>
 
-      {# Credits & Plan card #}
-      <div class="mt-3 grid gap-3 md:grid-cols-[minmax(0,1.7fr)_minmax(0,1.3fr)]">
-        <div class="glass-card rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-[12px]">
+      <!-- Top cards: Credits / Plan + Alerts -->
+      <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1.4fr)]">
+        <!-- Credits & plan -->
+        <div class="glass-card rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-[12px] border border-white/10 shadow-lg/40">
           <div class="space-y-1">
-            <p class="uppercase tracking-[0.16em] text-[10px] text-white/60">
-              Credits &amp; plan
+            <p class="uppercase tracking-[0.16em] text-[10px] text-white/60 flex items-center gap-2">
+              <span>Credits &amp; plan</span>
+              {% if plan == 'pro' %}
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/60 text-[10px] text-emerald-100">
+                <i data-lucide="sparkles" class="w-3 h-3"></i>
+                Pro active
+              </span>
+              {% else %}
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-900/80 border border-slate-500/70 text-[10px] text-slate-100">
+                <i data-lucide="badge-info" class="w-3 h-3"></i>
+                Free plan
+              </span>
+              {% endif %}
             </p>
-            {% set plan = (subscription_status or 'free')|lower %}
             <div class="flex flex-wrap items-center gap-2">
               <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] uppercase tracking-widest
                             {% if plan == 'pro' %}
@@ -72,19 +109,19 @@
                 {{ 'Pro' if plan == 'pro' else 'Free' }}
               </span>
               <span class="text-white/60 text-[11px]">
-                Use Silver 🪙 for free tools and Gold ⭐ for Pro features.
+                Use Silver 🪙 for free tools and Gold ⭐ for Pro-only features.
               </span>
             </div>
           </div>
           <div class="flex flex-wrap items-center gap-3">
-            <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-slate-900/80 border border-slate-500/60">
+            <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-slate-950/80 border border-slate-600/70 shadow-md/40">
               <span class="text-base">🪙</span>
               <div class="flex flex-col leading-tight">
                 <span class="text-[11px] text-slate-300/80 uppercase tracking-[0.16em]">Silver</span>
                 <span class="text-sm font-semibold">{{ user_free or 0 }}</span>
               </div>
             </div>
-            <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-slate-900/80 border border-slate-500/60">
+            <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-slate-950/80 border border-slate-600/70 shadow-md/40">
               <span class="text-base">⭐</span>
               <div class="flex flex-col leading-tight">
                 <span class="text-[11px] text-slate-300/80 uppercase tracking-[0.16em]">Gold</span>
@@ -92,34 +129,195 @@
               </div>
             </div>
             <a href="{{ feature_paths.billing }}"
-               class="btn-ghost text-[11px] whitespace-nowrap">
+               class="btn-ghost text-[11px] whitespace-nowrap inline-flex items-center gap-1">
+              <i data-lucide="coins" class="w-3.5 h-3.5"></i>
               Open Coins Shop
             </a>
           </div>
         </div>
 
-        {# Extra nudge on dashboard if not verified #}
-        {% if current_user.is_authenticated and not current_user.verified %}
-          <div class="glass-card rounded-2xl px-4 py-3 border border-amber-400/60 text-xs sm:text-sm text-amber-100">
+        <!-- Right side: verification / upgrade / university -->
+        <div class="space-y-3">
+          {% if current_user.is_authenticated and not current_user.verified %}
+          <!-- Email verification nudge -->
+          <div class="glass-card rounded-2xl px-4 py-3 border border-amber-400/60 text-xs sm:text-sm text-amber-100 shadow-lg/40">
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p class="font-semibold">Finish email verification to use all AI features.</p>
-                <p class="text-amber-100/80 text-[11px] sm:text-xs">
-                  You can open every page now. When you click “Analyze” or “Generate”, we’ll ask for a one-time email code.
+              <div class="space-y-1">
+                <p class="font-semibold flex items-center gap-1.5">
+                  <i data-lucide="mail-check" class="w-4 h-4"></i>
+                  Finish email verification to unlock AI tools.
+                </p>
+                <p class="text-amber-100/80 text-[11px] sm:text-xs max-w-md">
+                  You can explore every page now. When you click “Analyze” or “Generate”, we’ll ask for a one-time email code.
+                  Verifying once keeps your tools open on this device.
                 </p>
               </div>
               <a href="{{ url_for('auth.otp_request') }}"
-                 class="btn-primary text-xs whitespace-nowrap">
+                 class="btn-primary text-xs whitespace-nowrap inline-flex items-center gap-1">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
                 Get login code
               </a>
             </div>
           </div>
-        {% endif %}
+          {% endif %}
+
+          {% if plan != 'pro' %}
+          <!-- Upgrade to Pro banner -->
+          <div class="glass-card rounded-2xl px-4 py-3 border border-violet-400/50 text-xs sm:text-sm text-violet-50 shadow-lg/40 bg-gradient-to-r from-violet-600/25 via-slate-900/90 to-amber-500/15">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="space-y-1">
+                <p class="font-semibold flex items-center gap-1.5">
+                  <i data-lucide="rocket" class="w-4 h-4"></i>
+                  Upgrade to Pro for unlimited depth.
+                </p>
+                <p class="text-violet-100/80 text-[11px] sm:text-xs max-w-md">
+                  Pro unlocks Portfolio publishing, Skill Mapper Pro, full Job Packs, and unlimited Internship Analyzer runs —
+                  all powered by your Profile Portal and resume.
+                </p>
+              </div>
+              <a href="{{ feature_paths.billing }}"
+                 class="inline-flex items-center gap-1 rounded-full bg-white text-slate-900 text-xs font-semibold px-3 py-1.5 hover:bg-slate-100 transition">
+                View Pro plans
+                <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+              </a>
+            </div>
+          </div>
+          {% endif %}
+
+          {% if tenant_name %}
+          <!-- University branding card -->
+          <div class="glass-card rounded-2xl px-4 py-3 border border-white/8 text-[11px] text-white/80 shadow-lg/40 flex items-center justify-between gap-3">
+            <div class="space-y-0.5">
+              <p class="uppercase tracking-[0.18em] text-[10px] text-white/50">University space</p>
+              <p class="text-sm font-semibold">{{ tenant_name }}</p>
+              <p class="text-[11px] text-white/55">
+                Your credits, tools &amp; analytics are scoped to this university workspace.
+              </p>
+            </div>
+            <div class="hidden sm:flex flex-col items-end text-right gap-1">
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px]">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                Tenant secured
+              </span>
+              <span class="text-[10px] text-white/40">Powered by CareerAI</span>
+            </div>
+          </div>
+          {% endif %}
+        </div>
       </div>
     </header>
 
+    <!-- Quick actions + usage snapshot -->
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)]">
+      <!-- Quick actions -->
+      <section class="glass-card rounded-2xl px-4 py-3.5 border border-white/10 shadow-lg/40 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-semibold text-white flex items-center gap-1.5">
+              <i data-lucide="wand-2" class="w-4 h-4"></i>
+              Quick actions
+            </h2>
+            <p class="text-[11px] text-white/55">
+              Jump straight into a tool — you can always come back to the dashboard.
+            </p>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <a href="{{ feature_paths.skillmapper }}"
+             class="group flex items-center gap-2 rounded-xl border border-violet-500/40 bg-violet-500/10 px-2.5 py-2 text-xs hover:bg-violet-500/20 hover:border-violet-300/80 transition">
+            <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/30">
+              <i data-lucide="radar" class="w-3.5 h-3.5"></i>
+            </span>
+            <span class="flex flex-col">
+              <span class="font-semibold text-slate-50">Skill Mapper</span>
+              <span class="text-[10px] text-violet-100/80">Find your top 3 roles</span>
+            </span>
+          </a>
+
+          <a href="{{ feature_paths.jobpack }}"
+             class="group flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-2 text-xs hover:bg-emerald-500/20 hover:border-emerald-300/80 transition">
+            <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/30">
+              <i data-lucide="file-search" class="w-3.5 h-3.5"></i>
+            </span>
+            <span class="flex flex-col">
+              <span class="font-semibold text-slate-50">Job Pack</span>
+              <span class="text-[10px] text-emerald-100/85">Paste a JD &amp; analyze</span>
+            </span>
+          </a>
+
+          <a href="{{ feature_paths.portfolio }}"
+             class="group flex items-center gap-2 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-2.5 py-2 text-xs hover:bg-fuchsia-500/20 hover:border-fuchsia-300/80 transition">
+            <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-fuchsia-500/30">
+              <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
+            </span>
+            <span class="flex flex-col">
+              <span class="font-semibold text-slate-50">Portfolio Builder</span>
+              <span class="text-[10px] text-fuchsia-100/85">Turn skills into projects</span>
+            </span>
+          </a>
+
+          <a href="{{ feature_paths.internships }}"
+             class="group flex items-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 px-2.5 py-2 text-xs hover:bg-sky-500/20 hover:border-sky-300/80 transition">
+            <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/30">
+              <i data-lucide="graduation-cap" class="w-3.5 h-3.5"></i>
+            </span>
+            <span class="flex flex-col">
+              <span class="font-semibold text-slate-50">Internship Analyzer</span>
+              <span class="text-[10px] text-sky-100/85">Check an internship</span>
+            </span>
+          </a>
+
+          <a href="{{ feature_paths.referral }}"
+             class="group flex items-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-2.5 py-2 text-xs hover:bg-amber-500/20 hover:border-amber-300/80 transition">
+            <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/30">
+              <i data-lucide="messages-square" class="w-3.5 h-3.5"></i>
+            </span>
+            <span class="flex flex-col">
+              <span class="font-semibold text-slate-50">Referral Trainer</span>
+              <span class="text-[10px] text-amber-100/85">Draft outreach in minutes</span>
+            </span>
+          </a>
+
+          <a href="{{ feature_paths.profile }}"
+             class="group flex items-center gap-2 rounded-xl border border-slate-500/60 bg-slate-900/70 px-2.5 py-2 text-xs hover:bg-slate-800/90 hover:border-slate-200/80 transition">
+            <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-700/80">
+              <i data-lucide="user-round" class="w-3.5 h-3.5"></i>
+            </span>
+            <span class="flex flex-col">
+              <span class="font-semibold text-slate-50">Edit Profile</span>
+              <span class="text-[10px] text-slate-300/80">Update skills &amp; resume</span>
+            </span>
+          </a>
+        </div>
+      </section>
+
+      <!-- Usage snapshot / simple chart -->
+      <section class="glass-card rounded-2xl px-4 py-3.5 border border-white/10 shadow-lg/40 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-semibold text-white flex items-center gap-1.5">
+              <i data-lucide="activity" class="w-4 h-4"></i>
+              Credit snapshot
+            </h2>
+            <p class="text-[11px] text-white/55">
+              Simple view of your current Silver vs Gold balance.
+            </p>
+          </div>
+        </div>
+        <div class="mt-1.5">
+          <canvas id="creditsChart"
+                  class="w-full h-32"
+                  data-silver="{{ user_free or 0 }}"
+                  data-gold="{{ user_pro or 0 }}"></canvas>
+        </div>
+        <p class="text-[10px] text-white/40">
+          Visual only — balances update whenever you use or receive credits.
+        </p>
+      </section>
+    </div>
+
     <!-- Features zig-zag -->
-    <div class="space-y-10">
+    <div class="space-y-8 sm:space-y-10 pt-4">
       <!-- 1. Skill Mapper (left) -->
       <div class="ca-feature-row ca-feature-left">
         <article class="ca-feature-card">
@@ -129,7 +327,8 @@
           <div class="space-y-1.5">
             <h2 class="text-lg font-semibold">Skill Mapper</h2>
             <p class="text-slate-200 text-sm">
-              Uses your Profile Portal and latest resume to suggest 3 best-fit roles with India demand and sample salaries. Start here after filling your profile.
+              Uses your Profile Portal and latest resume to suggest 3 best-fit roles with India demand and sample salaries.
+              Start here after filling your profile.
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">
@@ -167,7 +366,8 @@
           <div class="space-y-1.5">
             <h2 class="text-lg font-semibold">Job Pack</h2>
             <p class="text-slate-200 text-sm">
-              Paste a JD. Get ATS score, missing keywords, interview Q&amp;A, and a full prep plan. Your Profile Portal resume and skills are auto-read for better matching.
+              Paste a JD. Get ATS score, missing keywords, interview Q&amp;A, and a full prep plan.
+              Your Profile Portal resume and skills are auto-read for better matching.
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">
@@ -205,7 +405,8 @@
           <div class="space-y-1.5">
             <h2 class="text-lg font-semibold">Portfolio Builder</h2>
             <p class="text-slate-200 text-sm">
-              Convert your skills into standout project ideas with impact bullets and tech stack suggestions. Pulls directly from your Profile Portal skills &amp; projects.
+              Convert your skills into standout project ideas with impact bullets and tech stack suggestions.
+              Pulls directly from your Profile Portal skills &amp; projects.
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">
@@ -243,7 +444,8 @@
           <div class="space-y-1.5">
             <h2 class="text-lg font-semibold">Internship Analyzer</h2>
             <p class="text-slate-200 text-sm">
-              Paste any internship description. See what you’ll learn, portfolio impact, and next roles it opens. Tailors advice based on your Profile Portal goals.
+              Paste any internship description. See what you’ll learn, portfolio impact, and next roles it opens.
+              Tailors advice based on your Profile Portal goals.
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">
@@ -315,6 +517,10 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Lucide + Chart.js (dashboard only) -->
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
   /* Subtle animated gradient in background */
   @keyframes caGradient {
@@ -357,7 +563,7 @@
     transition:
       transform 220ms cubic-bezier(0.22,0.61,0.36,1),
       box-shadow 220ms cubic-bezier(0.22,0.61,0.36,1),
-      border-color 200ms.ease-out,
+      border-color 200ms ease-out,
       background 220ms ease-out;
   }
   .ca-feature-card:hover {
@@ -395,7 +601,7 @@
     text-decoration: none;
     transition:
       transform 160ms ease-out,
-      box-shadow 160ms.ease-out,
+      box-shadow 160ms ease-out,
       filter 160ms ease-out;
   }
   .ca-feature-cta:hover {
@@ -452,4 +658,66 @@
     }
   }
 </style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    // Initialize Lucide icons if available
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+
+    // Simple credits bar chart
+    var canvas = document.getElementById('creditsChart');
+    if (canvas && window.Chart) {
+      var silver = parseInt(canvas.dataset.silver || '0', 10);
+      var gold = parseInt(canvas.dataset.gold || '0', 10);
+      var ctx = canvas.getContext('2d');
+
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Silver 🪙', 'Gold ⭐'],
+          datasets: [{
+            data: [silver, gold],
+            backgroundColor: ['rgba(148, 163, 253, 0.8)', 'rgba(251, 191, 36, 0.85)'],
+            borderRadius: 8,
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return context.parsed.y + ' credits';
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                color: '#e5e7eb',
+                font: { size: 10 }
+              }
+            },
+            y: {
+              grid: { color: 'rgba(148,163,184,0.25)', drawBorder: false },
+              ticks: {
+                color: '#9ca3af',
+                font: { size: 9 },
+                precision: 0,
+                stepSize: Math.max(1, Math.round(Math.max(silver, gold) / 4) || 1)
+              },
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    }
+  });
+</script>
 {% endblock %}

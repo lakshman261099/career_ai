@@ -1,129 +1,147 @@
 {# templates/admin/vouchers.html #}
-{% extends "base.html" %}
+{% extends "admin/_layout.html" %}
+
 {% block title %}Admin · Vouchers · CareerAI{% endblock %}
+{% set active_tab = 'vouchers' %}
 
-{% block content %}
-<div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 mt-6 mb-16">
-
-  {# ---------- Shared Admin Sub-Nav ---------- #}
-  {% macro admin_tab(label, endpoint_name, extra_endpoints) %}
-    {% set ep = request.endpoint or '' %}
-    {% set active = (ep == endpoint_name) or (ep in extra_endpoints) %}
-    <a href="{{ url_for(endpoint_name) }}"
-       class="px-3 py-1.5 rounded-full border text-xs
-              {% if active %}
-                bg-slate-900 text-white border-indigo-400
-              {% else %}
-                bg-slate-900/40 text-slate-200/80 border-slate-500/70 hover:border-indigo-400/80
-              {% endif %}">
-      {{ label }}
-    </a>
-  {% endmacro %}
-
-  <div class="glass-card rounded-2xl px-4 py-3 mb-5 flex flex-wrap items-center gap-2 text-[12px]">
-    {{ admin_tab("Overview", "admin.dashboard", []) }}
-    {{ admin_tab("Users", "admin.users", []) }}
-    {{ admin_tab("Credits", "admin.credits", []) }}
-    {{ admin_tab("Universities", "admin.universities", []) }}
-    {{ admin_tab("Deals", "admin.deals", []) }}
-    {{ admin_tab("Vouchers", "admin.vouchers", ["admin.voucher_detail"]) }}
-
-    <span class="ml-auto text-[11px] text-slate-400/80">
-      Admin · vouchers & promo codes
-    </span>
-  </div>
+{% block admin_body %}
+<div>
 
   <h1 class="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
-    Admin · Vouchers & Promo Codes
+    Admin · Voucher Campaigns
   </h1>
 
-  <div class="grid gap-5 lg:grid-cols-2 mb-6 text-[13px]">
+  {% if not current_user.is_super_admin and not current_user.is_ultra_admin %}
+    <p class="text-[12px] text-amber-300/80 mb-4">
+      You do not have permission to manage voucher campaigns.
+    </p>
+  {% else %}
+
+  <div class="grid gap-6 lg:grid-cols-2 mb-6 text-[13px]">
+
+    <!-- Create voucher form -->
     <div class="glass-card rounded-2xl px-4 py-4">
       <h2 class="text-sm font-semibold mb-3">Create voucher campaign</h2>
 
       <form method="post" class="space-y-3">
+
+        <!-- Code -->
         <div>
-          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
-            Code
-          </label>
-          <input type="text" name="code" required placeholder="VELTECH50, LAKSHMAN20, CAMPUS2025…"
-                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm uppercase focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">Code</label>
+          <input
+            type="text"
+            name="code"
+            required
+            placeholder="VELTECH50, CAMPUS2025"
+            class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm uppercase focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
         </div>
 
+        <!-- Description -->
         <div>
-          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
-            Description
-          </label>
-          <input type="text" name="description"
-                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                 placeholder="Influencer code, campus event, special offer, …"/>
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">Description</label>
+          <input
+            type="text"
+            name="description"
+            placeholder="Influencer code, campus event, partner offer…"
+            class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
         </div>
 
+        <!-- Discount + credits -->
         <div class="grid gap-3 sm:grid-cols-3">
           <div>
-            <label class="block text-xs font-semibold mb-1 text-slate-200/90">
-              Discount %
-            </label>
-            <input type="number" name="discount_percent" min="0" max="100" placeholder="e.g. 50"
-                   class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+            <label class="block text-xs font-semibold mb-1 text-slate-200/90">Discount %</label>
+            <input
+              type="number"
+              name="discount_percent"
+              min="0" max="100"
+              placeholder="50"
+              class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+            />
           </div>
+
           <div>
-            <label class="block text-xs font-semibold mb-1 text-slate-200/90">
-              Bonus Silver 🪙
-            </label>
-            <input type="number" name="bonus_silver" min="0" value="0"
-                   class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+            <label class="block text-xs font-semibold mb-1 text-slate-200/90">Bonus Silver 🪙</label>
+            <input
+              type="number"
+              name="bonus_silver"
+              min="0"
+              value="0"
+              class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+            />
           </div>
+
           <div>
-            <label class="block text-xs font-semibold mb-1 text-slate-200/90">
-              Bonus Gold ⭐
-            </label>
-            <input type="number" name="bonus_gold" min="0" value="0"
-                   class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+            <label class="block text-xs font-semibold mb-1 text-slate-200/90">Bonus Gold ⭐</label>
+            <input
+              type="number"
+              name="bonus_gold"
+              min="0"
+              value="0"
+              class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+            />
           </div>
         </div>
 
+        <!-- University + max uses -->
         <div class="grid gap-3 sm:grid-cols-3">
           <div class="sm:col-span-2">
             <label class="block text-xs font-semibold mb-1 text-slate-200/90">
               Limit to university (optional)
             </label>
-            <select name="university_id"
-                    class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400">
+            <select
+              name="university_id"
+              class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+            >
               <option value="">Global (any tenant)</option>
               {% for uni in universities %}
                 <option value="{{ uni.id }}">{{ uni.name }}</option>
               {% endfor %}
             </select>
           </div>
+
           <div>
             <label class="block text-xs font-semibold mb-1 text-slate-200/90">
               Max uses
             </label>
-            <input type="number" name="max_uses" min="1" placeholder="e.g. 100"
-                   class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+            <input
+              type="number"
+              name="max_uses"
+              min="1"
+              placeholder="100"
+              class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+            />
           </div>
         </div>
 
+        <!-- Expiry -->
         <div>
           <label class="block text-xs font-semibold mb-1 text-slate-200/90">
             Expires at (optional)
           </label>
-          <input type="date" name="expires_at"
-                 class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+          <input
+            type="date"
+            name="expires_at"
+            class="w-full rounded-lg border border-slate-600/70 bg-slate-950/70 px-3 py-2 text-sm"
+          />
         </div>
 
         <button type="submit" class="btn-primary text-xs mt-1">
           Create voucher campaign
         </button>
+
       </form>
     </div>
 
+    <!-- Voucher list -->
     <div class="glass-card rounded-2xl px-4 py-4 text-[12px]">
+
       <h2 class="text-sm font-semibold mb-3">Voucher campaigns</h2>
+
       {% if vouchers %}
-        <div class="overflow-x-auto -mx-2">
-          <table class="min-w-full text-[11px]">
+        <div class="overflow-x-auto -mx-2 text-[11px]">
+          <table class="min-w-full">
             <thead class="bg-slate-900/80 text-slate-200/80">
               <tr>
                 <th class="px-3 py-2 text-left font-semibold">Code</th>
@@ -134,33 +152,42 @@
               </tr>
             </thead>
             <tbody>
+
               {% for v in vouchers %}
               <tr class="border-t border-slate-700/60">
+
+                <!-- Code -->
                 <td class="px-3 py-2 text-slate-100/90">
                   <a href="{{ url_for('admin.voucher_detail', campaign_id=v.id) }}"
-                     class="underline decoration-slate-400/80 hover:decoration-indigo-400">
+                     class="underline decoration-slate-400/70 hover:decoration-indigo-400">
                     {{ v.code }}
                   </a>
-                  <div class="text-slate-400/80 text-[10px]">
-                    {{ v.description or '—' }}
+                  <div class="text-[10px] text-slate-400/80">
+                    {{ v.description or "—" }}
                   </div>
                 </td>
+
+                <!-- Offer -->
                 <td class="px-3 py-2 text-slate-200/80">
+                  {% set parts = [] %}
                   {% if v.discount_percent %}
-                    {{ v.discount_percent }}% off
+                    {% set _ = parts.append(v.discount_percent ~ "% off") %}
                   {% endif %}
                   {% if v.bonus_silver %}
-                    {% if v.discount_percent %} + {% endif %}
-                    +{{ v.bonus_silver }} 🪙
+                    {% set _ = parts.append("+" ~ v.bonus_silver ~ " 🪙") %}
                   {% endif %}
                   {% if v.bonus_gold %}
-                    {% if v.discount_percent or v.bonus_silver %} + {% endif %}
-                    +{{ v.bonus_gold }} ⭐
+                    {% set _ = parts.append("+" ~ v.bonus_gold ~ " ⭐") %}
                   {% endif %}
-                  {% if not (v.discount_percent or v.bonus_silver or v.bonus_gold) %}
+
+                  {% if parts %}
+                    {{ parts|join(" + ") }}
+                  {% else %}
                     —
                   {% endif %}
                 </td>
+
+                <!-- Scope -->
                 <td class="px-3 py-2 text-slate-200/80">
                   {% if v.university %}
                     {{ v.university.name }}
@@ -168,6 +195,8 @@
                     Global
                   {% endif %}
                 </td>
+
+                <!-- Usage -->
                 <td class="px-3 py-2 text-slate-200/80">
                   {% if v.max_uses %}
                     {{ v.used_count or 0 }} / {{ v.max_uses }}
@@ -175,26 +204,37 @@
                     {{ v.used_count or 0 }} used
                   {% endif %}
                 </td>
-                <td class="px-3 py-2 text-slate-200/80">
+
+                <!-- Status -->
+                <td class="px-3 py-2">
                   {% if not v.is_active %}
-                    Inactive
-                  {% elif v.expires_at and v.expires_at < now %}
-                    Expired
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-500/60 bg-slate-800/40 text-slate-300 text-[10px]">
+                      Inactive
+                    </span>
                   {% else %}
-                    Active
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full border border-emerald-400/60 bg-emerald-500/10 text-emerald-200 text-[10px]">
+                      Active
+                    </span>
                   {% endif %}
                 </td>
+
               </tr>
               {% endfor %}
+
             </tbody>
           </table>
         </div>
       {% else %}
         <p class="text-[11px] text-slate-400/80">
-          No voucher campaigns yet. Create one to start giving promo codes to partners, influencers or universities.
+          No voucher campaigns yet. Create one to start giving promo codes to partners or universities.
         </p>
       {% endif %}
+
     </div>
+
   </div>
+
+  {% endif %}
+
 </div>
 {% endblock %}

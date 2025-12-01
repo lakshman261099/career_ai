@@ -5,8 +5,19 @@ import os
 from datetime import datetime
 from typing import Any, Dict
 import json
+import io
+import csv
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, g
+from flask import (
+    Blueprint,
+    render_template,
+    request,
+    flash,
+    redirect,
+    url_for,
+    g,
+    make_response,
+)
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
@@ -1117,6 +1128,95 @@ def analytics():
         for row in tool_rows
     ]
 
+    # ------------------------------------------------------------------
+    # Human-readable insights for the analytics page
+    # ------------------------------------------------------------------
+    insights: Dict[str, str] = {}
+
+    # Headline
+    if total_students > 0:
+        insights["headline"] = (
+            f"{total_students} students are active on CareerAI for {tenant.name if tenant else 'this university'}."
+        )
+    elif total_users > 0:
+        insights["headline"] = (
+            f"{total_users} users are registered for {tenant.name if tenant else 'this university'}, "
+            "but student usage has not started yet."
+        )
+    else:
+        insights["headline"] = (
+            "No active students yet. Once students start using Skill Mapper and Job Packs, "
+            "you'll see live analytics here."
+        )
+
+    # Skill summary
+    if skills_top:
+        top_skill = skills_top[0]
+        insights["skill_summary"] = (
+            f"Most frequently mapped skill is “{top_skill['name']}”, "
+            f"appearing in about {top_skill['count']} recent Skill Mapper runs."
+        )
+    else:
+        insights["skill_summary"] = (
+            "No Skill Mapper data yet. Encourage students to run Skill Mapper so you can see "
+            "which skills are trending in your university."
+        )
+
+    # Role summary (JobPack)
+    if roles_top:
+        top_role = roles_top[0]
+        insights["role_summary"] = (
+            f"Students are most frequently exploring the role “{top_role['name']}” using Job Packs."
+        )
+    elif internship_roles:
+        top_intern = internship_roles[0]
+        insights["role_summary"] = (
+            f"Internship interest is highest for “{top_intern['name']}” roles."
+        )
+    else:
+        insights["role_summary"] = (
+            "No Job Pack or internship data yet. Once students paste job and internship descriptions, "
+            "this section highlights their most popular target roles."
+        )
+
+    # Tool summary
+    if tool_debits:
+        top_tool = tool_debits[0]
+        feature_name = top_tool["feature"] or "Unknown feature"
+        insights["tool_summary"] = (
+            f"The highest credit usage so far is for “{feature_name}”, "
+            f"indicating strong engagement with that tool."
+        )
+    else:
+        insights["tool_summary"] = (
+            "No credit spend recorded yet. As students start using tools like Skill Mapper, Job Packs "
+            "and Internship Finder, you'll see which ones they rely on most."
+        )
+
+    # Credits summary
+    if all_days:
+        total_silver_spent = sum(silver_map.values())
+        total_gold_spent = sum(gold_map.values())
+        days_count = len(all_days)
+        avg_silver = round(total_silver_spent / days_count, 1)
+        avg_gold = round(total_gold_spent / days_count, 1)
+
+        parts = []
+        parts.append(
+            f"On average, students spend about {avg_silver} Silver 🪙 credits per active day"
+            + (" and" if avg_gold > 0 else ".")
+        )
+        if avg_gold > 0:
+            parts.append(f" {avg_gold} Gold ⭐ credits per active day.")
+        insights["credits_summary"] = "".join(parts)
+    else:
+        insights["credits_summary"] = (
+            "No historical credit usage yet. After a few days of activity, you'll see average Silver 🪙 "
+            "and Gold ⭐ usage trends here."
+        )
+
+    analytics_insights = insights
+
     return render_template(
         "admin/analytics.html",
         tenant=tenant,
@@ -1126,13 +1226,216 @@ def analytics():
         total_debits=total_debits,
         total_credits=total_credits,
         admin_adjust_txs=admin_adjust_txs,
-        # new datasets for charts
+        # datasets for charts
         skills_top=skills_top,
         roles_top=roles_top,
         internship_roles=internship_roles,
         daily_credits=daily_credits,
         tool_debits=tool_debits,
+        analytics_insights=analytics_insights,
     )
+
+
+# ---------------------------------------------------------------------
+# Analytics CSV export (university admins ONLY)
+# ---------------------------------------------------------------------
+@admin_bp.route("/analytics/export", methods=["GET"], endpoint="analytics_export")
+@login_required
+def analytics_export():
+    """
+    Export aggregated analytics as CSV for the current university.
+    """
+    if not _is_admin_user():
+        flash("You are not allowed to export analytics.", "danger")
+        return redirect(url_for("dashboard"))
+
+    role = (getattr(current_user, "role", "") or "").lower()
+    if role != "university_admin" or _is_global_admin():
+        flash("Only tenant-scoped university admins can export analytics.", "danger")
+        return redirect(url_for("admin.dashboard"))
+
+    tenant = getattr(g, "current_tenant", None)
+    if tenant is None or current_user.university_id != tenant.id:
+        flash("Analytics export is only available within your university tenant.", "danger")
+        return redirect(url_for("admin.dashboard"))
+
+    # Re-use the same aggregates as in analytics(), but only the portions
+    # that are most useful in CSV form.
+    user_q = User.query.filter(User.university_id == tenant.id)
+    tx_q = CreditTransaction.query.filter(CreditTransaction.university_id == tenant.id)
+
+    total_users = user_q.count()
+    total_students = user_q.filter(User.role == "student").count()
+    total_university_admins = user_q.filter(User.role == "university_admin").count()
+
+    total_debits = (
+        tx_q.filter(CreditTransaction.tx_type == "debit")
+        .with_entities(func.coalesce(func.sum(CreditTransaction.amount), 0))
+        .scalar()
+        or 0
+    )
+    total_credits = (
+        tx_q.filter(CreditTransaction.tx_type.in_(["credit", "refund"]))
+        .with_entities(func.coalesce(func.sum(CreditTransaction.amount), 0))
+        .scalar()
+        or 0
+    )
+
+    # Skills
+    skill_snapshots = (
+        SkillMapSnapshot.query
+        .join(User, SkillMapSnapshot.user_id == User.id)
+        .filter(User.university_id == tenant.id)
+        .order_by(SkillMapSnapshot.created_at.desc())
+        .limit(300)
+        .all()
+    )
+    skill_counts: dict[str, int] = {}
+    for snap in skill_snapshots:
+        if not snap.skills_json:
+            continue
+        try:
+            payload = json.loads(snap.skills_json)
+        except Exception:
+            continue
+        skills_list = []
+        if isinstance(payload, dict):
+            if isinstance(payload.get("skills"), list):
+                skills_list = payload.get("skills") or []
+        elif isinstance(payload, list):
+            skills_list = payload
+        for item in skills_list:
+            name = None
+            if isinstance(item, str):
+                name = item
+            elif isinstance(item, dict):
+                name = item.get("name") or item.get("skill")
+            if not name:
+                continue
+            name_norm = name.strip()
+            if not name_norm:
+                continue
+            skill_counts[name_norm] = skill_counts.get(name_norm, 0) + 1
+
+    # Roles from JobPack
+    role_rows = (
+        db.session.query(JobPackReport.job_title, func.count(JobPackReport.id))
+        .join(User, JobPackReport.user_id == User.id)
+        .filter(User.university_id == tenant.id)
+        .filter(JobPackReport.job_title.isnot(None))
+        .group_by(JobPackReport.job_title)
+        .order_by(func.count(JobPackReport.id).desc())
+        .limit(50)
+        .all()
+    )
+
+    # Internship roles
+    internship_rows = (
+        db.session.query(InternshipRecord.role, func.count(InternshipRecord.id))
+        .join(User, InternshipRecord.user_id == User.id)
+        .filter(User.university_id == tenant.id)
+        .filter(InternshipRecord.role.isnot(None))
+        .group_by(InternshipRecord.role)
+        .order_by(func.count(InternshipRecord.id).desc())
+        .limit(50)
+        .all()
+    )
+
+    # Tool debits
+    tool_rows = (
+        tx_q.filter(CreditTransaction.tx_type == "debit")
+        .with_entities(
+            CreditTransaction.feature,
+            func.coalesce(func.sum(CreditTransaction.amount), 0),
+        )
+        .group_by(CreditTransaction.feature)
+        .order_by(func.coalesce(func.sum(CreditTransaction.amount), 0).desc())
+        .limit(50)
+        .all()
+    )
+
+    # Daily credits
+    silver_daily_rows = (
+        tx_q.filter(
+            CreditTransaction.tx_type == "debit",
+            CreditTransaction.currency == "silver",
+        )
+        .with_entities(
+            func.date(CreditTransaction.created_at).label("day"),
+            func.coalesce(func.sum(CreditTransaction.amount), 0),
+        )
+        .group_by("day")
+        .order_by("day")
+        .all()
+    )
+    gold_daily_rows = (
+        tx_q.filter(
+            CreditTransaction.tx_type == "debit",
+            CreditTransaction.currency == "gold",
+        )
+        .with_entities(
+            func.date(CreditTransaction.created_at).label("day"),
+            func.coalesce(func.sum(CreditTransaction.amount), 0),
+        )
+        .group_by("day")
+        .order_by("day")
+        .all()
+    )
+    silver_map = {str(day): int(total or 0) for day, total in silver_daily_rows}
+    gold_map = {str(day): int(total or 0) for day, total in gold_daily_rows}
+    all_days = sorted(set(silver_map.keys()) | set(gold_map.keys()))
+
+    # Build CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(["section", "metric", "value_1", "value_2"])
+
+    # Summary
+    writer.writerow(["summary", "total_users", total_users, ""])
+    writer.writerow(["summary", "total_students", total_students, ""])
+    writer.writerow(["summary", "total_university_admins", total_university_admins, ""])
+    writer.writerow(["summary", "total_debits", total_debits, ""])
+    writer.writerow(["summary", "total_credits", total_credits, ""])
+
+    # Skills
+    for name, count in sorted(skill_counts.items(), key=lambda kv: kv[1], reverse=True):
+        writer.writerow(["skill", name, count, ""])
+
+    # JobPack roles
+    for title, n in role_rows:
+        title_clean = (title or "").strip()
+        if not title_clean:
+            continue
+        writer.writerow(["jobpack_role", title_clean, int(n or 0), ""])
+
+    # Internship roles
+    for role_name, n in internship_rows:
+        role_clean = (role_name or "").strip()
+        if not role_clean:
+            continue
+        writer.writerow(["internship_role", role_clean, int(n or 0), ""])
+
+    # Tools
+    for feature, amt in tool_rows:
+        writer.writerow(["tool", feature or "unknown", int(amt or 0), ""])
+
+    # Daily credits
+    for day in all_days:
+        writer.writerow([
+            "daily_credits",
+            day,
+            silver_map.get(day, 0),
+            gold_map.get(day, 0),
+        ])
+
+    csv_data = output.getvalue()
+    output.close()
+
+    resp = make_response(csv_data)
+    resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+    resp.headers["Content-Disposition"] = f"attachment; filename=careerai_analytics_{tenant.id}.csv"
+    return resp
 
 
 # ---------------------------------------------------------------------
@@ -1148,12 +1451,14 @@ def audit():
     - Super admins list
     - Vouchers created (with creator)
     - Deals created (with creator)
-    - Recent admin adjustment credit transactions (any tenant)
+    - Recent admin-related credit transactions (any tenant)
+    - AdminActionLog entries with basic filters
     """
     if not _is_ultra_admin():
         flash("Only ultra admins can view the audit log.", "danger")
         return redirect(url_for("admin.dashboard"))
 
+    # Quick overviews
     super_admins = (
         User.query.filter(User.role == "super_admin")
         .order_by(User.created_at.asc())
@@ -1182,10 +1487,147 @@ def audit():
         .all()
     )
 
+    # ------------------------------------------------------------------
+    # AdminActionLog – filterable list
+    # ------------------------------------------------------------------
+    action_type_filter = (request.args.get("type") or "").strip()
+    admin_email_filter = (request.args.get("admin_email") or "").strip().lower()
+    target_email_filter = (request.args.get("target_email") or "").strip().lower()
+
+    # Distinct action types for dropdown
+    action_type_rows = (
+        db.session.query(AdminActionLog.action_type)
+        .distinct()
+        .order_by(AdminActionLog.action_type.asc())
+        .all()
+    )
+    action_types = [row[0] for row in action_type_rows if row[0]]
+
+    # Get recent logs (limit N, then filter in Python for simplicity)
+    raw_logs = (
+        AdminActionLog.query
+        .order_by(AdminActionLog.created_at.desc())
+        .limit(250)
+        .all()
+    )
+
+    filtered_logs = []
+    for log in raw_logs:
+        # Filter by action type
+        if action_type_filter and log.action_type != action_type_filter:
+            continue
+
+        # Filter by admin email (performed_by)
+        if admin_email_filter:
+            if not log.performed_by or not log.performed_by.email:
+                continue
+            if admin_email_filter not in (log.performed_by.email or "").lower():
+                continue
+
+        # Filter by target email
+        if target_email_filter:
+            if not log.target_user or not log.target_user.email:
+                continue
+            if target_email_filter not in (log.target_user.email or "").lower():
+                continue
+
+        filtered_logs.append(log)
+
     return render_template(
         "admin/audit.html",
         super_admins=super_admins,
         vouchers=vouchers,
         deals=deals,
         admin_credits=admin_credits,
+        admin_logs=filtered_logs,
+        action_types=action_types,
+        action_type_filter=action_type_filter,
+        admin_email_filter=admin_email_filter,
+        target_email_filter=target_email_filter,
     )
+
+
+# ---------------------------------------------------------------------
+# Ultra Admin Audit CSV export
+# ---------------------------------------------------------------------
+@admin_bp.route("/audit/export", methods=["GET"], endpoint="audit_export")
+@login_required
+def audit_export():
+    """
+    Export AdminActionLog entries as CSV (ultra admin only).
+    """
+    if not _is_ultra_admin():
+        flash("Only ultra admins can export the audit log.", "danger")
+        return redirect(url_for("admin.dashboard"))
+
+    action_type_filter = (request.args.get("type") or "").strip()
+    admin_email_filter = (request.args.get("admin_email") or "").strip().lower()
+    target_email_filter = (request.args.get("target_email") or "").strip().lower()
+
+    q = AdminActionLog.query.order_by(AdminActionLog.created_at.desc())
+
+    # Optional filter by action_type via SQL
+    if action_type_filter:
+        q = q.filter(AdminActionLog.action_type == action_type_filter)
+
+    logs = q.limit(1000).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(
+        [
+            "timestamp",
+            "action_type",
+            "admin_email",
+            "target_email",
+            "university_id",
+            "university_name",
+            "meta_json",
+        ]
+    )
+
+    for log in logs:
+        # Filter by admin email
+        if admin_email_filter:
+            admin_email_val = (log.performed_by.email if log.performed_by and log.performed_by.email else "").lower()
+            if admin_email_filter not in admin_email_val:
+                continue
+        admin_email = log.performed_by.email if log.performed_by else ""
+
+        # Filter by target email
+        if target_email_filter:
+            target_email_val = (log.target_user.email if log.target_user and log.target_user.email else "").lower()
+            if target_email_filter not in target_email_val:
+                continue
+        target_email = log.target_user.email if log.target_user else ""
+
+        uni_id = log.university.id if log.university else ""
+        uni_name = log.university.name if log.university else ""
+
+        meta_str = ""
+        if log.meta_json:
+            try:
+                meta_str = json.dumps(log.meta_json, ensure_ascii=False)
+            except Exception:
+                meta_str = str(log.meta_json)
+
+        writer.writerow(
+            [
+                log.created_at.isoformat() if log.created_at else "",
+                log.action_type,
+                admin_email,
+                target_email,
+                uni_id,
+                uni_name,
+                meta_str,
+            ]
+        )
+
+    csv_data = output.getvalue()
+    output.close()
+
+    resp = make_response(csv_data)
+    resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+    resp.headers["Content-Disposition"] = "attachment; filename=careerai_admin_audit.csv"
+    return resp
