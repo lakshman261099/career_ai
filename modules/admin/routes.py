@@ -461,6 +461,167 @@ def users():
 
 
 # ---------------------------------------------------------------------
+# Admin · User Pro / Verification actions
+# ---------------------------------------------------------------------
+@admin_bp.route("/users/<int:user_id>/grant_pro", methods=["POST"], endpoint="user_grant_pro")
+@login_required
+def user_grant_pro(user_id: int):
+    if not _is_admin_user() or not _is_global_admin():
+        flash("Only global admins can grant Pro.", "danger")
+        return redirect(url_for("admin.users"))
+
+    target = User.query.get_or_404(user_id)
+
+    before_status = (target.subscription_status or "free").lower()
+    before_balances = credits_engine.get_balances(target)
+
+    try:
+        # Mark as Pro
+        target.subscription_status = "pro"
+        if not target.pro_since:
+            target.pro_since = datetime.utcnow()
+        target.pro_cancel_at = None
+
+        # Ensure at least Pro starting balances
+        credits_engine.apply_starting_balances(target)
+
+        after_balances = credits_engine.get_balances(target)
+
+        _log_admin_action(
+            "pro_grant",
+            target_user=target,
+            meta={
+                "before_status": before_status,
+                "after_status": "pro",
+                "before_balances": before_balances,
+                "after_balances": after_balances,
+                "admin_email": current_user.email,
+                "target_email": target.email,
+                "notes": "Admin granted Pro status",
+            },
+        )
+
+        db.session.commit()
+        flash(f"Granted Pro to {target.email}.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to grant Pro: {e}", "danger")
+
+    return redirect(url_for("admin.users", q=target.email))
+
+
+@admin_bp.route("/users/<int:user_id>/revoke_pro", methods=["POST"], endpoint="user_revoke_pro")
+@login_required
+def user_revoke_pro(user_id: int):
+    if not _is_admin_user() or not _is_global_admin():
+        flash("Only global admins can revoke Pro.", "danger")
+        return redirect(url_for("admin.users"))
+
+    target = User.query.get_or_404(user_id)
+
+    before_status = (target.subscription_status or "free").lower()
+    before_balances = credits_engine.get_balances(target)
+
+    try:
+        target.subscription_status = "canceled"
+        target.pro_cancel_at = datetime.utcnow()
+
+        after_balances = credits_engine.get_balances(target)
+
+        _log_admin_action(
+            "pro_revoke",
+            target_user=target,
+            meta={
+                "before_status": before_status,
+                "after_status": "canceled",
+                "before_balances": before_balances,
+                "after_balances": after_balances,
+                "admin_email": current_user.email,
+                "target_email": target.email,
+                "notes": "Admin revoked Pro status",
+            },
+        )
+
+        db.session.commit()
+        flash(f"Revoked Pro from {target.email}.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to revoke Pro: {e}", "danger")
+
+    return redirect(url_for("admin.users", q=target.email))
+
+
+@admin_bp.route("/users/<int:user_id>/verify", methods=["POST"], endpoint="user_verify")
+@login_required
+def user_verify(user_id: int):
+    if not _is_admin_user() or not _is_global_admin():
+        flash("Only global admins can verify accounts.", "danger")
+        return redirect(url_for("admin.users"))
+
+    target = User.query.get_or_404(user_id)
+
+    before_verified = bool(target.verified)
+
+    try:
+        target.verified = True
+
+        _log_admin_action(
+            "verify_user",
+            target_user=target,
+            meta={
+                "before_verified": before_verified,
+                "after_verified": True,
+                "admin_email": current_user.email,
+                "target_email": target.email,
+                "notes": "Admin marked user as verified",
+            },
+        )
+
+        db.session.commit()
+        flash(f"Marked {target.email} as verified.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to verify user: {e}", "danger")
+
+    return redirect(url_for("admin.users", q=target.email))
+
+
+@admin_bp.route("/users/<int:user_id>/unverify", methods=["POST"], endpoint="user_unverify")
+@login_required
+def user_unverify(user_id: int):
+    if not _is_admin_user() or not _is_global_admin():
+        flash("Only global admins can unverify accounts.", "danger")
+        return redirect(url_for("admin.users"))
+
+    target = User.query.get_or_404(user_id)
+
+    before_verified = bool(target.verified)
+
+    try:
+        target.verified = False
+
+        _log_admin_action(
+            "unverify_user",
+            target_user=target,
+            meta={
+                "before_verified": before_verified,
+                "after_verified": False,
+                "admin_email": current_user.email,
+                "target_email": target.email,
+                "notes": "Admin marked user as unverified",
+            },
+        )
+
+        db.session.commit()
+        flash(f"Marked {target.email} as unverified.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to unverify user: {e}", "danger")
+
+    return redirect(url_for("admin.users", q=target.email))
+
+
+# ---------------------------------------------------------------------
 # Credits top-up
 # ---------------------------------------------------------------------
 @admin_bp.route("/credits", methods=["GET", "POST"], endpoint="credits")

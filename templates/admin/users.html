@@ -105,15 +105,27 @@
             {% set cannot_edit = true %}
           {% endif %}
 
+          {% set plan_raw = (u.subscription_status or "free") %}
+          {% set plan = plan_raw.lower() %}
+
           <tr class="border-t border-slate-700/60">
             
             <!-- User info -->
             <td class="px-3 py-2 align-top">
-              <div class="font-semibold text-slate-50 text-[11px]">
+              <div class="font-semibold text-slate-50 text-[11px] flex items-center gap-1.5 flex-wrap">
                 {{ u.email }}
                 {% if current_user.id == u.id %}
-                  <span class="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-400/60 text-emerald-200">
+                  <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-400/60 text-emerald-200">
                     You
+                  </span>
+                {% endif %}
+                {% if u.verified %}
+                  <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-400/60 text-emerald-200">
+                    Verified
+                  </span>
+                {% else %}
+                  <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-400/60 text-amber-200">
+                    Not verified
                   </span>
                 {% endif %}
               </div>
@@ -213,7 +225,24 @@
 
             <!-- Plan -->
             <td class="px-3 py-2 align-top text-[11px]">
-              {{ (u.subscription_status or "free") | capitalize }}
+              <div class="flex flex-col gap-0.5">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-600/70 bg-slate-950/70 text-[10px]">
+                  {{ plan_raw | capitalize }}
+                </span>
+                {% if plan == 'pro' %}
+                  <span class="text-[10px] text-emerald-300/80">
+                    Active Pro
+                  </span>
+                {% elif plan == 'canceled' %}
+                  <span class="text-[10px] text-slate-400/80">
+                    Canceled / expired
+                  </span>
+                {% else %}
+                  <span class="text-[10px] text-slate-400/80">
+                    Free
+                  </span>
+                {% endif %}
+              </div>
             </td>
 
             <!-- Balances -->
@@ -235,10 +264,63 @@
 
             <!-- Actions -->
             <td class="px-3 py-2 align-top text-right text-[11px]">
-              <a href="{{ url_for('admin.credits') }}?email={{ u.email | urlencode }}"
-                 class="btn-ghost inline-flex justify-center text-[10px] px-2 py-1">
-                Credits →
-              </a>
+              <div class="flex flex-col items-end gap-1.5">
+
+                <!-- Credits link -->
+                <a href="{{ url_for('admin.credits') }}?email={{ u.email | urlencode }}"
+                   class="btn-ghost inline-flex justify-center text-[10px] px-2 py-1">
+                  Credits →
+                </a>
+
+                {% if is_super_admin or is_ultra_admin %}
+                  <!-- Verification controls -->
+                  <div class="flex flex-wrap justify-end gap-1 mt-0.5">
+                    {% if u.verified %}
+                      <form method="post" action="{{ url_for('admin.user_unverify', user_id=u.id) }}">
+                        <button
+                          type="submit"
+                          class="inline-flex items-center px-2 py-0.5 rounded-full border border-amber-400/70 bg-amber-500/10 text-amber-100 text-[9px] hover:bg-amber-500/20"
+                        >
+                          Unverify
+                        </button>
+                      </form>
+                    {% else %}
+                      <form method="post" action="{{ url_for('admin.user_verify', user_id=u.id) }}">
+                        <button
+                          type="submit"
+                          class="inline-flex items-center px-2 py-0.5 rounded-full border border-emerald-400/70 bg-emerald-500/10 text-emerald-100 text-[9px] hover:bg-emerald-500/20"
+                        >
+                          Mark as verified
+                        </button>
+                      </form>
+                    {% endif %}
+                  </div>
+
+                  <!-- Pro plan controls -->
+                  <div class="flex flex-wrap justify-end gap-1 mt-0.5">
+                    {% if plan == 'pro' %}
+                      <form method="post" action="{{ url_for('admin.user_revoke_pro', user_id=u.id) }}">
+                        <button
+                          type="submit"
+                          class="inline-flex items-center px-2 py-0.5 rounded-full border border-rose-400/70 bg-rose-500/10 text-rose-100 text-[9px] hover:bg-rose-500/20"
+                        >
+                          Revoke Pro
+                        </button>
+                      </form>
+                    {% else %}
+                      <form method="post" action="{{ url_for('admin.user_grant_pro', user_id=u.id) }}">
+                        <button
+                          type="submit"
+                          class="inline-flex items-center px-2 py-0.5 rounded-full border border-indigo-400/70 bg-indigo-500/10 text-indigo-100 text-[9px] hover:bg-indigo-500/20"
+                        >
+                          Grant Pro
+                        </button>
+                      </form>
+                    {% endif %}
+                  </div>
+                {% endif %}
+
+              </div>
             </td>
 
           </tr>
