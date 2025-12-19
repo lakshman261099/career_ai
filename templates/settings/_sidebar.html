@@ -1,37 +1,172 @@
-<aside class="glass-panel rounded-2xl p-4 h-fit space-y-1 text-sm">
-  <a href="{{ url_for('settings.profile') }}"
-     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.profile' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
-    Profile Portal
-  </a>
+<aside class="glass-panel rounded-2xl p-4 h-fit space-y-4 text-sm">
+  <!-- Header / plan pill -->
+  <div class="flex items-center justify-between gap-2">
+    <div>
+      <p class="text-[11px] uppercase tracking-[0.18em] text-white/60">
+        Settings
+      </p>
+      <p class="text-xs text-white/70 mt-0.5">
+        Manage your profile, credits &amp; account.
+      </p>
+    </div>
+    <span class="px-2.5 py-1 rounded-full bg-white/5 border border-white/20 text-[11px] text-white/70">
+      {{ 'Pro ⭐' if current_user.is_pro else 'Free 🪙' }}
+    </span>
+  </div>
 
-  <a href="{{ url_for('settings.credits') }}"
-     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.credits' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
-    Credits
-  </a>
+  <nav class="space-y-1.5">
+    <!-- Profile Portal -->
+    <a href="{{ url_for('settings.profile') }}"
+       class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl transition
+              {% if request.endpoint == 'settings.profile' %}
+                bg-emerald-500/90 text-white shadow-sm
+              {% else %}
+                text-white/75 hover:bg-white/10
+              {% endif %}">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 border border-emerald-300/60">
+          <i data-lucide="id-card" class="w-3.5 h-3.5"></i>
+        </span>
+        <div class="flex flex-col">
+          <span class="font-medium text-xs">Profile Portal</span>
+          <span class="text-[10px] text-white/60 leading-tight">Source of truth for all AI tools</span>
+        </div>
+      </div>
+    </a>
 
-  <a href="{{ url_for('settings.billing') }}"
-     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.billing' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
-    Pricing
-  </a>
+    <!-- Credits -->
+    <a href="{{ url_for('settings.credits') }}"
+       class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl transition
+              {% if request.endpoint == 'settings.credits' %}
+                bg-emerald-500/90 text-white shadow-sm
+              {% else %}
+                text-white/75 hover:bg-white/10
+              {% endif %}">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/20 border border-sky-300/60">
+          <i data-lucide="coins" class="w-3.5 h-3.5"></i>
+        </span>
+        <div class="flex flex-col">
+          <span class="font-medium text-xs">Credits</span>
+          <span class="text-[10px] text-white/60 leading-tight">Silver 🪙 &amp; Gold ⭐ usage</span>
+        </div>
+      </div>
+    </a>
 
-  <a href="{{ url_for('settings.notifications') }}"
-     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.notifications' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
-    Notifications
-  </a>
+    <!-- Pricing / Billing -->
+    <a href="{{ url_for('settings.billing') }}"
+       class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl transition
+              {% if request.endpoint == 'settings.billing' %}
+                bg-emerald-500/90 text-white shadow-sm
+              {% else %}
+                text-white/75 hover:bg-white/10
+              {% endif %}">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/20 border border-amber-300/60">
+          <i data-lucide="credit-card" class="w-3.5 h-3.5"></i>
+        </span>
+        <div class="flex flex-col">
+          <span class="font-medium text-xs">Pricing &amp; Pro</span>
+          <span class="text-[10px] text-white/60 leading-tight">Manage your plan (Stripe)</span>
+        </div>
+      </div>
+    </a>
 
-  <a href="{{ url_for('settings.account') }}"
-     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.account' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
-    Account Settings
-  </a>
+    <!-- Resume Profile (Pro) -->
+    <a href="{{ url_for('settings.resume') }}"
+       class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl transition
+              {% if request.endpoint == 'settings.resume' %}
+                bg-emerald-500/90 text-white shadow-sm
+              {% else %}
+                text-white/75 hover:bg-white/10
+              {% endif %}">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-fuchsia-500/20 border border-fuchsia-300/60">
+          <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+        </span>
+        <div class="flex flex-col">
+          <span class="font-medium text-xs">Resume Profile</span>
+          <span class="text-[10px] text-white/60 leading-tight">Deep resume scan (Pro)</span>
+        </div>
+      </div>
+      <span class="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/20">Pro</span>
+    </a>
 
-  <a href="{{ url_for('settings.security') }}"
-     class="block px-3 py-2 rounded-lg {% if request.endpoint == 'settings.security' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
-    Security
-  </a>
+    <!-- Notifications -->
+    <a href="{{ url_for('settings.notifications') }}"
+       class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl transition
+              {% if request.endpoint == 'settings.notifications' %}
+                bg-emerald-500/90 text-white shadow-sm
+              {% else %}
+                text-white/75 hover:bg-white/10
+              {% endif %}">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/20 border border-indigo-300/60">
+          <i data-lucide="bell" class="w-3.5 h-3.5"></i>
+        </span>
+        <div class="flex flex-col">
+          <span class="font-medium text-xs">Notifications</span>
+          <span class="text-[10px] text-white/60 leading-tight">Email / product updates</span>
+        </div>
+      </div>
+    </a>
 
-  <a href="{{ url_for('settings.integrations') }}"
-     class="block px-3 py-2 rounded-lg flex items-center justify-between {% if request.endpoint == 'settings.integrations' %}bg-brand-500 text-white font-semibold{% else %}hover:bg-white/10{% endif %}">
-    Integrations
-    <span class="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 border border-white/20">Pro</span>
-  </a>
+    <!-- Account -->
+    <a href="{{ url_for('settings.account') }}"
+       class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl transition
+              {% if request.endpoint in ['settings.account', 'settings.index'] %}
+                bg-emerald-500/90 text-white shadow-sm
+              {% else %}
+                text-white/75 hover:bg-white/10
+              {% endif %}">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 border border-white/30">
+          <i data-lucide="user" class="w-3.5 h-3.5"></i>
+        </span>
+        <div class="flex flex-col">
+          <span class="font-medium text-xs">Account Settings</span>
+          <span class="text-[10px] text-white/60 leading-tight">Name, email &amp; basics</span>
+        </div>
+      </div>
+    </a>
+
+    <!-- Security -->
+    <a href="{{ url_for('settings.security') }}"
+       class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl transition
+              {% if request.endpoint == 'settings.security' %}
+                bg-emerald-500/90 text-white shadow-sm
+              {% else %}
+                text-white/75 hover:bg-white/10
+              {% endif %}">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/20 border border-rose-300/60">
+          <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+        </span>
+        <div class="flex flex-col">
+          <span class="font-medium text-xs">Security</span>
+          <span class="text-[10px] text-white/60 leading-tight">Login &amp; device safety</span>
+        </div>
+      </div>
+    </a>
+
+    <!-- Integrations (Pro) -->
+    <a href="{{ url_for('settings.integrations') }}"
+       class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl transition
+              {% if request.endpoint == 'settings.integrations' %}
+                bg-emerald-500/90 text-white shadow-sm
+              {% else %}
+                text-white/75 hover:bg-white/10
+              {% endif %}">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/20 border border-purple-300/60">
+          <i data-lucide="plug" class="w-3.5 h-3.5"></i>
+        </span>
+        <div class="flex flex-col">
+          <span class="font-medium text-xs">Integrations</span>
+          <span class="text-[10px] text-white/60 leading-tight">Future tools &amp; exports</span>
+        </div>
+      </div>
+      <span class="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 border border-white/20">Pro</span>
+    </a>
+  </nav>
 </aside>

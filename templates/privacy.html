@@ -1,5 +1,74 @@
 {% extends "base.html" %}
+{% block title %}Privacy — CareerAI{% endblock %}
+
 {% block content %}
-<h2 class="text-2xl font-bold mb-3">Privacy</h2>
-<p>We do not scrape any websites. You paste job or internship descriptions. Resume storage is optional and deletable.</p>
+<section class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pt-10 pb-16 text-white">
+  <div class="glass-panel rounded-2xl p-6 sm:p-7 border border-white/10 shadow-xl space-y-4">
+    <header>
+      <h1 class="text-2xl sm:text-3xl font-bold mb-1">Privacy</h1>
+      <p class="text-sm text-white/70">
+        Short, clear version of how CareerAI handles your data.
+      </p>
+    </header>
+
+    <div class="space-y-3 text-sm text-white/80">
+      <section>
+        <h2 class="text-base font-semibold mb-1">What you paste</h2>
+        <p>
+          We do <span class="font-semibold">not</span> scrape any websites. You paste job descriptions,
+          internship descriptions, and referral context into CareerAI. Those inputs are used only to run the
+          tools you request (Job Pack, Internship Analyzer, Referral Trainer, etc.).
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-base font-semibold mb-1">Resume &amp; Profile Portal</h2>
+        <p>
+          Resume storage is <span class="font-semibold">optional</span> and can be deleted. Your Profile Portal
+          and Resume Profile are used to power Skill Mapper, Portfolio Builder, Job Packs and other tools inside CareerAI.
+          They are not shown publicly unless you explicitly enable a public portfolio page.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-base font-semibold mb-1">Public portfolio pages</h2>
+        <p>
+          Public portfolio pages only render the content you configure plus minimal CareerAI branding.
+          They do not expose dashboards, credit data, or internal analytics. You choose when to publish or unpublish.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-base font-semibold mb-1">University / tenant visibility</h2>
+        <p>
+          If you access CareerAI through your university portal, admins at your university may see aggregate usage
+          analytics (for example, total runs of Skill Mapper or Job Packs). They do <span class="font-semibold">not</span>
+          see your private tool inputs or AI outputs, unless your institution has a separate agreement that clearly states otherwise.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-base font-semibold mb-1">Billing &amp; payments</h2>
+        <p>
+          Payments are handled entirely by Stripe. CareerAI does not store or process your card details. We only retain
+          minimal billing metadata (for example, that your account is on Pro) so that features like Gold ⭐ credits work correctly.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-base font-semibold mb-1">Deleting your data</h2>
+        <p>
+          You can request deletion of your account data via support or your university administrator. We will remove
+          your Profile Portal, Resume Profile, and any stored AI outputs associated with your account, subject to
+          legal and compliance requirements.
+        </p>
+      </section>
+    </div>
+
+    <p class="text-[11px] text-white/55 mt-2">
+      This is a high-level summary. If your university or institution has a separate data-processing agreement with CareerAI,
+      that document will take priority where there is any conflict.
+    </p>
+  </div>
+</section>
 {% endblock %}

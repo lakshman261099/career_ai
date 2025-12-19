@@ -33,8 +33,8 @@
             Welcome{% if current_user.is_authenticated %}, {{ current_user.email }}{% endif %}
           </h1>
           <p class="text-sm sm:text-base text-slate-200 max-w-2xl">
-            Use CareerAI as your AI career control center — map your skills, decode real jobs, design projects,
-            and reach warm referrals. Everything works best once your Profile Portal is complete.
+            Use CareerAI as your AI career control center — map your skills, design your Dream Plan, execute with Coach,
+            decode real jobs, and reach warm referrals. Everything works best once your Profile Portal is complete.
           </p>
         </div>
 
@@ -53,7 +53,7 @@
             </span>
           </a>
           <p class="text-[10px] text-white/40 text-right max-w-xs">
-            Step 1 for every student: complete your Profile Portal. Then run Skill Mapper, Job Packs, Portfolio & more.
+            Step 1 for every student: complete your Profile Portal. Then run Dream Planner &amp; Coach, and layer other tools on top.
           </p>
         </div>
       </div>
@@ -64,6 +64,9 @@
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span class="inline-flex items-center gap-1">
             <span class="font-semibold">1)</span> <strong>Profile Portal</strong> — basics, skills &amp; projects
+          </span>
+          <span class="inline-flex items-center gap-1">
+            → <strong>Dream Planner</strong> &amp; <strong>Coach</strong> — design &amp; execute your 3-phase plan
           </span>
           <span class="inline-flex items-center gap-1">
             → <strong>Skill Mapper</strong> — choose target roles
@@ -77,6 +80,58 @@
           <span class="inline-flex items-center gap-1">
             → <strong>Referral Trainer</strong> — reach people at those companies
           </span>
+        </div>
+      </div>
+
+      <!-- Dream Planner + Coach lane -->
+      <div class="mt-3 glass-card rounded-2xl px-4 py-4 border border-white/15 shadow-lg/40 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div class="space-y-1.5 max-w-xl">
+          <p class="uppercase tracking-[0.16em] text-[10px] text-white/60 flex items-center gap-2">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 border border-white/15">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+              <span>Dream &amp; Coach lane</span>
+            </span>
+            {% if plan == 'pro' %}
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/60 text-emerald-100">
+                <i data-lucide="flame" class="w-3.5 h-3.5"></i>
+                <span>Pro unlocked</span>
+              </span>
+            {% else %}
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900/80 border border-slate-500/70 text-slate-100">
+                <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+                <span>Coach needs Pro</span>
+              </span>
+            {% endif %}
+          </p>
+          <h2 class="text-sm sm:text-base font-semibold text-white">
+            Turn your Dream Plan into weekly execution.
+          </h2>
+          <p class="text-[11px] sm:text-xs text-white/70">
+            Use <strong>Dream Planner</strong> once to get your 3-phase roadmap. Then use <strong>Coach</strong> 3–5 days a week
+            to get realistic weekly focus packs, checklists, and a built-in focus timer.
+          </p>
+          <ul class="mt-1.5 text-[11px] text-white/70 space-y-0.5">
+            <li>• Phase-based plan for your target salary or startup goal</li>
+            <li>• Weekly Coach sessions with 3–8 small, high-signal tasks</li>
+            <li>• Progress streaks + reflection notes to track momentum</li>
+          </ul>
+        </div>
+        <div class="flex flex-col items-end gap-2 text-xs">
+          <div class="flex flex-wrap gap-2 justify-end">
+            <a href="{{ feature_paths.dream }}"
+               class="btn-primary text-xs inline-flex items-center gap-1">
+              <i data-lucide="moon-star" class="w-3.5 h-3.5"></i>
+              <span>Open Dream Planner</span>
+            </a>
+            <a href="{{ feature_paths.coach }}"
+               class="btn-ghost text-[11px] inline-flex items-center gap-1">
+              <i data-lucide="calendar-check" class="w-3.5 h-3.5"></i>
+              <span>Open Coach</span>
+            </a>
+          </div>
+          <p class="text-[10px] text-white/45 text-right max-w-xs">
+            Hint: run Dream Planner when your goal changes. Use Coach as your execution home every active week.
+          </p>
         </div>
       </div>
 
@@ -171,8 +226,8 @@
                   Upgrade to Pro for unlimited depth.
                 </p>
                 <p class="text-violet-100/80 text-[11px] sm:text-xs max-w-md">
-                  Pro unlocks Portfolio publishing, Skill Mapper Pro, full Job Packs, and unlimited Internship Analyzer runs —
-                  all powered by your Profile Portal and resume.
+                  Pro unlocks Dream Planner, Weekly Coach, Portfolio publishing, Skill Mapper Pro, full Job Packs,
+                  and deep Internship Analyzer runs — all powered by your Profile Portal and resume.
                 </p>
               </div>
               <a href="{{ feature_paths.billing }}"
@@ -223,6 +278,30 @@
           </div>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <!-- Dream Planner quick action -->
+          <a href="{{ feature_paths.dream }}"
+             class="group flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-2.5 py-2 text-xs hover:bg-indigo-500/20 hover:border-indigo-300/80 transition">
+            <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/30">
+              <i data-lucide="moon-star" class="w-3.5 h-3.5"></i>
+            </span>
+            <span class="flex flex-col">
+              <span class="font-semibold text-slate-50">Dream Planner</span>
+              <span class="text-[10px] text-indigo-100/80">Design 3-phase plan</span>
+            </span>
+          </a>
+
+          <!-- Coach quick action -->
+          <a href="{{ feature_paths.coach }}"
+             class="group flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-2.5 py-2 text-xs hover:bg-rose-500/20 hover:border-rose-300/80 transition">
+            <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/30">
+              <i data-lucide="calendar-check" class="w-3.5 h-3.5"></i>
+            </span>
+            <span class="flex flex-col">
+              <span class="font-semibold text-slate-50">Coach</span>
+              <span class="text-[10px] text-rose-100/80">Weekly focus packs</span>
+            </span>
+          </a>
+
           <a href="{{ feature_paths.skillmapper }}"
              class="group flex items-center gap-2 rounded-xl border border-violet-500/40 bg-violet-500/10 px-2.5 py-2 text-xs hover:bg-violet-500/20 hover:border-violet-300/80 transition">
             <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/30">
@@ -318,6 +397,50 @@
 
     <!-- Features zig-zag -->
     <div class="space-y-8 sm:space-y-10 pt-4">
+      <!-- 0. Dream Planner + Coach (left) -->
+      <div class="ca-feature-row ca-feature-left">
+        <article class="ca-feature-card">
+          <div class="ca-feature-icon bg-gradient-to-tr from-indigo-500 to-fuchsia-400">
+            <span class="text-xl">✨</span>
+          </div>
+          <div class="space-y-1.5">
+            <h2 class="text-lg font-semibold">Dream Planner &amp; Coach</h2>
+            <p class="text-slate-200 text-sm">
+              Design a 3-phase Dream Plan for your target job or startup, then turn it into weekly focus packs with Coach —
+              small checklists, a focus timer, and honest progress tracking.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/40">
+              🎯 Phase-based roadmap
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-400/40">
+              ⏱️ Weekly focus packs
+            </span>
+          </div>
+          <div class="pt-2 flex flex-wrap gap-2">
+            <a href="{{ feature_paths.dream }}" class="ca-feature-cta">
+              Open Dream Planner
+            </a>
+            <a href="{{ feature_paths.coach }}"
+               class="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-white/30 text-[11px] text-white/90 hover:bg-white/5 transition">
+              <i data-lucide="calendar-check" class="w-3.5 h-3.5 mr-1"></i>
+              Open Coach
+            </a>
+          </div>
+
+          <div class="ca-feature-detail ca-feature-detail-left">
+            <h3 class="text-sm font-semibold mb-1.5 text-white">How this helps</h3>
+            <ul class="space-y-1.5 text-xs text-slate-100/90">
+              <li>• 3-phase roadmap tuned to your target LPA or startup goal</li>
+              <li>• Weekly-sized Coach tasks (15–60 minutes each)</li>
+              <li>• Mix of skills, projects, and career capital (resume, LinkedIn, outreach)</li>
+              <li>• Streaks and reflections so you see momentum week by week</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+
       <!-- 1. Skill Mapper (left) -->
       <div class="ca-feature-row ca-feature-left">
         <article class="ca-feature-card">
@@ -328,7 +451,7 @@
             <h2 class="text-lg font-semibold">Skill Mapper</h2>
             <p class="text-slate-200 text-sm">
               Uses your Profile Portal and latest resume to suggest 3 best-fit roles with India demand and sample salaries.
-              Start here after filling your profile.
+              Start here after filling your profile or Dream Plan.
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-xs text-slate-200/90">

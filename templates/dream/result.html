@@ -1,0 +1,626 @@
+{% extends "base.html" %}
+{% block title %}Your Dream Plan — CareerAI{% endblock %}
+
+{% block content %}
+{# Extract meta and path type safely #}
+{% set meta = plan.meta if plan and plan.meta else {} %}
+{% set path_type = (plan.mode or meta.path_type or 'job')|lower %}
+{% set input = plan.input or {} %}
+{% set timeline_months = (input.timeline_months or 3)|int %}
+
+<section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-8 text-white">
+
+  <header class="glass-card rounded-2xl p-7 sm:p-9 border border-white/10 shadow-2xl relative overflow-hidden">
+    <div class="pointer-events-none absolute inset-0 opacity-40">
+      <div class="w-full h-full bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.2),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.18),transparent_50%)]"></div>
+    </div>
+
+    <div class="relative flex flex-col md:flex-row md:items-start md:justify-between gap-8">
+      <div class="space-y-4 max-w-2xl">
+        <div class="inline-flex flex-wrap items-center gap-2">
+          <span class="px-3 py-1 rounded-full bg-black/50 border border-white/15 text-[11px] uppercase tracking-widest font-semibold text-emerald-300 flex items-center gap-1.5">
+            {% if path_type == 'startup' %}
+              <i data-lucide="rocket" class="w-3.5 h-3.5"></i> Dream Startup Plan
+            {% else %}
+              <i data-lucide="briefcase" class="w-3.5 h-3.5"></i> Dream Job Plan
+            {% endif %}
+          </span>
+          {% if meta.used_live_ai %}
+            <span class="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/40 text-[10px] uppercase tracking-wide text-emerald-200">
+              Generated with CareerAI Pro Engine
+            </span>
+          {% endif %}
+        </div>
+
+        <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight">
+          {% if path_type == 'startup' %}
+            Your {{ timeline_months }}-Month Founder Roadmap
+          {% else %}
+            Your {{ timeline_months }}-Month Career Roadmap
+          {% endif %}
+        </h1>
+        
+        <p class="text-white/75 text-sm sm:text-base leading-relaxed">
+          Based on your goal:
+          <span class="text-white font-semibold">
+            "{{ input.target_role or 'Your Dream Role / Idea' }}"
+          </span>.
+          This plan is tuned to your chosen horizon of
+          <span class="font-semibold">{{ timeline_months }} month{{ '' if timeline_months == 1 else 's' }}</span>
+          and the gaps between your current profile and market expectations.
+        </p>
+      </div>
+
+      <div class="flex flex-col items-end gap-4 pt-2">
+        {% if profile_snapshot %}
+          <div class="text-right">
+            <p class="text-[10px] uppercase tracking-wider text-white/50 mb-1">Profile Strength</p>
+            <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-bold text-sm">
+              <i data-lucide="activity" class="w-4 h-4"></i>
+              {{ profile_snapshot.profile_strength_score or 0 }}%
+            </div>
+          </div>
+        {% endif %}
+        <div class="flex gap-3 mt-2 text-xs">
+           {% if feature_paths is defined and feature_paths.skillmapper %}
+             <a href="{{ feature_paths.skillmapper }}" class="text-white/60 hover:text-white transition-colors flex items-center gap-1">
+               <i data-lucide="arrow-left" class="w-3 h-3"></i> Back to Skill Mapper
+             </a>
+           {% else %}
+             <a href="/" class="text-white/60 hover:text-white transition-colors flex items-center gap-1">
+               <i data-lucide="arrow-left" class="w-3 h-3"></i> Back to home
+             </a>
+           {% endif %}
+           <a href="{{ url_for('dream.index', path_type=path_type) }}" class="text-white/60 hover:text-white transition-colors flex items-center gap-1">
+             <i data-lucide="refresh-cw" class="w-3 h-3"></i> Regenerate Plan
+           </a>
+        </div>
+      </div>
+    </div>
+
+    {# --- Coach CTA block --- #}
+    <div class="relative mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-white/10 pt-4">
+      {% if is_pro_user %}
+        <form
+          method="post"
+          action="{{ url_for('coach.start') }}"
+          class="flex flex-col sm:flex-row gap-3"
+        >
+          <input type="hidden" name="path_type" value="{{ path_type }}">
+
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center px-5 py-3 rounded-xl
+                   text-sm sm:text-base font-semibold
+                   bg-emerald-500 hover:bg-emerald-600
+                   text-white shadow-lg shadow-emerald-500/30
+                   transition-all duration-150"
+          >
+            <i data-lucide="target" class="w-4 h-4 mr-2"></i>
+            Start Weekly Coach from Phase 1
+          </button>
+        </form>
+      {% else %}
+        <div class="text-xs sm:text-sm text-white/80">
+          🔒 Weekly Coach is a Pro ⭐ feature.
+          <a
+            href="{{ url_for('billing.index') }}"
+            class="underline underline-offset-4 hover:text-white"
+          >
+            Upgrade to turn this plan into guided weekly execution.
+          </a>
+        </div>
+      {% endif %}
+
+      <p class="text-[11px] sm:text-xs text-white/55 max-w-md">
+        Weekly Coach breaks this roadmap into small, realistic weekly actions with a streak counter,
+        so you keep moving even when life gets messy.
+      </p>
+    </div>
+  </header>
+
+  {% if not plan %}
+    <div class="glass-card rounded-2xl p-8 text-center border border-white/10">
+      <div class="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 text-white/50">
+        <i data-lucide="alert-circle" class="w-6 h-6"></i>
+      </div>
+      <h3 class="text-lg font-semibold text-white">Plan Not Found</h3>
+      <p class="text-white/60 text-sm mt-2 max-w-md mx-auto">
+        We couldn't retrieve the plan data. This might be a temporary glitch.
+      </p>
+      <a href="{{ url_for('dream.index') }}" class="mt-6 btn-primary inline-flex items-center gap-2">
+        Try Again
+      </a>
+    </div>
+  {% else %}
+
+    {% if plan.summary %}
+    <div class="glass-card rounded-2xl p-6 sm:p-7 border-l-4 border-l-emerald-500 border-y border-r border-white/10 bg-gradient-to-r from-emerald-900/20 via-emerald-800/10 to-transparent">
+      <h3 class="text-xs sm:text-sm font-bold text-emerald-300 uppercase tracking-widest mb-2 flex items-center gap-2">
+        <i data-lucide="brain-circuit" class="w-4 h-4"></i> AI Mentor Verdict
+      </h3>
+      <p class="text-base sm:text-lg lg:text-xl text-white/95 leading-relaxed font-normal">
+        {{ plan.summary }}
+      </p>
+    </div>
+    {% endif %}
+
+    {% if path_type == 'startup' %}
+      {# STARTUP MODE VIEW — use structured fields from plan_view #}
+      {% set sx = plan.startup_extras or {} %}
+      {% set startup_summary = plan.startup_summary or {} %}
+      {% set budget_and_stack = plan.budget_and_stack or {} %}
+      {% set go_to_market = plan.go_to_market or {} %}
+      {% set risks = plan.risks or {} %}
+
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="md:col-span-2 glass-card rounded-2xl p-6 border border-white/10">
+          <h3 class="text-lg sm:text-xl font-semibold text-white mb-3 flex items-center gap-2">
+            <i data-lucide="user" class="w-5 h-5 text-purple-400"></i> Your Founder Role Fit
+          </h3>
+          <p class="text-sm sm:text-base text-white/75 leading-relaxed">
+            {{ startup_summary.founder_role or sx.founder_role_fit
+               or "Analysis of how your current skills and background map to a realistic founder role for this idea." }}
+          </p>
+          {% if startup_summary.positioning or sx.positioning %}
+            <div class="mt-4 p-3 rounded-lg bg-white/5 border border-white/10">
+              <p class="text-[11px] text-white/50 uppercase tracking-wide mb-1">Product Positioning</p>
+              <p class="text-sm sm:text-base text-white/85 italic">
+                "{{ startup_summary.positioning or sx.positioning }}"
+              </p>
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="glass-card rounded-2xl p-6 border border-white/10">
+          <h3 class="text-lg sm:text-xl font-semibold text-white mb-3 flex items-center gap-2">
+            <i data-lucide="users" class="w-5 h-5 text-pink-400"></i> Team & Cofounder Gaps
+          </h3>
+          <p class="text-[11px] text-white/50 mb-3 uppercase tracking-wide">Roles to complement you:</p>
+          {% set cofounders = startup_summary.cofounder_needs or sx.cofounder_gaps or [] %}
+          <div class="flex flex-wrap gap-2">
+            {% for role in cofounders %}
+              <span class="px-2.5 py-1 rounded-md bg-pink-500/10 border border-pink-500/25 text-pink-200 text-xs font-medium">
+                {{ role }}
+              </span>
+            {% else %}
+              <span class="text-white/40 text-xs">No specific cofounder gaps listed. Add this later as you clarify your idea.</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="glass-card rounded-2xl p-6 border border-white/10 flex flex-col">
+          <div class="mb-4">
+            <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-300 mb-3">
+              <i data-lucide="box" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-lg sm:text-xl font-bold text-white">Your MVP</h3>
+            <p class="text-[11px] text-white/50 mt-1">First version you’ll actually ship</p>
+          </div>
+          <p class="text-sm sm:text-base text-white/75 mb-4 flex-grow">
+            {{ plan.mvp_outline or sx.mvp_outline
+               or "Short outline of the MVP: core features, user journey, and what 'launched' means for you in this time horizon." }}
+          </p>
+          
+          {% set mvp_steps = sx.mvp_steps or [] %}
+          {% if mvp_steps %}
+            <div class="space-y-2 mt-auto">
+              <p class="text-[11px] text-white/55 uppercase tracking-wide">Key MVP steps</p>
+              <ul class="list-disc list-inside text-white/70 text-sm space-y-1">
+                {% for item in mvp_steps[:4] %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="glass-card rounded-2xl p-6 border border-white/10 flex flex-col">
+          <div class="mb-4">
+            <div class="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-300 mb-3">
+              <i data-lucide="megaphone" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-lg sm:text-xl font-bold text-white">Go-To-Market</h3>
+            <p class="text-[11px] text-white/50 mt-1">How you’ll get first users</p>
+          </div>
+          
+          <div class="space-y-4 text-sm sm:text-base text-white/80 flex-grow">
+            <div>
+              <p class="text-[11px] text-white/55 uppercase tracking-wide mb-1">First 10 Customers</p>
+              {% set first_customers = go_to_market.first_customers or sx.first_10_customers or [] %}
+              <ul class="list-disc list-inside space-y-1">
+                {% for c in first_customers %}
+                  <li>{{ c }}</li>
+                {% else %}
+                  <li class="text-white/50 text-xs">Concrete ideas for your first 10 users will appear here.</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div>
+              <p class="text-[11px] text-white/55 uppercase tracking-wide mb-1">Channels & Plays</p>
+              {% set channels = go_to_market.channels or sx.go_to_market or [] %}
+              <div class="flex flex-wrap gap-1.5">
+                {% for ch in channels %}
+                  <span class="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-emerald-200 text-[10px]">
+                    {{ ch }}
+                  </span>
+                {% else %}
+                  <p class="text-xs text-white/50">Your channel strategy will show up here: communities, cold outreach, content, etc.</p>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6 border border-white/10 flex flex-col">
+          <div class="mb-4">
+            <div class="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-300 mb-3">
+              <i data-lucide="cpu" class="w-5 h-5"></i>
+            </div>
+            <h3 class="text-lg sm:text-xl font-bold text-white">Stack & Budget</h3>
+            <p class="text-[11px] text-white/50 mt-1">Tools, costs & constraints</p>
+          </div>
+          
+          <div class="space-y-4">
+            <div>
+              <p class="text-[11px] text-white/55 uppercase tracking-wide mb-1">Suggested stack</p>
+              {% set stack = budget_and_stack.tech_stack or sx.stack or sx.tech_stack or [] %}
+              <div class="flex flex-wrap gap-1.5">
+                {% for t in stack %}
+                  <span class="px-2 py-0.5 rounded bg-white/5 border border-white/15 text-white/85 text-[10px] font-mono">
+                    {{ t }}
+                  </span>
+                {% else %}
+                  <p class="text-xs text-white/50">Stack suggestions will appear here once the engine has more context.</p>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="p-3 bg-orange-500/5 border border-orange-500/15 rounded-lg">
+              <p class="text-[11px] text-orange-300/80 uppercase tracking-wide mb-1">Budget & Pricing Notes</p>
+              <p class="text-sm sm:text-base text-orange-100">
+                {{ budget_and_stack.budget_estimate or sx.budget_notes or sx.pricing_notes
+                   or "High-level notes on budget range, tool costs, and how to think about early pricing experiments." }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-6 border border-white/10 bg-red-900/5">
+        <h3 class="text-lg sm:text-xl font-semibold text-white mb-4 flex items-center gap-2">
+          <i data-lucide="shield-alert" class="w-5 h-5 text-red-400"></i> Risk & Reality Check
+        </h3>
+        <div class="grid md:grid-cols-2 gap-6">
+          <div>
+            <span class="text-[11px] font-bold text-red-400 uppercase tracking-wide block mb-2">Key Risks</span>
+            <ul class="space-y-2">
+              {% set risk_items = risks.items or sx.risk_analysis or sx.key_risks or [] %}
+              {% for risk in risk_items %}
+                <li class="flex items-start gap-2 text-sm sm:text-base text-white/75">
+                  <i data-lucide="x-circle" class="w-4 h-4 text-red-500/60 mt-0.5 shrink-0"></i>
+                  {{ risk }}
+                </li>
+              {% else %}
+                <li class="text-xs text-white/50">Risk analysis will appear here — market, product, team and execution risks.</li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div>
+            <span class="text-[11px] font-bold text-emerald-400 uppercase tracking-wide block mb-2">Mitigation / Focus</span>
+            <ul class="space-y-2">
+              {% set mitigations = sx.mitigations or sx.mitigation_ideas or [] %}
+              {% for mit in mitigations %}
+                <li class="flex items-start gap-2 text-sm sm:text-base text-white/75">
+                  <i data-lucide="check-circle" class="w-4 h-4 text-emerald-500/70 mt-0.5 shrink-0"></i>
+                  {{ mit }}
+                </li>
+              {% else %}
+                <li class="text-xs text-white/50">
+                  Concrete suggestions for how to reduce risk (scope, budget, experiments) will be listed here.
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    {% else %}
+
+      {# JOB MODE VIEW #}
+
+      {% set probs = plan.probabilities or {} %}
+
+      <div class="grid lg:grid-cols-3 gap-6 items-start">
+        <div class="lg:col-span-1 space-y-3">
+          <h3 class="text-xs sm:text-sm font-semibold text-white/60 uppercase tracking-wider">Target LPA bands</h3>
+          <div class="space-y-2">
+            <div class="glass-card p-3 rounded-xl border border-white/10 flex items-center justify-between">
+              <span class="text-sm sm:text-base text-white/75">12 LPA</span>
+              <div class="flex items-center gap-2">
+                <div class="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div class="h-full bg-emerald-500" style="width: {{ probs.lpa_12 or 0 }}%;"></div>
+                </div>
+                <span class="text-sm font-bold text-emerald-300">{{ probs.lpa_12 or 0 }}%</span>
+              </div>
+            </div>
+            <div class="glass-card p-3 rounded-xl border border-white/10 flex items-center justify-between">
+              <span class="text-sm sm:text-base text-white/75">24 LPA</span>
+              <div class="flex items-center gap-2">
+                <div class="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div class="h-full bg-yellow-500" style="width: {{ probs.lpa_24 or 0 }}%;"></div>
+                </div>
+                <span class="text-sm font-bold text-yellow-300">{{ probs.lpa_24 or 0 }}%</span>
+              </div>
+            </div>
+            <div class="glass-card p-3 rounded-xl border border-white/10 flex items-center justify-between">
+              <span class="text-sm sm:text-base text-white/75">48 LPA</span>
+              <div class="flex items-center gap-2">
+                <div class="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div class="h-full bg-red-500" style="width: {{ probs.lpa_48 or 0 }}%;"></div>
+                </div>
+                <span class="text-sm font-bold text-red-300">{{ probs.lpa_48 or 0 }}%</span>
+              </div>
+            </div>
+          </div>
+          <p class="text-[10px] text-white/45 italic mt-1 leading-tight">
+            *Rough estimates for your chosen {{ timeline_months }}-month horizon, based on current market demand and your visible gaps.
+          </p>
+        </div>
+
+        <div class="lg:col-span-2 glass-card rounded-2xl p-6 border border-white/10">
+          <h3 class="text-sm sm:text-base font-semibold text-white/70 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <i data-lucide="alert-triangle" class="w-4 h-4 text-orange-400"></i> Critical Skill Gaps
+          </h3>
+          <div class="flex flex-wrap gap-2">
+            {% for skill in plan.missing_skills or [] %}
+              <span class="px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/25 text-orange-200 text-sm font-medium">
+                {{ skill }}
+              </span>
+            {% else %}
+              <span class="text-white/55 text-sm">No major gaps detected (or profile incomplete). Fill your Profile Portal for sharper signals.</span>
+            {% endfor %}
+          </div>
+          <p class="text-xs sm:text-sm text-white/65 mt-4">
+            Closing these gaps is the fastest way to: 
+            <span class="font-semibold">move from 12 → 24 LPA</span>, and make 48 LPA at least possible over a longer horizon.
+          </p>
+        </div>
+      </div>
+
+      {# Timeline labels based on timeline_months #}
+      {% set tmonths = timeline_months %}
+      {% if tmonths <= 3 %}
+        {% set label_30 = "Days 1–30" %}
+        {% set label_60 = "Days 31–60" %}
+        {% set label_90 = "Days 61–90" %}
+      {% elif tmonths <= 6 %}
+        {% set label_30 = "Months 1–2" %}
+        {% set label_60 = "Months 3–4" %}
+        {% set label_90 = "Months 5–6" %}
+      {% elif tmonths <= 12 %}
+        {% set label_30 = "Months 1–4" %}
+        {% set label_60 = "Months 5–8" %}
+        {% set label_90 = "Months 9–12" %}
+      {% else %}
+        {% set label_30 = "Phase 1" %}
+        {% set label_60 = "Phase 2" %}
+        {% set label_90 = "Phase 3" %}
+      {% endif %}
+
+      <div class="space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
+          <h3 class="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+            <i data-lucide="map" class="w-6 h-6 text-blue-400"></i>
+            <span>Your {{ tmonths }}-Month Execution Plan</span>
+          </h3>
+          <p class="text-xs text-white/60">
+            Split into <span class="font-semibold">3 clear phases</span> so you always know what this month is about.
+          </p>
+        </div>
+        
+        <div class="grid md:grid-cols-3 gap-6">
+          <div class="glass-card rounded-2xl p-6 border border-white/10 relative overflow-hidden group">
+            <div class="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
+            <h4 class="text-lg sm:text-xl font-bold text-white mb-1">{{ label_30 }}</h4>
+            <p class="text-[11px] text-blue-300 font-medium uppercase tracking-wide mb-4">Foundation & Gaps</p>
+            <p class="text-sm sm:text-base text-white/75 italic mb-4 min-h-[40px]">{{ plan.plan_core.focus_30 }}</p>
+            <ul class="space-y-3">
+              {% for item in plan.plan_core.weeks_30 or [] %}
+                <li class="flex items-start gap-3 text-sm sm:text-base text-white/85">
+                  <div class="w-5 h-5 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center shrink-0 text-xs font-bold">{{ loop.index }}</div>
+                  <span>{{ item }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <div class="glass-card rounded-2xl p-6 border border-white/10 relative overflow-hidden group">
+            <div class="absolute top-0 left-0 w-full h-1 bg-purple-500"></div>
+            <h4 class="text-lg sm:text-xl font-bold text-white mb-1">{{ label_60 }}</h4>
+            <p class="text-[11px] text-purple-300 font-medium uppercase tracking-wide mb-4">Projects & Depth</p>
+            <p class="text-sm sm:text-base text-white/75 italic mb-4 min-h-[40px]">{{ plan.plan_core.focus_60 }}</p>
+            <ul class="space-y-3">
+              {% for item in plan.plan_core.weeks_60 or [] %}
+                <li class="flex items-start gap-3 text-sm sm:text-base text-white/85">
+                  <div class="w-5 h-5 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 text-xs font-bold">{{ loop.index }}</div>
+                  <span>{{ item }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <div class="glass-card rounded-2xl p-6 border border-white/10 relative overflow-hidden group">
+            <div class="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
+            <h4 class="text-lg sm:text-xl font-bold text-white mb-1">{{ label_90 }}</h4>
+            <p class="text-[11px] text-emerald-300 font-medium uppercase tracking-wide mb-4">Showcase & Apply</p>
+            <p class="text-sm sm:text-base text-white/75 italic mb-4 min-h-[40px]">{{ plan.plan_core.focus_90 }}</p>
+            <ul class="space-y-3">
+              {% for item in plan.plan_core.weeks_90 or [] %}
+                <li class="flex items-start gap-3 text-sm sm:text-base text-white/85">
+                  <div class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0 text-xs font-bold">{{ loop.index }}</div>
+                  <span>{{ item }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {% set resources = plan.resources or {} %}
+      {% set mini_projects = plan.mini_projects or resources.mini_projects or [] %}
+      {% set tutorials = plan.tutorials or resources.tutorials or [] %}
+      {% set resume_bullets = plan.resume_bullets or resources.resume_bullets or [] %}
+      {% set linkedin_actions = plan.linkedin_actions or resources.linkedin_actions or [] %}
+      {% set max_projects = plan.max_projects or 1 %}
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="glass-card rounded-2xl p-6 border border-white/10">
+          <h3 class="text-lg sm:text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <i data-lucide="code" class="w-5 h-5 text-indigo-400"></i> Mini Projects to Ship
+          </h3>
+
+          {% if mini_projects %}
+            {% if is_pro_user and snapshot_id %}
+              <p class="text-[11px] text-white/65 mb-3">
+                Based on your <span class="font-semibold">{{ timeline_months }}-month</span> plan,
+                you should focus on
+                <span class="font-semibold">{{ max_projects }}</span>
+                mini project{{ 's' if max_projects > 1 else '' }}.
+                Pick the ones you want <span class="font-semibold">Weekly Coach</span> to drive.
+              </p>
+
+              <form
+                method="post"
+                action="{{ url_for('dream.select_projects') }}"
+                class="space-y-3"
+              >
+                <input type="hidden" name="path_type" value="{{ path_type }}">
+                <input type="hidden" name="snapshot_id" value="{{ snapshot_id }}">
+
+                <div class="space-y-2">
+                  {% for project in mini_projects %}
+                    <label class="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-400/50 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        name="project_index"
+                        value="{{ loop.index0 }}"
+                        class="mt-1 w-4 h-4 rounded border-white/40 bg-black/40 checked:bg-emerald-500"
+                      >
+                      <div class="flex-1 flex items-start gap-2">
+                        <i data-lucide="git-branch" class="w-4 h-4 text-indigo-300 mt-0.5"></i>
+                        <span class="text-sm sm:text-base text-white/85">{{ project }}</span>
+                      </div>
+                    </label>
+                  {% endfor %}
+                </div>
+
+                <button
+                  type="submit"
+                  class="mt-3 inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-xs sm:text-sm font-semibold text-white shadow-md shadow-emerald-500/30 transition-all"
+                >
+                  <i data-lucide="check-circle" class="w-4 h-4 mr-2"></i>
+                  Save {{ max_projects }} selected project{{ 's' if max_projects > 1 else '' }} & go to Weekly Coach
+                </button>
+                <p class="text-[10px] text-white/55 mt-1">
+                  Weekly Coach will prioritize tasks that move these selected projects forward, week by week.
+                </p>
+              </form>
+            {% else %}
+              <p class="text-xs text-white/60 mb-2">
+                Finish these and you unlock concrete bullets to paste into your resume & LinkedIn.
+              </p>
+              <div class="space-y-3">
+                {% for project in mini_projects %}
+                  <div class="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+                    <i data-lucide="git-branch" class="w-4 h-4 text-indigo-300 mt-1"></i>
+                    <span class="text-sm sm:text-base text-white/85">{{ project }}</span>
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% else %}
+            <p class="text-xs text-white/55">Mini projects will appear here. Use them as your main proof of skill.</p>
+          {% endif %}
+        </div>
+
+        <div class="glass-card rounded-2xl p-6 border border-white/10">
+          <h3 class="text-lg sm:text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <i data-lucide="play-circle" class="w-5 h-5 text-red-400"></i> Recommended Learning
+          </h3>
+          <p class="text-xs text-white/60 mb-2">
+            Short, targeted resources. Don’t hoard courses — finish what’s here and move on.
+          </p>
+          <div class="space-y-2">
+            {% for tutorial in tutorials %}
+              {% if tutorial.label is defined %}
+                <a
+                  {% if tutorial.url %}href="{{ tutorial.url }}"{% endif %}
+                  class="block p-3 rounded-lg border border-white/5 hover:border-white/20 hover:bg-white/5 transition-all"
+                  {% if tutorial.url %}target="_blank" rel="noopener noreferrer"{% endif %}
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm sm:text-base text-white/85 leading-snug">{{ tutorial.label }}</span>
+                    <i data-lucide="external-link" class="w-3 h-3 text-white/30"></i>
+                  </div>
+                </a>
+              {% else %}
+                <div class="block p-3 rounded-lg border border-white/5 hover:border-white/20 hover:bg-white/5 transition-all">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm sm:text-base text-white/85 leading-snug">{{ tutorial }}</span>
+                    <i data-lucide="external-link" class="w-3 h-3 text-white/30"></i>
+                  </div>
+                </div>
+              {% endif %}
+            {% else %}
+              <p class="text-xs text-white/55">Tutorial suggestions will appear here. The idea is: lean, focused content, not a 30-course playlist.</p>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="glass-card rounded-2xl p-5 border border-white/10">
+          <h4 class="text-xs sm:text-sm font-bold text-white/65 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <i data-lucide="file-text" class="w-4 h-4 text-emerald-300"></i>
+            <span>Resume bullets to add after you execute</span>
+          </h4>
+          <p class="text-[11px] text-white/55 mb-2">
+            Once you’ve actually done the work, you can plug these bullets into your resume & LinkedIn — no full rewrite needed.
+          </p>
+          <ul class="space-y-1.5">
+            {% for bullet in resume_bullets %}
+              <li class="text-xs sm:text-sm text-white/80 flex gap-2">
+                <span class="text-emerald-400 mt-[2px]">•</span> {{ bullet }}
+              </li>
+            {% else %}
+              <li class="text-xs text-white/55">Resume-ready bullets will appear here, connected to the projects and skills in this plan.</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="glass-card rounded-2xl p-5 border border-white/10">
+          <h4 class="text-xs sm:text-sm font-bold text-white/65 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <i data-lucide="linkedin" class="w-4 h-4 text-sky-300"></i>
+            <span>LinkedIn & Outreach Strategy</span>
+          </h4>
+          <p class="text-[11px] text-white/55 mb-2">
+            Use these as small, weekly moves — comments, connections, and DMs that match the work you’re actually doing.
+          </p>
+          <ul class="space-y-1.5">
+            {% for action in linkedin_actions %}
+              <li class="text-xs sm:text-sm text-white/80 flex gap-2">
+                <span class="text-sky-300 mt-[2px]">•</span> {{ action }}
+              </li>
+            {% else %}
+              <li class="text-xs text-white/55">Once the engine has enough context, you’ll see 6–10 concrete LinkedIn actions here.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+    {% endif %}
+
+  {% endif %}
+</section>
+{% endblock %}

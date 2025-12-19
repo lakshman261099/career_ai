@@ -243,6 +243,12 @@
              href="{{ feature_paths.referral }}">Referrals</a>
           <a class="nav-link {% if request.endpoint and request.endpoint.startswith('jobpack.') %}nav-active{% endif %}"
              href="{{ feature_paths.jobpack }}">Job Packs</a>
+          <!-- NEW: Dream Planner tab -->
+          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('dream.') %}nav-active{% endif %}"
+             href="{{ feature_paths.dream }}">Dream Planner</a>
+          <!-- NEW: Coach tab (always accessible once logged in) -->
+          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('coach.') %}nav-active{% endif %}"
+             href="{{ feature_paths.coach }}">Coach</a>
           <a class="nav-link {% if request.endpoint and request.endpoint.startswith('billing.') %}nav-active{% endif %}"
              href="{{ feature_paths.billing }}">Pricing</a>
 
@@ -326,10 +332,11 @@
       <div class="glass-card rounded-2xl px-4 py-2.5 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
         <span class="font-semibold text-white/80">Simple way to use CareerAI:</span>
         <span>1) <strong>Fill Profile Portal</strong></span>
-        <span class="hidden sm:inline">→ 2) Run <strong>Skill Mapper</strong></span>
-        <span class="hidden sm:inline">→ 3) Build <strong>Projects in Portfolio</strong></span>
-        <span class="hidden sm:inline">→ 4) Use <strong>Job Packs &amp; Internship Analyzer</strong></span>
-        <span class="hidden sm:inline">→ 5) Send <strong>Referral messages</strong></span>
+        <span class="hidden sm:inline">→ 2) Run <strong>Dream Planner</strong> &amp; <strong>Coach</strong></span>
+        <span class="hidden sm:inline">→ 3) Map roles with <strong>Skill Mapper</strong></span>
+        <span class="hidden sm:inline">→ 4) Build <strong>Projects in Portfolio</strong></span>
+        <span class="hidden sm:inline">→ 5) Use <strong>Job Packs &amp; Internship Analyzer</strong></span>
+        <span class="hidden sm:inline">→ 6) Send <strong>Referral messages</strong></span>
       </div>
     </div>
   {% endif %}

@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}Dream Planner — CareerAI{% endblock %}
+
+{% block content %}
+{% set active_path = path_type or 'job' %}
+<section class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-10 pb-16 space-y-6">
+  <!-- Hero card -->
+  <div class="glass-card rounded-2xl p-6 sm:p-7 shadow-xl border border-white/10 relative overflow-hidden">
+    <div class="pointer-events-none absolute inset-0 opacity-60">
+      <div class="w-full h-full bg-[radial-gradient(circle_at_top_left,rgba(248,250,252,0.18),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.24),transparent_55%)]"></div>
+    </div>
+
+    <div class="relative flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+      <div>
+        <div class="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-white/70 mb-2">
+          <span class="px-2 py-0.5 rounded-full bg-black/40 border border-white/20 inline-flex items-center gap-1">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+            <span>Dream Planner</span>
+          </span>
+          <span class="hidden sm:inline px-2 py-0.5 rounded-full bg-black/20 border border-white/10">
+            Pro · Gold-based
+          </span>
+        </div>
+        <h1 class="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
+          Design your Dream Career Plan
+        </h1>
+        <p class="text-sm sm:text-base text-white/85 mt-1 max-w-xl">
+          Use your <span class="font-semibold">Profile Portal</span>, resume and preferences to generate a
+          <span class="font-semibold">personal Dream Job plan</span> or a
+          <span class="font-semibold">Dream Startup plan</span> with timelines, realistic probabilities, and a clear 3-phase roadmap.
+        </p>
+
+        {% if profile_snapshot %}
+          <p class="mt-2 text-[11px] text-white/70 flex items-center gap-1.5">
+            <i data-lucide="id-card" class="w-3.5 h-3.5"></i>
+            <span>Profile Portal: <span class="font-semibold">{{ profile_snapshot.profile_strength_score or 0 }}% complete</span></span>
+            <a href="{{ url_for('settings.profile') }}" class="underline hover:text-white ml-1">
+              update
+            </a>
+          </p>
+        {% else %}
+          <p class="mt-2 text-[11px] text-white/70 flex items-start gap-1.5">
+            <i data-lucide="info" class="w-3.5 h-3.5 mt-[2px]"></i>
+            <span>
+              Dream Planner works best after you’ve filled your Profile Portal and uploaded a resume.
+              You can still run it, but the plan will be more generic.
+            </span>
+          </p>
+        {% endif %}
+      </div>
+
+      <div class="self-start sm:self-auto">
+        <div class="rounded-2xl px-4 py-3 bg-slate-950/80 border border-white/20 shadow-glow text-xs space-y-1.5 backdrop-blur-xl">
+          <p class="text-[11px] text-white/75">
+            Dream Planner is <span class="font-semibold text-emerald-300">Pro-only</span> and uses
+            <span class="font-semibold text-amber-200">Gold ⭐ credits</span> per run.
+          </p>
+          <p class="text-[11px] text-white/70">
+            Each run reads your Profile Portal + resume to estimate
+            <span class="font-semibold">LPA probabilities, skill gaps, and a 3-phase plan sized to your timeline</span>
+            (for Dream Job) or <span class="font-semibold">founder role, MVP, GTM and budget</span> (for Dream Startup).
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Path selector: Dream Job / Dream Startup -->
+    <div class="relative mt-5">
+      <p class="text-[11px] text-white/70 mb-2 flex items-center gap-1.5">
+        <i data-lucide="route" class="w-3.5 h-3.5"></i>
+        <span>Choose what kind of Dream Plan you want to generate today.</span>
+      </p>
+      <div class="grid sm:grid-cols-2 gap-3 text-[11px] sm:text-xs">
+        <!-- Dream Job -->
+        <label class="group cursor-pointer rounded-2xl border transition-all px-3 py-3 bg-black/40 hover:bg-black/60
+                      {% if active_path == 'job' %}border-emerald-400/80 shadow-md shadow-emerald-500/20{% else %}border-white/15{% endif %}">
+          <div class="flex items-start gap-2">
+            <input
+              type="radio"
+              name="path_type_display"
+              class="mt-[2px] accent-emerald-400"
+              {% if active_path == 'job' %}checked{% endif %}
+              onclick="document.getElementById('path_type_job').checked = true;">
+            <div class="space-y-1">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[11px] uppercase tracking-[0.14em] text-emerald-300">Dream Job</span>
+              </div>
+              <p class="text-white/80 text-[11px]">
+                Plan your path to a <span class="font-semibold">specific target role &amp; salary</span> with
+                estimated LPA bands and a <span class="font-semibold">3-phase execution roadmap</span> across your chosen months.
+              </p>
+              <p class="text-[10px] text-white/60">
+                Good if your goal is <span class="font-semibold">placements / full-time offers</span>.
+              </p>
+            </div>
+          </div>
+        </label>
+
+        <!-- Dream Startup -->
+        <label class="group cursor-pointer rounded-2xl border transition-all px-3 py-3 bg-black/40 hover:bg-black/60
+                      {% if active_path == 'startup' %}border-fuchsia-400/80 shadow-md shadow-fuchsia-500/20{% else %}border-white/15{% endif %}">
+          <div class="flex items-start gap-2">
+            <input
+              type="radio"
+              name="path_type_display"
+              class="mt-[2px] accent-fuchsia-400"
+              {% if active_path == 'startup' %}checked{% endif %}
+              onclick="document.getElementById('path_type_startup').checked = true;">
+            <div class="space-y-1">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[11px] uppercase tracking-[0.14em] text-fuchsia-300">Dream Startup</span>
+              </div>
+              <p class="text-white/80 text-[11px]">
+                Plan your path as a <span class="font-semibold">founder</span>: what role you can play, who you need as cofounders,
+                MVP plan, budget, GTM, and first 10 customers — again in a <span class="font-semibold">3-phase timeline</span>.
+              </p>
+              <p class="text-[10px] text-white/60">
+                Good if you want to <span class="font-semibold">build a startup instead of only chasing jobs</span>.
+              </p>
+            </div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <form method="POST" class="relative mt-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <!-- Real path_type radios (hidden) -->
+      <input
+        type="radio"
+        id="path_type_job"
+        name="path_type"
+        value="job"
+        class="hidden"
+        {% if active_path == 'job' %}checked{% endif %}>
+      <input
+        type="radio"
+        id="path_type_startup"
+        name="path_type"
+        value="startup"
+        class="hidden"
+        {% if active_path == 'startup' %}checked{% endif %}>
+
+      <!-- Left side: inputs -->
+      <div class="lg:col-span-2 space-y-4">
+        <div>
+          <label class="block text-sm font-semibold mb-1">
+            {% if active_path == 'startup' %}
+              What kind of startup / problem space?
+            {% else %}
+              Target role or direction
+            {% endif %}
+          </label>
+          <p class="text-[11px] text-white/60 mb-1">
+            {% if active_path == 'startup' %}
+              Example: “AI-powered interview prep for tier-3 colleges”, “Local SaaS for small clinics”, “Student-friendly freelancing marketplace”.
+            {% else %}
+              Example: “Data Analyst at product companies”, “Frontend Engineer (React/Next)”, “ML Engineer in fintech”.
+            {% endif %}
+          </p>
+          <input
+            type="text"
+            name="target_role"
+            class="w-full input rounded-xl"
+            placeholder="Describe your dream role / startup idea in one line">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold mb-1">
+              {% if active_path == 'startup' %}
+                Time horizon to seriously launch
+              {% else %}
+                Time horizon to hit your target package
+              {% endif %}
+            </label>
+            <select name="timeline_months" class="w-full select rounded-xl px-3 py-2 text-sm bg-black/40 border border-white/20">
+              <option value="">6–12 months (default)</option>
+              <option value="3">3 months · aggressive</option>
+              <option value="6">6 months · focused</option>
+              <option value="12">12 months · deep build</option>
+              <option value="18">18+ months · long-term</option>
+            </select>
+            <p class="text-[10px] text-white/55 mt-1">
+              The engine will stretch or compress each phase (1–3) across this horizon and adjust the realism of your probabilities.
+            </p>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold mb-1">
+              Hours per day you can realistically invest
+            </label>
+            <select name="hours_per_day" class="w-full select rounded-xl px-3 py-2 text-sm bg-black/40 border border-white/20">
+              <option value="">2–3 hours / day</option>
+              <option value="1">1–2 hours / day</option>
+              <option value="3">3–4 hours / day</option>
+              <option value="5">5+ hours / day (break / holidays)</option>
+            </select>
+            <p class="text-[10px] text-white/55 mt-1">
+              Be honest. Unrealistic hours + aggressive goals = the engine will warn you and lower the probabilities.
+            </p>
+          </div>
+        </div>
+
+        {% if active_path == 'job' %}
+          <div>
+            <label class="block text-sm font-semibold mb-1">
+              Target CTC / LPA (optional)
+            </label>
+            <p class="text-[11px] text-white/60 mb-1">
+              Example: “9 LPA”, “12 LPA+”, “International remote role equivalent”.
+            </p>
+            <input
+              type="text"
+              name="target_lpa"
+              class="w-full input rounded-xl"
+              placeholder="Example: 12 LPA">
+          </div>
+        {% endif %}
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">
+            Company / market preferences (optional)
+          </label>
+          <p class="text-[11px] text-white/60 mb-1">
+            Example: “Product companies in Bangalore”, “Remote-first startups”, “Fintech / AI / Edtech”, “US-based fully remote”.
+          </p>
+          <input
+            type="text"
+            name="company_prefs"
+            class="w-full input rounded-xl"
+            placeholder="Write anything important about the kind of company or market you want.">
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold mb-1">
+            Extra context (optional)
+          </label>
+          <p class="text-[11px] text-white/60 mb-1">
+            Add constraints, current situation, or details not visible in your Profile Portal (backlogs, gap years, finances, etc.).
+          </p>
+          <textarea
+            name="extra_context"
+            rows="4"
+            class="w-full rounded-xl px-3 py-2 bg-white/5 border border-white/15 focus:outline-none focus:ring-2 focus:ring-brand-500/70 text-sm"
+            placeholder="Example: Final-year student, tier-3 college; 1 internship; comfortable with Python &amp; Power BI; need at least 8 LPA to support family, prefer Bangalore or remote."></textarea>
+        </div>
+      </div>
+
+      <!-- Right side: Pro-only notice + CTA -->
+      <div class="space-y-4">
+        <div class="rounded-2xl bg-slate-950/85 border border-white/15 p-4 space-y-3 backdrop-blur-xl">
+          {% if is_pro_user %}
+            <p class="text-xs text-white/75 flex items-center gap-1.5">
+              <i data-lucide="lock-open" class="w-3.5 h-3.5"></i>
+              <span>Dream Planner is unlocked for you.</span>
+            </p>
+            <p class="text-[11px] text-white/70">
+              This run will use <span class="font-semibold text-amber-200">Gold ⭐ credits</span> based on the
+              <span class="font-semibold">dream_planner</span> feature cost configured in your account.
+            </p>
+            <p class="text-[11px] text-white/65">
+              After generating your Dream Plan, you can later plug it into a <span class="font-semibold">Daily Action Coach</span>
+              mode to track and adjust progress from day to day.
+            </p>
+          {% else %}
+            <p class="text-xs text-white/75 flex items-center gap-1.5">
+              <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+              <span>Dream Planner is Pro-only.</span>
+            </p>
+            <p class="text-[11px] text-white/70">
+              As a Free user, you can see what Dream Planner does, but you need to
+              <span class="font-semibold">upgrade to Pro ⭐</span> to generate a personal plan using Gold credits.
+            </p>
+          {% endif %}
+        </div>
+
+        <div class="flex flex-col gap-2">
+          {% if is_pro_user %}
+            <button type="submit" class="btn-primary justify-center">
+              Generate Dream Plan (uses Gold ⭐)
+            </button>
+            <p class="text-[11px] text-white/65">
+              Gold ⭐ credits are only spendable while you are on Pro. If you ever downgrade, unused Gold remain in your account but
+              <span class="font-semibold">cannot be used</span> until you upgrade again.
+            </p>
+          {% else %}
+            <button type="button" class="btn-primary justify-center opacity-70 cursor-not-allowed">
+              Pro-only · Generate Dream Plan
+            </button>
+            <a href="{{ feature_paths.billing }}" class="btn-ghost justify-center text-xs mt-1">
+              Upgrade to Pro ⭐ to unlock Dream Planner
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- How Dream Planner fits -->
+  <div class="glass-card rounded-2xl p-4 sm:p-5 space-y-2 text-[11px] sm:text-xs text-white/70 border border-white/10">
+    <p class="font-semibold text-white/85 text-xs sm:text-sm flex items-center gap-1.5">
+      <i data-lucide="route" class="w-4 h-4"></i>
+      <span>Where Dream Planner fits in your CareerAI journey</span>
+    </p>
+    <p>
+      Skill Mapper helps you choose a path (Job, Startup or Freelance). Dream Planner then builds a
+      <span class="font-semibold">personal plan for ONE Dream Job or Dream Startup</span>, with realistic timelines and phase-wise actions.
+    </p>
+    <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+      <span class="px-2 py-1 rounded-full bg-white/5 border border-white/15">
+        1️⃣ Profile Portal
+      </span>
+      <span>→</span>
+      <a href="{{ feature_paths.skillmapper }}" class="px-2 py-1 rounded-full bg-indigo-500/25 border border-indigo-300/70 hover:bg-indigo-500/35">
+        2️⃣ Skill Mapper (Job / Startup / Freelance)
+      </a>
+      <span>→</span>
+      <span class="px-2 py-1 rounded-full bg-emerald-500/25 border border-emerald-300/70">
+        3️⃣ Dream Planner (this page)
+      </span>
+      <span>→</span>
+      <a href="{{ feature_paths.portfolio }}" class="px-2 py-1 rounded-full bg-fuchsia-500/25 border border-fuchsia-300/70 hover:bg-fuchsia-500/35">
+        4️⃣ Portfolio projects
+      </a>
+      <span>→</span>
+      <a href="{{ feature_paths.jobpack }}" class="px-2 py-1 rounded-full bg-sky-500/25 border border-sky-300/70 hover:bg-sky-500/35">
+        5️⃣ Job Packs &amp; Internships
+      </a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  });
+</script>
+{% endblock %}

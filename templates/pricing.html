@@ -2,61 +2,127 @@
 {% block title %}Pricing — CareerAI{% endblock %}
 
 {% block content %}
-<section class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-12">
-  <h1 class="text-3xl font-extrabold mb-2">Pricing</h1>
-  <p class="text-white/70 text-sm">
-    Status: <span class="font-semibold">{{ subscription_status|capitalize }}</span> ·
-    🪙 Free: <span class="font-semibold">{{ user_free }}</span> ·
-    ⭐ Pro: <span class="font-semibold">{{ user_pro }}</span>
-  </p>
+<section class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-10 pb-16 text-white">
+  <!-- Header -->
+  <header class="mb-6 space-y-2">
+    <h1 class="text-3xl font-extrabold tracking-tight">Pricing</h1>
+    <p class="text-sm text-white/75">
+      Status:
+      <span class="font-semibold">{{ subscription_status|capitalize }}</span>
+      · 🪙 Silver:
+      <span class="font-semibold">{{ user_free }}</span>
+      · ⭐ Gold:
+      <span class="font-semibold">{{ user_pro }}</span>
+    </p>
+    <p class="text-[11px] text-white/60 max-w-2xl">
+      Silver <span class="font-semibold">🪙</span> are free credits (given at account creation + daily refills).
+      Gold <span class="font-semibold">⭐</span> are Pro credits from your subscription and power Pro-only features.
+    </p>
+  </header>
 
-  <div class="grid md:grid-cols-2 gap-6 mt-6">
+  <!-- Plans -->
+  <div class="grid md:grid-cols-2 gap-6 mt-4">
     <!-- Free -->
-    <div class="glass-panel rounded-2xl p-6">
-      <h2 class="text-xl font-bold">Free</h2>
-      <ul class="mt-3 space-y-2 text-white/80 text-sm">
-        <li>🧰 Portfolio Builder (daily limits)</li>
-        <li>🧭 Internship Finder (paste-only)</li>
-        <li>🤝 Referral Trainer (Free feature)</li>
-        <li>🗂️ Job Pack (limited runs)</li>
-        <li>🧩 Skill Mapper (daily limits)</li>
-      </ul>
+    <article class="glass-panel rounded-2xl p-6 border border-white/10 shadow-xl flex flex-col justify-between">
+      <div class="space-y-3">
+        <div>
+          <h2 class="text-xl font-bold flex items-center gap-2">
+            Free
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-white/5 border border-white/25">
+              🪙 Included
+            </span>
+          </h2>
+          <p class="text-xs text-white/70 mt-1">
+            Try the full CareerAI flow with daily Silver credits, no card required.
+          </p>
+        </div>
 
-      <!-- Dev only helper -->
-      <a href="{{ url_for('billing.mock_topup_free') }}" class="btn-ghost mt-5 inline-flex">
+        <ul class="mt-2 space-y-1.5 text-white/80 text-sm">
+          <li>• Portfolio Builder (1 idea / run, daily limits)</li>
+          <li>• Internship Analyzer (1 analysis / day)</li>
+          <li>• Referral Trainer (core templates)</li>
+          <li>• Job Pack (basic report, limited runs)</li>
+          <li>• Skill Mapper (3 roles per run, daily limits)</li>
+        </ul>
+
+        <p class="text-[11px] text-white/55 mt-2">
+          Perfect to explore: fill your Profile Portal, run Skill Mapper, and try a few Job Packs &amp; internships.
+        </p>
+      </div>
+
+      <!-- Dev helper -->
+      <a href="{{ url_for('billing.mock_topup_free') }}"
+         class="btn-ghost mt-5 inline-flex text-xs">
         Add 5 Free Coins (dev)
       </a>
-    </div>
+    </article>
 
     <!-- Pro -->
-    <div class="glass-panel rounded-2xl p-6 border border-yellow-400/30">
-      <h2 class="text-xl font-bold">Pro</h2>
-      <ul class="mt-3 space-y-2 text-white/80 text-sm">
-        <li>⭐ Pro Coins for unlimited workflow</li>
-        <li>📄 Resume profile upload (Pro-only)</li>
-        <li>📰 3+ Portfolio writeups & publish</li>
-        <li>📦 Job Pack exports (PDF/CSV)</li>
-        <li>🚀 Priority credits & higher limits</li>
-      </ul>
+    <article class="glass-panel rounded-2xl p-6 border border-amber-400/35 shadow-xl flex flex-col justify-between relative overflow-hidden">
+      <div class="pointer-events-none absolute inset-0 opacity-60"
+           style="background: radial-gradient(circle at top right, rgba(251,191,36,.24), transparent 55%);"></div>
 
-      {% if subscription_status != 'pro' %}
-        <!-- Stripe Checkout (Subscription) -->
-        <form action="{{ url_for('billing.checkout_pro') }}" method="POST" class="mt-5">
-          <button type="submit" class="btn-primary inline-flex">Upgrade to Pro</button>
-        </form>
-      {% else %}
-        <div class="mt-5 text-green-300 text-sm">You’re on Pro 🎉</div>
-      {% endif %}
+      <div class="relative space-y-3">
+        <div>
+          <h2 class="text-xl font-bold flex items-center gap-2">
+            Pro
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-300/70 text-amber-100">
+              ⭐ Recommended
+            </span>
+          </h2>
+          <p class="text-xs text-white/70 mt-1">
+            Unlock Gold credits, resume upload, deep Job Packs and portfolio publishing.
+          </p>
+        </div>
 
-      <!-- Dev only helper -->
-      <a href="{{ url_for('billing.mock_topup_pro') }}" class="btn-ghost mt-3 inline-flex">
-        Add 10 Pro Coins (dev)
-      </a>
-    </div>
+        <ul class="mt-2 space-y-1.5 text-white/80 text-sm">
+          <li>• Monthly ⭐ Gold credits for Pro runs</li>
+          <li>• Resume Profile upload &amp; scan (Pro-only)</li>
+          <li>• 3+ Portfolio writeups &amp; public publishing</li>
+          <li>• Deep Job Packs (full ATS breakdown, PDF export)</li>
+          <li>• Higher limits + priority credit allocation</li>
+        </ul>
+
+        <p class="text-[11px] text-white/55 mt-2">
+          Stripe handles all billing externally. You can cancel or change your plan from your Stripe customer portal.
+        </p>
+      </div>
+
+      <div class="relative mt-4 space-y-2">
+        {% if subscription_status != 'pro' %}
+          <!-- Stripe Checkout (Subscription) -->
+          <form action="{{ url_for('billing.checkout_pro') }}" method="POST" class="mt-1">
+            <button type="submit" class="btn-primary inline-flex items-center gap-1">
+              <span>Upgrade to Pro</span>
+            </button>
+          </form>
+          <p class="text-[11px] text-white/60">
+            No card details are stored on CareerAI servers. You’ll be redirected to Stripe’s secure checkout.
+          </p>
+        {% else %}
+          <div class="mt-2 text-emerald-300 text-sm flex items-center gap-1.5">
+            <span>✅</span>
+            <span>You’re on Pro 🎉</span>
+          </div>
+          <p class="text-[11px] text-white/60">
+            Your monthly ⭐ Gold credits will refill automatically according to your plan.
+          </p>
+        {% endif %}
+
+        <!-- Dev helper -->
+        <a href="{{ url_for('billing.mock_topup_pro') }}"
+           class="btn-ghost mt-3 inline-flex text-xs">
+          Add 10 Pro Coins (dev)
+        </a>
+      </div>
+    </article>
   </div>
 
-  <div class="text-white/60 text-xs mt-6">
-    <p>We use Stripe for billing. No card details are handled by this site.</p>
+  <!-- Notes -->
+  <div class="text-white/60 text-xs mt-6 space-y-1.5">
+    <p>• We use <span class="font-semibold">Stripe</span> for billing. Card details are never handled or stored by CareerAI.</p>
+    <p>• Silver 🪙 and Gold ⭐ are always deducted <span class="font-semibold">before</span> a tool runs.</p>
+    <p>• If an analysis fails internally after retries, your credits are <span class="font-semibold">automatically refunded</span> and you can try again.</p>
   </div>
 </section>
 {% endblock %}

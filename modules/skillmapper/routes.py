@@ -107,6 +107,29 @@ def _normalize_roles(skillmap: dict) -> dict:
     return skillmap
 
 
+def _current_is_pro_user() -> bool:
+    """
+    Helper: determine if user is Pro based on flags + subscription_status.
+    """
+    if not getattr(current_user, "is_authenticated", False):
+        return False
+    if getattr(current_user, "is_pro", False):
+        return True
+    status = (getattr(current_user, "subscription_status", "free") or "free").lower()
+    return status == "pro"
+
+
+def _normalize_path_type(raw: str | None) -> str:
+    """
+    Normalize the path_type from form/query:
+      'job' (default), 'startup', 'freelance'
+    """
+    val = (raw or "").strip().lower()
+    if val in ("startup", "freelance"):
+        return val
+    return "job"
+
+
 # ---------------------- new HTML-first flow ----------------------
 
 
@@ -116,8 +139,11 @@ def index():
     """
     Skill Mapper — HTML-first flow (like Job Pack).
 
-    - GET: show simple preferences form.
-    - POST: run Free or Deep (Pro) roadmap and render result page.
+    Now supports three paths in one place:
+
+    - Job Path: best-fit roles, gaps, difficulty, salary bands, timeline.
+    - Startup Path: founder role, cofounders, MVP, stack, GTM, risks.
+    - Freelance Path: services, pricing, platforms, client plan, projects.
 
     Free runs:
       - Use Profile Portal + resume + optional extra skills.
@@ -125,25 +151,30 @@ def index():
       - Show 1 full role + Pro preview (blurred) of the rest.
 
     Pro runs:
-      - Require Pro subscription.
-      - Use Profile Portal + resume.
-      - Cost Gold ⭐ (feature_key='skill_mapper_pro').
-      - Show full 3-role roadmap + hiring snapshot + action plan.
-    """
-    is_pro_user = bool(getattr(current_user, "is_pro", False))
-    profile_snapshot = load_profile_snapshot(current_user)
+      - Require Pro subscription + Gold ⭐ credits.
+      - Deep roadmap with 3+ angles, micro-projects & trends.
 
-    mode = (request.form.get("mode") or "free").lower()
+    Credits are only deducted AFTER a successful AI call + snapshot save.
+    """
+    is_pro_user = _current_is_pro_user()
+    mode = (request.form.get("mode") or request.args.get("mode") or "free").lower()
     if mode not in ("free", "pro"):
         mode = "free"
     pro_mode = mode == "pro"
+
+    # path_type: job (default), startup, freelance
+    path_type = _normalize_path_type(
+        request.form.get("path_type") or request.args.get("path_type")
+    )
 
     skillmap = None
     used_live_ai = False
     snapshot = None
 
+    profile_snapshot = load_profile_snapshot(current_user)
+
     if request.method == "POST":
-        # 🔒 Email verification guard
+        # 🔒 Email verification guard (HTML flow)
         if not getattr(current_user, "verified", False):
             flash(
                 "Please verify your email with a login code before using Skill Mapper.",
@@ -161,7 +192,10 @@ def index():
         if pro_mode:
             # Pro mode requires Pro subscription + Gold ⭐ credits
             if not is_pro_user:
-                flash("Skill Mapper Pro is available for Pro ⭐ members only.", "warning")
+                flash(
+                    "Skill Mapper Pro is available for Pro ⭐ members only.",
+                    "warning",
+                )
                 return redirect(url_for("billing.index"))
 
             if not can_afford(current_user, "skill_mapper_pro", currency="gold"):
@@ -198,6 +232,7 @@ def index():
                 mode=mode,
                 is_pro_user=is_pro_user,
                 profile_snapshot=profile_snapshot,
+                path_type=path_type,
                 CAREER_AI_VERSION=CAREER_AI_VERSION,
             )
 
@@ -215,11 +250,15 @@ def index():
                         mode=mode,
                         is_pro_user=is_pro_user,
                         profile_snapshot=profile_snapshot,
+                        path_type=path_type,
                         CAREER_AI_VERSION=CAREER_AI_VERSION,
                     )
 
+                # Hints for Pro (Job / Startup / Freelance all use same engine with path_type)
                 hints = {
-                    "region_sector": region_focus or "India · early-career tech roles",
+                    "path_type": path_type,  # "job" | "startup" | "freelance"
+                    "region_sector": region_focus
+                    or "India · early-career tech roles",
                     "time_horizon_months": time_horizon or 6,
                     "focus": "current_snapshot",
                 }
@@ -234,8 +273,11 @@ def index():
                 if len(extra_skills) > MAX_FREE_TEXT:
                     extra_skills = extra_skills[:MAX_FREE_TEXT]
 
+                # Hints for Free (also path-aware)
                 hints = {
-                    "region_focus": region_focus or "India · early-career tech roles",
+                    "path_type": path_type,  # "job" | "startup" | "freelance"
+                    "region_focus": region_focus
+                    or "India · early-career tech roles",
                     "target_domain": target_domain,
                     "focus": "current_snapshot",
                 }
@@ -249,9 +291,10 @@ def index():
                 )
 
             log.info(
-                "SkillMapper HTML run pro_mode=%s used_live_ai=%s has_profile=%s "
-                "has_resume=%s region=%s target_domain=%s",
+                "SkillMapper HTML run pro_mode=%s path_type=%s used_live_ai=%s "
+                "has_profile=%s has_resume=%s region=%s target_domain=%s",
                 pro_mode,
+                path_type,
                 used_live_ai,
                 bool(profile),
                 bool(resume_text),
@@ -271,6 +314,7 @@ def index():
                 mode=mode,
                 is_pro_user=is_pro_user,
                 profile_snapshot=profile_snapshot,
+                path_type=path_type,
                 CAREER_AI_VERSION=CAREER_AI_VERSION,
             )
 
@@ -283,11 +327,16 @@ def index():
         try:
             snap = SkillMapSnapshot(
                 user_id=current_user.id,
-                source_title="Skill Mapper (Pro)" if pro_mode else "Skill Mapper (Free)",
+                source_title=(
+                    f"Skill Mapper ({path_type.title()} · Pro)"
+                    if pro_mode
+                    else f"Skill Mapper ({path_type.title()} · Free)"
+                ),
                 input_text="\n".join(
                     part
                     for part in [
                         f"mode={mode}",
+                        f"path_type={path_type}",
                         f"region={region_focus}" if region_focus else "",
                         f"target_domain={target_domain}" if target_domain else "",
                         f"time_horizon={time_horizon}" if time_horizon else "",
@@ -349,13 +398,14 @@ def index():
                 "warning",
             )
 
-        # Enrich meta a bit for the template
+        # Enrich meta for the template
         if isinstance(skillmap, dict):
             meta = skillmap.get("meta") or {}
             if not isinstance(meta, dict):
                 meta = {}
             meta.setdefault("run_mode", "pro" if pro_mode else "free")
             meta.setdefault("used_live_ai", bool(used_live_ai))
+            meta.setdefault("path_type", path_type)
             if snapshot is not None:
                 meta.setdefault("snapshot_id", snapshot.id)
             skillmap["meta"] = meta
@@ -378,6 +428,7 @@ def index():
         mode=mode,
         is_pro_user=is_pro_user,
         profile_snapshot=profile_snapshot,
+        path_type=path_type,
         CAREER_AI_VERSION=CAREER_AI_VERSION,
     )
 
@@ -432,6 +483,15 @@ def snapshot(snapshot_id: int):
         meta = {}
     meta.setdefault("snapshot_id", snap.id)
     meta.setdefault("restored_from_history", True)
+    # If path_type wasn't present yet, try to infer from source_title
+    if "path_type" not in meta:
+        st = (snap.source_title or "").lower()
+        if "startup" in st:
+            meta["path_type"] = "startup"
+        elif "freelance" in st:
+            meta["path_type"] = "freelance"
+        else:
+            meta["path_type"] = "job"
     skillmap["meta"] = meta
 
     pro_mode = (skillmap.get("mode") or "free") == "pro"
@@ -441,7 +501,7 @@ def snapshot(snapshot_id: int):
         "skillmapper/result.html",
         skillmap=skillmap,
         is_pro=pro_mode,
-        is_pro_user=bool(getattr(current_user, "is_pro", False)),
+        is_pro_user=_current_is_pro_user(),
         mode="pro" if pro_mode else "free",
         from_history=True,
         snapshot=snap,

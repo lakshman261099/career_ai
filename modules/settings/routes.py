@@ -21,6 +21,7 @@ from models import Project, ResumeAsset, UserProfile, db
 # Resume helpers
 from modules.resume.utils import extract_text_from_pdf
 from modules.resume.parser import parse_resume_to_profile
+from modules.resume.skills_categorizer import categorize_skills  # NEW
 
 settings_bp = Blueprint(
     "settings", __name__, template_folder="../../templates/settings"
@@ -34,9 +35,64 @@ def _allowed_file(fname: str) -> bool:
 
 
 # ---------------------------
+# Skills helpers (container v2 with categorizer)
+# ---------------------------
+def _categorize_skills_for_container(skills_list):
+    """
+    Use central categorizer to map skills into:
+      Programming, Data Libraries, Visualization, Data Engineering,
+      Databases, Tools, Cloud, Soft Skills, Other.
+    """
+    return categorize_skills(skills_list)
+
+
+def _build_skills_container(skills_list):
+    """
+    Build the canonical skills container shape:
+
+      {
+        "list": [ { "name": "...", "level": 3 }, ... ],
+        "raw": "React, Next.js, PostgreSQL",
+        "structured": {
+          "Programming": [...],
+          "Databases": [...],
+          ...,
+          "Other": [...]
+        }
+      }
+
+    - `skills_list` is expected to be a list of dicts or strings.
+    """
+    # Ensure list is a list of {name, level}
+    normalized = _normalize_skills(skills_list)
+    names = [s["name"] for s in normalized]
+
+    raw_str = ", ".join(names) if names else ""
+
+    structured = _categorize_skills_for_container(normalized)
+
+    return {
+        "list": normalized,
+        "raw": raw_str,
+        "structured": structured,
+    }
+
+
+# ---------------------------
 # Normalizers
 # ---------------------------
 def _normalize_skills(raw):
+    """
+    Normalize profile.skills into a stable list of {name, level} dicts.
+
+    Accepts:
+      - legacy list: [{"name":...,"level":...}, "Python", ...]
+      - new container: {"list":[...], "raw":"...", "structured":{...}}
+    """
+    # If we're already in the new container format, unwrap the list
+    if isinstance(raw, dict) and "list" in raw:
+        raw = raw.get("list") or []
+
     out = []
     for item in raw or []:
         name, level = "", 3
@@ -119,6 +175,10 @@ def _normalize_experience(raw):
 
 
 def _build_view(prof: UserProfile, projects: list):
+    """
+    Build a safe view model for the template, regardless of how
+    UserProfile.skills/education/... are stored.
+    """
     return dict(
         skills=_normalize_skills(prof.skills or []),
         education=_normalize_education(prof.education or []),
@@ -366,8 +426,11 @@ def profile():
 
                 # Skills / education / certifications / experience:
                 # if user has nothing yet, seed from parsed
-                if not (prof.skills or []) and parsed.get("skills"):
-                    prof.skills = parsed["skills"]
+                parsed_skills = parsed.get("skills")
+                if not (prof.skills or []) and parsed_skills:
+                    # Normalize parsed skills and store as container
+                    norm_skills = _normalize_skills(parsed_skills)
+                    prof.skills = _build_skills_container(norm_skills)
                     applied_any = True
 
                 if not (prof.education or []) and parsed.get("education"):
@@ -436,10 +499,10 @@ def profile():
                         links[k] = v
                 prof.links = links
 
-                # Skills
+                # Skills (from form → container)
                 names = request.form.getlist("skills_names[]")
                 levels = request.form.getlist("skills_levels[]")
-                skills = []
+                skills_raw_list = []
                 for i, nm in enumerate(names or []):
                     nm = (nm or "").strip()
                     if not nm:
@@ -449,8 +512,10 @@ def profile():
                     except Exception:
                         lv = 3
                     lv = max(1, min(5, lv))
-                    skills.append({"name": nm, "level": lv})
-                prof.skills = skills
+                    skills_raw_list.append({"name": nm, "level": lv})
+
+                # Store as container {list, raw, structured}
+                prof.skills = _build_skills_container(skills_raw_list)
 
                 # Education
                 edu_degree = request.form.getlist("edu_degree[]")

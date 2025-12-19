@@ -2,300 +2,237 @@
 {% block title %}Your Skill Roadmap — CareerAI{% endblock %}
 
 {% block content %}
+{# Extract core data safely #}
 {% set sm = skillmap or {} %}
-{% set roles = sm.roles
-               or sm.top_roles
-               or sm.role_roadmap
-               or sm.role_cards
-               or sm.primary_roles
-               or [] %}
+{% set roles = sm.roles or sm.top_roles or [] %}
 {% set meta = sm.meta or {} %}
+{% set path_type = (meta.path_type or 'job')|lower %}
 
-<section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-6 text-white">
-  <!-- HEADER -->
-  <header class="glass-card rounded-2xl p-6 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border border-white/10 shadow-xl relative overflow-hidden">
-    <div class="pointer-events-none absolute inset-0 opacity-60">
-      <div class="w-full h-full bg-[radial-gradient(circle_at_top_left,rgba(129,140,248,0.25),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.2),transparent_55%)]"></div>
+<section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-8 text-white">
+
+  <header class="glass-card rounded-2xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden">
+    <div class="pointer-events-none absolute inset-0 opacity-40">
+      <div class="w-full h-full bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.15),transparent_50%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.15),transparent_50%)]"></div>
     </div>
 
-    <div class="relative space-y-1">
-      <div class="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-white/65 mb-1">
-        <span class="px-2 py-0.5 rounded-full bg-black/30 border border-white/15 inline-flex items-center gap-1">
-          <i data-lucide="route" class="w-3.5 h-3.5"></i>
-          <span>Skill Map</span>
-        </span>
-        <span class="hidden sm:inline px-2 py-0.5 rounded-full bg-black/20 border border-white/10">
-          Results
-        </span>
+    <div class="relative flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+      <div class="space-y-3 max-w-2xl">
+        <div class="inline-flex items-center gap-2">
+          <span class="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] uppercase tracking-widest font-semibold text-purple-300 flex items-center gap-1.5">
+            {% if path_type == 'startup' %}
+              <i data-lucide="rocket" class="w-3.5 h-3.5"></i> Startup Skill Map
+            {% elif path_type == 'freelance' %}
+              <i data-lucide="zap" class="w-3.5 h-3.5"></i> Freelance Skill Map
+            {% else %}
+              <i data-lucide="map" class="w-3.5 h-3.5"></i> Career Skill Map
+            {% endif %}
+          </span>
+          {% if meta.used_live_ai %}
+            <span class="px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] uppercase tracking-wide text-emerald-300">
+              Live Analysis
+            </span>
+          {% endif %}
+        </div>
+
+        <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
+          Your Top 3 Recommended Directions
+        </h1>
+        
+        <p class="text-white/70 text-sm leading-relaxed">
+          Based on your profile, resume, and the <span class="text-white font-medium">{{ path_type }} path</span>. 
+          These roles offer the best balance of your current skills and market potential.
+        </p>
       </div>
 
-      <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">
-        Your Skill Roadmap
-      </h1>
-      <p class="text-sm text-white/75 max-w-xl leading-relaxed">
-        Built from your Profile Portal{% if profile_snapshot and profile_snapshot.resume_present %}, latest resume{% endif %}
-        {% if meta.region_focus or meta.region %} for
-          <span class="font-semibold">
-            {{ meta.region_focus or meta.region }}
-          </span>
-        {% endif %}.
-        {% if is_pro %}
-          This is a <span class="font-semibold text-emerald-300">Deep Skill Map (Pro)</span>.
-        {% else %}
-          This is a <span class="font-semibold text-white/85">Free Skill Map</span> with a preview of deeper insights.
+      <div class="flex flex-col items-end gap-3 pt-2">
+        {% if profile_snapshot %}
+          <div class="text-right">
+            <p class="text-[10px] uppercase tracking-wider text-white/50 mb-1">Based on Profile</p>
+            <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-300 font-bold text-sm">
+              <i data-lucide="user-check" class="w-4 h-4"></i>
+              {{ profile_snapshot.profile_strength_score or 0 }}% Strength
+            </div>
+          </div>
         {% endif %}
-      </p>
-
-      <!-- Clear “what to do next” guidance -->
-      <p class="text-[11px] text-white/65 mt-2 max-w-xl">
-        What to do next:
-        <span class="font-semibold text-white/85">1)</span> Pick <span class="font-semibold">ONE role</span> below as your focus,
-        <span class="font-semibold text-white/85">2)</span> use
-        <a href="{{ feature_paths.portfolio }}" class="underline hover:text-white">Portfolio</a>
-        to build 1–3 projects for that role,
-        <span class="font-semibold text-white/85">3)</span> use
-        <a href="{{ feature_paths.jobpack }}" class="underline hover:text-white">Job Packs</a>
-        <span class="text-white/70">and</span>
-        <a href="{{ feature_paths.internships }}" class="underline hover:text-white">Internship Analyzer</a>
-        on real descriptions,
-        then <span class="font-semibold text-white/85">4)</span> use
-        <a href="{{ feature_paths.referral }}" class="underline hover:text-white">Referral Trainer</a>
-        to reach people for those roles.
-      </p>
-
-      {% if meta.used_live_ai %}
-        <p class="text-[11px] text-emerald-300/90 mt-1">
-          Live CareerAI model run · {{ CAREER_AI_VERSION or '2025-Q4' }}
-        </p>
-      {% endif %}
-    </div>
-
-    <div class="relative space-y-2 self-start sm:self-auto text-xs text-right">
-      {% if profile_snapshot %}
-        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/20">
-          <span class="text-[11px]">Profile Portal</span>
-          <span class="font-semibold">{{ profile_snapshot.profile_strength_score or 0 }}% complete</span>
+        <div class="flex gap-3 mt-2">
+           <a href="{{ url_for('skillmapper.history') }}" class="text-xs text-white/60 hover:text-white transition-colors flex items-center gap-1">
+             <i data-lucide="history" class="w-3 h-3"></i> History
+           </a>
+           <a href="{{ url_for('skillmapper.index') }}" class="text-xs text-white/60 hover:text-white transition-colors flex items-center gap-1">
+             <i data-lucide="refresh-cw" class="w-3 h-3"></i> Run Again
+           </a>
         </div>
-      {% endif %}
-      <div class="flex flex-wrap justify-end gap-2">
-        <a href="{{ url_for('skillmapper.history') }}"
-           class="text-[11px] text-white/65 hover:text-white underline inline-flex items-center gap-1">
-          <i data-lucide="clock-rotate-left" class="w-3.5 h-3.5"></i>
-          <span>Past Skill Maps</span>
-        </a>
-        <a href="{{ url_for('skillmapper.index') }}"
-           class="text-[11px] text-white/65 hover:text-white underline inline-flex items-center gap-1">
-          <i data-lucide="radar" class="w-3.5 h-3.5"></i>
-          <span>Run again</span>
-        </a>
       </div>
     </div>
   </header>
 
   {% if not roles %}
-    <div class="glass-card rounded-2xl p-6 text-sm text-white/70 text-center border border-white/10">
-      No roadmap data was returned. Please go back and run Skill Mapper again.
-      <div class="mt-3">
-        <a href="{{ url_for('skillmapper.index') }}" class="btn-primary px-4 py-2 inline-flex justify-center items-center gap-1">
-          <i data-lucide="arrow-left" class="w-4 h-4"></i>
-          <span>Back to Skill Mapper</span>
-        </a>
+    <div class="glass-card rounded-2xl p-8 text-center border border-white/10">
+      <div class="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 text-white/50">
+        <i data-lucide="search-x" class="w-6 h-6"></i>
       </div>
-      {% if sm.call_to_action %}
-        <p class="mt-3 text-xs text-white/50">
-          Debug note: {{ sm.call_to_action }}
-        </p>
-      {% endif %}
+      <h3 class="text-lg font-semibold text-white">No Roadmap Found</h3>
+      <p class="text-white/60 text-sm mt-2 max-w-md mx-auto">
+        We couldn't generate a roadmap based on your inputs. Try adding more skills to your profile.
+      </p>
+      <a href="{{ url_for('skillmapper.index') }}" class="mt-6 btn-primary inline-flex items-center gap-2">
+        Try Again
+      </a>
     </div>
   {% else %}
 
-  <!-- TOP ROLES -->
-  <section class="space-y-4">
-    <div class="flex items-center justify-between gap-2">
-      <h2 class="text-lg sm:text-xl font-semibold flex items-center gap-1.5">
-        <i data-lucide="stars" class="w-4 h-4"></i>
-        <span>Top roles for you</span>
-      </h2>
-      <span class="text-[11px] text-white/65">
-        Based on your current skills, projects &amp; preferences.
-      </span>
-    </div>
-
-    {% for role in roles %}
-      {% set show_locked = (not is_pro and not loop.first) %}
-      <div class="pro-lock-wrapper {% if show_locked %}pro-locked{% endif %}">
-        <article class="pro-lock-blur glass-card rounded-2xl p-5 sm:p-6 border border-white/12 shadow-lg relative overflow-hidden">
-          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            <div class="space-y-1.5 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="text-base sm:text-lg font-semibold">
-                  {{ role.title or role.role_title or 'Unnamed role' }}
-                </h3>
-                {% set match_score = role.match_score or role.fit or role.fit_score %}
-                {% if match_score is not none %}
-                  <span class="px-2.5 py-0.5 rounded-full text-[11px] border
-                               {% if match_score >= 80 %}border-emerald-400/75 bg-emerald-500/20 text-emerald-100
-                               {% elif match_score >= 60 %}border-yellow-400/75 bg-yellow-500/20 text-yellow-100
-                               {% else %}border-sky-400/75 bg-sky-500/20 text-sky-100{% endif %}">
-                    Fit: {{ match_score }}%
-                  </span>
-                {% endif %}
-                {% if show_locked %}
-                  <span class="px-2 py-0.5 rounded-full bg-black/60 border border-white/30 text-[10px] uppercase tracking-[0.18em]">
-                    Pro preview
-                  </span>
-                {% endif %}
+    <div class="space-y-8">
+      {% for role in roles %}
+        {% set is_locked = (not is_pro and loop.index > 1) %}
+        
+        <div class="relative group">
+          
+          <article class="glass-card rounded-2xl border border-white/10 overflow-hidden transition-all duration-300 {% if is_locked %}blur-sm opacity-60 pointer-events-none select-none{% else %}hover:border-white/20 hover:shadow-xl{% endif %}">
+            
+            <div class="p-6 sm:p-8 border-b border-white/5 bg-white/[0.02]">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div>
+                  <div class="flex items-center gap-3 mb-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-white/40">Option {{ loop.index }}</span>
+                    {% if role.level %}
+                      <span class="px-2 py-0.5 rounded text-[10px] bg-white/10 text-white/80 border border-white/10">{{ role.level }}</span>
+                    {% endif %}
+                  </div>
+                  <h2 class="text-2xl font-bold text-white">{{ role.title }}</h2>
+                </div>
+                
+                <div class="flex items-center gap-3 bg-black/20 rounded-xl p-2 pr-4 border border-white/10">
+                  <div class="relative w-10 h-10 flex items-center justify-center">
+                    <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                      <path class="text-white/10" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3" />
+                      <path class="{% if role.match_score > 75 %}text-emerald-400{% elif role.match_score > 50 %}text-yellow-400{% else %}text-red-400{% endif %}" stroke-dasharray="{{ role.match_score }}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3" />
+                    </svg>
+                    <span class="absolute text-[10px] font-bold">{{ role.match_score }}</span>
+                  </div>
+                  <div class="text-left">
+                    <p class="text-[10px] text-white/50 uppercase tracking-wide">Match</p>
+                    <p class="text-xs font-semibold text-white/90">Score</p>
+                  </div>
+                </div>
               </div>
-              <p class="text-sm text-white/80 leading-relaxed">
-                {{ role.why_fit or role.summary or role.overview or role.description or 'No summary provided.' }}
+              
+              <p class="text-sm text-white/80 leading-relaxed max-w-4xl">
+                {{ role.why_fit }}
               </p>
             </div>
 
-            <!-- Quick meta -->
-            <dl class="flex flex-col items-start sm:items-end gap-1 text-[11px] text-white/65 min-w-[10rem]">
-              {% if role.level or role.seniority or role.seniority_target %}
-                <div>
-                  <dt class="inline text-white/55">Seniority:&nbsp;</dt>
-                  <dd class="inline font-semibold text-white/85">
-                    {{ role.level or role.seniority or role.seniority_target }}
-                  </dd>
-                </div>
-              {% endif %}
-
-              {% set salary = role.salary or (role.compensation.range if role.compensation is defined and role.compensation.range is defined else '') %}
-              {% if salary %}
-                <div>
-                  <dt class="inline text-white/55">Typical package:&nbsp;</dt>
-                  <dd class="inline font-semibold text-white/85">{{ salary }}</dd>
-                </div>
-              {% endif %}
-
-              {% if role.geo or role.region %}
-                <div>
-                  <dt class="inline text-white/55">Region focus:&nbsp;</dt>
-                  <dd class="inline font-semibold text-white/85">{{ role.geo or role.region }}</dd>
-                </div>
-              {% endif %}
-            </dl>
-          </div>
-
-          <!-- Skills + gaps + micro projects -->
-          <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs sm:text-[13px]">
-            <!-- Skill match -->
-            <section class="space-y-2">
-              <p class="font-semibold text-white/85 flex items-center gap-1.5">
-                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-                <span>Skill match</span>
-              </p>
-              {% set clusters = role.primary_skill_clusters or [] %}
-              {% set skills = role.skills or role.primary_skills or role.skill_match or [] %}
-              {% if clusters %}
-                <div class="flex flex-wrap gap-1.5">
-                  {% for cluster in clusters %}
-                    {% for s in cluster.skills %}
-                      <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/40 text-[11px]">
-                        {{ s }}
-                      </span>
-                    {% endfor %}
-                  {% endfor %}
-                </div>
-              {% elif skills %}
-                <div class="flex flex-wrap gap-1.5">
-                  {% for s in skills %}
-                    <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/40 text-[11px]">
-                      {{ s.name if s.name is defined else s }}
+            <div class="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-white/5">
+              
+              <div class="p-6">
+                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                  <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+                  <span>You Have</span>
+                </h3>
+                <div class="flex flex-wrap gap-2">
+                  {% for skill in role.skills %}
+                    <span class="px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs">
+                      {{ skill }}
                     </span>
+                  {% else %}
+                    <span class="text-xs text-white/40">No specific matches found.</span>
                   {% endfor %}
                 </div>
-              {% else %}
-                <p class="text-white/60">No specific skills detected.</p>
-              {% endif %}
+              </div>
 
-              {% if role.stack %}
-                <p class="mt-2 text-[11px] text-white/65">
-                  Typical stack:
-                  <span class="text-white/85">
-                    {{ role.stack | join(', ') }}
-                  </span>
-                </p>
-              {% endif %}
-            </section>
-
-            <!-- Gaps -->
-            <section class="space-y-2">
-              <p class="font-semibold text-white/85 flex items-center gap-1.5">
-                <i data-lucide="triangle-alert" class="w-3.5 h-3.5"></i>
-                <span>Core gaps to build</span>
-              </p>
-              {% set gaps = role.gaps or role.core_gaps or [] %}
-              {% if gaps %}
-                <div class="flex flex-wrap gap-1.5">
-                  {% for g in gaps %}
-                    <span class="px-2 py-0.5 rounded-full bg-red-500/12 border border-red-400/50 text-[11px]">
-                      {{ g.skill if g.skill is defined else (g.name if g.name is defined else g) }}
+              <div class="p-6">
+                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                  <i data-lucide="arrow-up-circle" class="w-4 h-4 text-orange-400"></i>
+                  <span>To Learn</span>
+                </h3>
+                <div class="flex flex-wrap gap-2">
+                  {% for gap in role.gaps %}
+                    <span class="px-2.5 py-1 rounded-md bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs">
+                      {{ gap }}
                     </span>
+                  {% else %}
+                    <span class="text-xs text-white/40">No major gaps detected.</span>
                   {% endfor %}
                 </div>
-              {% else %}
-                <p class="text-white/60">No major gaps highlighted.</p>
-              {% endif %}
-            </section>
+              </div>
 
-            <!-- Micro projects -->
-            <section class="space-y-2">
-              <p class="font-semibold text-white/85 flex items-center gap-1.5">
-                <i data-lucide="rocket" class="w-3.5 h-3.5"></i>
-                <span>Micro-project ideas</span>
-              </p>
-              {% set projects = role.micro_projects or role.projects or role.mini_projects or [] %}
-              {% if projects %}
-                <ul class="space-y-1.5">
-                  {% for p in projects %}
-                    <li class="leading-snug">
-                      <span class="font-semibold">
-                        {{ p.title or p.name or ('Project ' ~ loop.index) }}:
-                      </span>
-                      <span class="text-white/70">
-                        {{ p.outcome or p.description or p.summary }}
-                      </span>
+              <div class="p-6 bg-white/[0.01]">
+                <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                  <i data-lucide="code" class="w-4 h-4 text-blue-400"></i>
+                  <span>Micro-Projects</span>
+                </h3>
+                <ul class="space-y-2">
+                  {% for project in role.micro_projects %}
+                    <li class="flex items-start gap-2 text-xs text-white/70">
+                      <i data-lucide="chevron-right" class="w-3 h-3 text-blue-500/50 mt-0.5 shrink-0"></i>
+                      {{ project }}
                     </li>
+                  {% else %}
+                    <li class="text-xs text-white/40">No projects suggested.</li>
                   {% endfor %}
                 </ul>
-              {% else %}
-                <p class="text-white/60">No projects were suggested for this role.</p>
-              {% endif %}
-            </section>
-          </div>
-        </article>
+              </div>
 
-        {% if show_locked %}
-          <div class="pro-lock-overlay">
-            <div class="pro-lock-inner glass-card rounded-2xl border border-violet-400/60 bg-gradient-to-r from-violet-600/40 via-slate-950/90 to-emerald-500/30 text-center max-w-md mx-auto p-4 sm:p-5">
-              <h3 class="text-sm sm:text-base font-semibold mb-1">
-                Deep roadmap role {{ loop.index }} is Pro-only 🔒
-              </h3>
-              <p class="text-[11px] sm:text-xs text-violet-100/90">
-                Upgrade to see all roles, detailed gaps, and copy-paste micro-projects for your Skill Map.
-              </p>
-              <a href="{{ url_for('billing.index') }}" class="btn-primary mt-3 text-[11px] sm:text-xs inline-flex items-center justify-center gap-1 px-4 py-2">
-                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-                <span>Unlock full 3-role roadmap</span>
-              </a>
             </div>
-          </div>
-        {% endif %}
-      </div>
-    {% endfor %}
-  </section>
+            
+            <div class="px-6 py-3 bg-white/5 border-t border-white/5 flex items-center justify-between text-xs text-white/50">
+              <div class="flex items-center gap-4">
+                <span class="flex items-center gap-1.5">
+                  <i data-lucide="banknote" class="w-3.5 h-3.5"></i> {{ role.salary }}
+                </span>
+                <span class="flex items-center gap-1.5">
+                  <i data-lucide="globe" class="w-3.5 h-3.5"></i> {{ role.region }}
+                </span>
+              </div>
+              {% if path_type == 'job' %}
+              <a href="{{ feature_paths.jobpack }}" class="hover:text-white transition-colors flex items-center gap-1">
+                Analyze a JD for this <i data-lucide="arrow-right" class="w-3 h-3"></i>
+              </a>
+              {% endif %}
+            </div>
 
-  <!-- FOOTER SUMMARY -->
-  <footer class="glass-card rounded-2xl p-5 text-center text-sm text-white/70 mt-6 border border-white/10">
-    {% if sm.impact_summary %}
-      {{ sm.impact_summary }}
-    {% else %}
-      You can re-run Skill Mapper any time after updating your Profile Portal or adding new projects.
+          </article>
+
+          {% if is_locked %}
+            <div class="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 text-center">
+              <div class="glass-card p-6 max-w-sm w-full border border-purple-500/30 shadow-[0_0_40px_rgba(168,85,247,0.15)] bg-black/80 backdrop-blur-md rounded-2xl">
+                <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 text-white shadow-lg">
+                  <i data-lucide="lock" class="w-5 h-5"></i>
+                </div>
+                <h3 class="text-lg font-bold text-white mb-2">Unlock Career Path #{{ loop.index }}</h3>
+                <p class="text-sm text-white/60 mb-6">
+                  See the full breakdown, skills gap analysis, and project ideas for <span class="text-white font-medium">{{ role.title }}</span>.
+                </p>
+                <a href="{{ url_for('billing.index') }}" class="btn-primary w-full justify-center py-2.5 shadow-lg shadow-purple-500/20">
+                  Upgrade to Pro
+                </a>
+              </div>
+            </div>
+          {% endif %}
+
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if sm.next_steps %}
+      <div class="glass-card rounded-2xl p-6 sm:p-8 border border-white/10">
+        <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <i data-lucide="list-todo" class="w-5 h-5 text-emerald-400"></i> Next Steps
+        </h3>
+        <div class="grid sm:grid-cols-2 gap-4">
+          {% for step in sm.next_steps %}
+            <div class="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/5">
+              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs font-bold">{{ loop.index }}</span>
+              <span class="text-sm text-white/80">{{ step }}</span>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="mt-6 pt-6 border-t border-white/10 text-center">
+          <p class="text-sm text-white/60 italic">
+            "{{ sm.impact_summary }}"
+          </p>
+        </div>
+      </div>
     {% endif %}
-  </footer>
 
   {% endif %}
 </section>
@@ -303,31 +240,6 @@
 
 {% block scripts %}
 <script src="https://unpkg.com/lucide@latest"></script>
-<style>
-  /* Pro lock visual treatment */
-  .pro-lock-wrapper {
-    position: relative;
-  }
-  .pro-lock-wrapper.pro-locked .pro-lock-blur {
-    position: relative;
-    filter: blur(2px);
-    opacity: 0.8;
-  }
-  .pro-lock-overlay {
-    pointer-events: none;
-  }
-  .pro-lock-wrapper.pro-locked .pro-lock-overlay {
-    pointer-events: auto;
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.75rem;
-    backdrop-filter: blur(3px);
-    background: radial-gradient(circle at center, rgba(15,23,42,0.9), rgba(15,23,42,0.4));
-  }
-</style>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     if (window.lucide) {

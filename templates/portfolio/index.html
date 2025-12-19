@@ -1,209 +1,223 @@
 {% extends "base.html" %}
-{% block title %}Your Portfolio Pages — CareerAI{% endblock %}
+{% block title %}Portfolio Hub — CareerAI{% endblock %}
 
 {% block content %}
-<section class="relative overflow-hidden">
-  <!-- Soft animated background layer -->
-  <div class="pointer-events-none absolute inset-0 -z-10">
-    <div class="w-full h-full opacity-60 animate-caGradient
-                bg-[radial-gradient(circle_at_top_left,#4f46e5_0,transparent_55%),radial-gradient(circle_at_bottom_right,#f97316_0,transparent_55%)]">
+<section class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-10 pb-16 space-y-7 text-white">
+  <!-- Hero / Header -->
+  <header class="glass-card rounded-2xl p-6 sm:p-7 shadow-xl border border-white/10 relative overflow-hidden">
+    <div class="pointer-events-none absolute inset-0 opacity-60">
+      <div class="w-full h-full bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.25),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.25),transparent_55%)]"></div>
     </div>
-  </div>
 
-  <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-10 pb-16 space-y-8">
-    <!-- Header / Hero -->
-    <header class="glass-panel rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div class="space-y-2">
-        <p class="text-[11px] uppercase tracking-[0.18em] text-white/60">
-          Portfolio Hub
-        </p>
+    <div class="relative flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+      <div>
+        <div class="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-white/60 mb-2">
+          <span class="px-2 py-0.5 rounded-full bg-black/30 border border-white/15 inline-flex items-center gap-1">
+            <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
+            <span>Portfolio Hub</span>
+          </span>
+          <span class="hidden sm:inline px-2 py-0.5 rounded-full bg-black/20 border border-white/10">
+            Projects &amp; publishing
+          </span>
+        </div>
         <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">
-          Ship a recruiter-ready portfolio, straight from your profile.
+          Turn your Skill Map into a public portfolio.
         </h1>
-        <p class="text-sm text-white/70 max-w-xl">
-          Use the Wizard to generate project ideas. When you’re ready, publish a clean portfolio page
-          powered by your Profile Portal and projects.
+        <p class="text-sm sm:text-base text-white/75 mt-1 max-w-xl">
+          Use the <span class="font-semibold">Portfolio Wizard</span> to generate project ideas,
+          then publish a lean, recruiter-friendly portfolio page. Best results when your
+          <a class="underline hover:text-white" href="{{ feature_paths.profile }}">Profile Portal</a> is complete.
         </p>
-        {% if updated_tag %}
-          <p class="text-[11px] text-white/50">
-            Updated {{ updated_tag }}
-          </p>
-        {% endif %}
-        <p class="text-[11px] text-white/60 mt-1">
-          Costs: Wizard Free <span class="font-semibold">1 🪙</span> · Wizard Pro <span class="font-semibold">2 ⭐</span> per run · Publish <span class="font-semibold">2 ⭐</span> per page.
+        <p class="text-[11px] text-white/60 mt-2 max-w-xl">
+          Flow: <span class="font-semibold">Skill Mapper → Portfolio Wizard → Build projects → Publish portfolio → Job Packs &amp; Referrals.</span>
         </p>
       </div>
 
-      <div class="flex flex-col items-end gap-3 text-xs">
-        <div class="flex flex-wrap gap-2 justify-end">
-          <a href="{{ url_for('portfolio.wizard') }}" class="btn-primary">
-            Open Portfolio Wizard
-          </a>
-          <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost">
-            Live Preview from Profile
-          </a>
-          <a href="{{ url_for('portfolio.history') }}" class="btn-ghost">
-            Ideas History
-          </a>
-        </div>
-        <div class="flex flex-wrap gap-2 justify-end text-[11px] text-white/60">
-          {% if subscription_status|default('free')|lower == 'pro' %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-300/60 text-emerald-100">
-              Pro ⭐ Publishing Unlocked
-            </span>
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/5 border border-white/25">
-              Publish cost: <strong>2 ⭐ / page</strong>
+      {% set _is_pro = (subscription_status|default('free')|lower == 'pro') %}
+      <div class="self-start sm:self-auto space-y-2 text-xs text-right">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/20">
+          <span class="text-white/70">Plan:</span>
+          {% if _is_pro %}
+            <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-300/70 text-emerald-100">
+              Pro ⭐
             </span>
           {% else %}
-            <a href="{{ feature_paths.billing }}"
-               class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/5 border border-white/25 hover:bg-white/10 transition">
-              <span>Upgrade to publish public portfolio ⭐</span>
-            </a>
+            <span class="px-2 py-0.5 rounded-full bg-white/10 border border-white/30 text-white/80">
+              Free 🪙
+            </span>
           {% endif %}
         </div>
-      </div>
-    </header>
-
-    <!-- Actions row -->
-    <div class="grid sm:grid-cols-3 gap-4">
-      <div class="glass-card p-4 flex flex-col gap-1">
-        <div class="text-xs text-white/60">Step 1</div>
-        <div class="font-semibold text-sm flex items-center gap-2">
-          <span class="inline-flex h-7 w-7 rounded-lg bg-indigo-500/20 border border-indigo-300/50 items-center justify-center text-indigo-200 text-sm">1</span>
-          Fill your Profile Portal
-        </div>
-        <p class="text-xs text-white/60">
-          Add your skills, education, and experience. Portfolio pulls everything from there.
+        <p class="text-[11px] text-white/60">
+          Publishing and Profile Portal–powered portfolios are <span class="font-semibold">Pro-only</span>.
         </p>
-        <a href="{{ feature_paths.profile }}" class="text-[11px] underline mt-1">
-          Open Profile Portal →
-        </a>
-      </div>
-
-      <div class="glass-card p-4 flex flex-col gap-1">
-        <div class="text-xs text-white/60">Step 2</div>
-        <div class="font-semibold text-sm flex items-center gap-2">
-          <span class="inline-flex h-7 w-7 rounded-lg bg-fuchsia-500/20 border border-fuchsia-300/50 items-center justify-center text-fuchsia-200 text-sm">2</span>
-          Generate project ideas
-        </div>
-        <p class="text-xs text-white/60">
-          Use the Wizard for 1 Free idea (<strong>1 🪙</strong>) or 3 deep Pro ideas (<strong>2 ⭐</strong> per run) tailored to your profile.
-        </p>
-        <a href="{{ url_for('portfolio.wizard') }}" class="text-[11px] underline mt-1">
-          Open Wizard →
-        </a>
-      </div>
-
-      <div class="glass-card p-4 flex flex-col gap-1">
-        <div class="text-xs text-white/60">Step 3</div>
-        <div class="font-semibold text-sm flex items-center gap-2">
-          <span class="inline-flex h-7 w-7 rounded-lg bg-amber-500/20 border border-amber-300/50 items-center justify-center text-amber-100 text-sm">3</span>
-          Publish portfolio page
-        </div>
-        <p class="text-xs text-white/60">
-          Pro users can ship a public portfolio page with a single click and share the link.
-          Each publish costs <strong>2 Gold ⭐</strong>.
-        </p>
-        {% if subscription_status|default('free')|lower == 'pro' %}
-          <a href="{{ url_for('portfolio.publish') }}" class="text-[11px] underline mt-1">
-            Publish from Profile ⭐ (2 ⭐)
+        <div class="flex flex-col gap-1 items-end">
+          <a href="{{ feature_paths.billing }}" class="text-[11px] underline text-white/70 hover:text-white inline-flex items-center gap-1">
+            <span>View / upgrade plan</span>
+            <i data-lucide="arrow-up-right" class="w-3 h-3"></i>
           </a>
-        {% else %}
-          <a href="{{ feature_paths.billing }}" class="text-[11px] underline mt-1">
-            Unlock publishing with Pro →
+          <a href="{{ url_for('portfolio.wizard') }}" class="text-[11px] underline text-white/70 hover:text-white inline-flex items-center gap-1">
+            <span>Open Portfolio Wizard</span>
+            <i data-lucide="wand-2" class="w-3.5 h-3.5"></i>
           </a>
-        {% endif %}
+        </div>
       </div>
     </div>
+  </header>
 
-    <!-- Pages list -->
-    {% if pages and pages|length %}
-      <div class="space-y-4">
-        <h2 class="text-sm font-semibold text-white/80">Your portfolio pages</h2>
-        <div class="space-y-3">
-          {% for p in pages %}
-            <article class="glass-panel rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <h3 class="font-semibold truncate">{{ p.title }}</h3>
-                  {% if p.is_public %}
-                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-300/60 text-emerald-100">
-                      Public
-                    </span>
-                  {% else %}
-                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/25 text-white/60">
-                      Private
-                    </span>
-                  {% endif %}
-                </div>
-                <p class="text-[11px] text-white/60 mt-1">
-                  Created {{ (p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '—') }}
-                  • ID #{{ p.id }}
-                </p>
-                {% if p.is_public %}
-                  <p class="text-[11px] text-white/50 mt-1 line-clamp-1">
-                    Shareable link:
-                    <span class="underline">
-                      {{ url_for('portfolio.view', page_id=p.id, _external=True) }}
-                    </span>
-                  </p>
-                {% endif %}
-              </div>
-              <div class="flex items-center gap-2 shrink-0">
-                {% if p.is_public %}
-                  <a
-                    class="btn-primary text-xs"
-                    target="_blank"
-                    rel="noopener"
-                    href="{{ url_for('portfolio.view', page_id=p.id) }}">
-                    Open Public Link
-                  </a>
-                {% else %}
-                  <span class="btn-ghost text-xs">Private (not published)</span>
-                {% endif %}
-              </div>
-            </article>
-          {% endfor %}
+  <!-- Main cards: Wizard & History -->
+  <div class="grid md:grid-cols-2 gap-5">
+    <!-- Wizard card -->
+    <section class="glass-card rounded-2xl p-5 border border-white/12 shadow-lg flex flex-col gap-3">
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <h2 class="text-lg font-semibold flex items-center gap-2">
+            <span class="inline-flex h-8 w-8 rounded-xl bg-fuchsia-500/25 border border-fuchsia-300/70 items-center justify-center text-fuchsia-100">
+              <i data-lucide="sparkles" class="w-4 h-4"></i>
+            </span>
+            Portfolio Wizard
+          </h2>
+          <p class="text-xs text-white/70 mt-1 max-w-md">
+            Generate 1 Free idea (🪙) or 3 deep Pro ideas (⭐) personalized to your target role and Profile Portal.
+          </p>
         </div>
       </div>
-    {% else %}
-      <div class="glass-panel rounded-2xl p-6">
-        <h2 class="text-sm font-semibold mb-1">No portfolio pages yet</h2>
-        <p class="text-sm text-white/70">
-          You haven’t published a portfolio page. Use the Wizard to design projects, then publish from your Profile Portal.
-        </p>
-        <div class="mt-4 flex flex-wrap gap-2">
-          <a href="{{ url_for('portfolio.wizard') }}" class="btn-primary">
-            Open Portfolio Wizard
-          </a>
-          <a href="{{ url_for('portfolio.preview') }}" class="btn-ghost">
-            Preview from Profile
-          </a>
-          {% if subscription_status|default('free')|lower == 'pro' %}
-            <a href="{{ url_for('portfolio.publish') }}" class="btn-ghost">
-              Publish from Profile ⭐ (2 ⭐)
-            </a>
-          {% else %}
-            <a class="btn-ghost" href="{{ feature_paths.billing }}">
-              Upgrade to Pro to Publish ⭐
-            </a>
-          {% endif %}
+      <ul class="text-[11px] text-white/65 space-y-1">
+        <li>• Free: 1 beginner-friendly project idea (1 🪙 per run).</li>
+        <li>• Pro: 3 detailed ideas with milestones, stack &amp; resume bullets (2 ⭐ per run).</li>
+        <li>• Designed for Indian student job and internship hunts.</li>
+      </ul>
+      <div class="mt-2 flex flex-wrap gap-2">
+        <a href="{{ url_for('portfolio.wizard') }}"
+           class="btn-primary inline-flex items-center gap-1 text-sm">
+          <i data-lucide="wand-2" class="w-4 h-4"></i>
+          <span>Open Wizard</span>
+        </a>
+        <a href="{{ url_for('portfolio.history') }}"
+           class="btn-ghost inline-flex items-center gap-1 text-xs">
+          <i data-lucide="clock-rotate-left" class="w-3.5 h-3.5"></i>
+          <span>View ideas history</span>
+        </a>
+      </div>
+      <p class="text-[11px] text-white/60 mt-1">
+        Tip: start from your <a href="{{ feature_paths.skillmapper }}" class="underline hover:text-white">Skill Mapper</a> focus role before generating ideas.
+      </p>
+    </section>
+
+    <!-- Publishing card -->
+    <section class="glass-card rounded-2xl p-5 border border-white/12 shadow-lg flex flex-col gap-3 relative">
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <h2 class="text-lg font-semibold flex items-center gap-2">
+            <span class="inline-flex h-8 w-8 rounded-xl bg-sky-500/25 border border-sky-300/70 items-center justify-center text-sky-100">
+              <i data-lucide="globe-2" class="w-4 h-4"></i>
+            </span>
+            Public Portfolio
+          </h2>
+          <p class="text-xs text-white/70 mt-1 max-w-md">
+            Publish a minimal, recruiter-friendly portfolio page that pulls from your Profile Portal &amp; selected projects.
+          </p>
         </div>
       </div>
-    {% endif %}
+
+      <ul class="text-[11px] text-white/65 space-y-1">
+        <li>• Clean public page hosted by CareerAI (no login required for viewers).</li>
+        <li>• Pulls from Profile Portal and your project write-ups.</li>
+        <li>• Contains only your content + light CareerAI branding — no app UI.</li>
+      </ul>
+
+      {% if not _is_pro %}
+        <div class="mt-3 text-[11px] text-white/65">
+          Publishing is available for <span class="font-semibold">Pro members only</span>.
+          You can still use the Wizard and build projects locally on your resume.
+        </div>
+        <a href="{{ feature_paths.billing }}"
+           class="btn-primary inline-flex items-center gap-1 mt-2 text-sm">
+          <i data-lucide="star" class="w-4 h-4"></i>
+          <span>Upgrade to unlock publishing</span>
+        </a>
+      {% else %}
+        <div class="mt-3 text-[11px] text-white/65">
+          Once your Profile Portal and projects are ready, enable publishing from your portfolio settings.
+        </div>
+      {% endif %}
+    </section>
   </div>
+
+  <!-- Published pages list (if provided) -->
+  {% if pages %}
+    <section class="glass-card rounded-2xl p-5 border border-white/12 shadow-lg space-y-3 mt-2">
+      <div class="flex items-center justify-between gap-2">
+        <h2 class="text-sm sm:text-base font-semibold flex items-center gap-1.5">
+          <i data-lucide="link-2" class="w-4 h-4"></i>
+          <span>Your public portfolio pages</span>
+        </h2>
+        <p class="text-[11px] text-white/60">
+          Share links only with people you trust. Pages are light, read-only views.
+        </p>
+      </div>
+
+      <div class="space-y-2">
+        {% for p in pages %}
+          <article class="rounded-xl bg-white/5 border border-white/15 px-3 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm">
+            <div class="min-w-0">
+              <p class="font-semibold truncate">
+                {{ p.title or "Untitled portfolio" }}
+              </p>
+              <p class="text-[11px] text-white/60 mt-0.5">
+                Created {{ p.created_at.strftime('%d %b %Y') if p.created_at }}
+              </p>
+            </div>
+            <div class="flex flex-col items-end gap-1 text-[11px]">
+              {% set _url = p.public_url %}
+              {% if not _url and p.slug is defined %}
+                {% set _url = url_for('portfolio.public_view', slug=p.slug) %}
+              {% endif %}
+              {% if _url %}
+                <a href="{{ _url }}" target="_blank" rel="noopener"
+                   class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/40 border border-white/25 hover:bg-black/60">
+                  <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                  <span>Open public page</span>
+                </a>
+                <button type="button"
+                        class="inline-flex items-center gap-1 text-white/70 hover:text-white"
+                        onclick="navigator.clipboard.writeText('{{ _url }}')">
+                  <i data-lucide="copy" class="w-3 h-3"></i>
+                  <span>Copy link</span>
+                </button>
+              {% else %}
+                <p class="text-white/60">
+                  Public URL not configured.
+                </p>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  <!-- Helper: how this fits into CareerAI -->
+  <section class="glass-card rounded-2xl p-4 sm:p-5 border border-white/10 text-[11px] sm:text-xs text-white/70">
+    <p class="font-semibold text-white/85 text-xs sm:text-sm mb-1 flex items-center gap-1.5">
+      <i data-lucide="route" class="w-4 h-4"></i>
+      <span>Where Portfolio fits in</span>
+    </p>
+    <p>
+      <span class="font-semibold">Recommended order:</span>
+      Skill Mapper → Portfolio Wizard → Build projects → Job Packs on real JDs →
+      Internship Analyzer → Referral Trainer.
+    </p>
+  </section>
 </section>
 {% endblock %}
 
 {% block scripts %}
-<style>
-  @keyframes caGradient {
-    0%   { transform: translate3d(0,0,0) scale(1); }
-    50%  { transform: translate3d(-3%, -4%, 0) scale(1.03); }
-    100% { transform: translate3d(0,0,0) scale(1); }
-  }
-  .animate-caGradient {
-    animation: caGradient 26s ease-in-out infinite;
-  }
-</style>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  });
+</script>
 {% endblock %}

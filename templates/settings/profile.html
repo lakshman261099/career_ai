@@ -212,18 +212,93 @@
             </div>
           </div>
 
-          <!-- Skills -->
+          <!-- Skills (MOST important section) -->
           <div>
-            <div class="flex items-center justify-between">
-              <label class="block text-sm font-semibold">Skills</label>
-              <button type="button" onclick="addSkill()" class="btn-ghost text-xs">+ Add Skill</button>
+            <div class="flex items-start justify-between gap-3">
+              <div class="space-y-1">
+                <label class="block text-sm font-semibold">Skills</label>
+                <p class="text-xs text-white/70">
+                  <span class="font-semibold">CareerAI reads your skills first</span> for
+                  Skill Mapper, Job Packs, Dream Planner, Internships and Portfolio Builder.
+                </p>
+              </div>
+              <div class="flex flex-col items-end gap-2 text-right">
+                <div class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/10 border border-white/25 text-[11px]">
+                  <span class="h-4 w-4 flex items-center justify-center rounded-full bg-white/20 text-[10px] font-semibold">i</span>
+                  <span class="uppercase tracking-wide font-semibold">Most important section</span>
+                </div>
+                <button type="button" onclick="addSkill()" class="btn-ghost text-xs">+ Add Skill</button>
+              </div>
             </div>
-            <div id="skills-container" class="mt-2 space-y-2">
+
+            <!-- Instruction / examples -->
+            <div class="mt-3 rounded-xl border border-white/15 bg-white/5 p-3 text-xs space-y-3">
+              <div class="flex items-start gap-2">
+                <div class="h-5 w-5 flex items-center justify-center rounded-full border border-white/40 text-[11px] font-semibold">
+                  i
+                </div>
+                <div class="space-y-1">
+                  <p class="font-semibold text-white/90 text-xs">
+                    How to write skills here
+                  </p>
+                  <p class="text-white/70">
+                    Add <span class="font-semibold">specific tools, languages and frameworks</span> — one skill per row.
+                    Avoid vague buckets like “Frontend” or “Backend”.
+                  </p>
+                </div>
+              </div>
+
+              <div class="grid md:grid-cols-2 gap-3">
+                <div class="rounded-lg bg-red-500/10 border border-red-400/40 p-2.5">
+                  <p class="text-[11px] uppercase tracking-wide text-red-200 font-semibold">❌ Weak example</p>
+                  <p class="text-xs text-red-50 mt-1">
+                    Frontend, Backend, SQL, Cloud, Data Science
+                  </p>
+                  <p class="text-[11px] text-red-100/80 mt-1">
+                    Too generic. CareerAI can’t map you clearly to roles or projects.
+                  </p>
+                </div>
+
+                <div class="rounded-lg bg-emerald-500/10 border border-emerald-400/40 p-2.5">
+                  <p class="text-[11px] uppercase tracking-wide text-emerald-200 font-semibold">✔ Strong example</p>
+                  <p class="text-xs text-emerald-50 mt-1">
+                    React, Next.js, Tailwind CSS, Node.js, Express, PostgreSQL, MongoDB, Docker, AWS,
+                    Power BI, Pandas, NumPy
+                  </p>
+                  <p class="text-[11px] text-emerald-100/80 mt-1">
+                    Specific tools help CareerAI design better Skill Maps, Job Packs &amp; Dream Plans.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Actual skills inputs -->
+            <div id="skills-container" class="mt-3 space-y-2">
               {% for s in skills or [] %}
               <div class="flex gap-2 items-center">
-                <input name="skills_names[]" value="{{ s.name }}" placeholder="Skill" class="flex-1 rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-                <input type="number" min="1" max="5" name="skills_levels[]" value="{{ s.level }}" class="w-24 rounded-xl px-3 py-2 bg-white/10 border border-white/20" title="Strength 1–5">
-                <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
+                <input
+                  name="skills_names[]"
+                  value="{{ s.name }}"
+                  placeholder="e.g., React, PostgreSQL, Power BI"
+                  class="flex-1 rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+                >
+                <input
+                  type="number"
+                  min="1"
+                  max="5"
+                  name="skills_levels[]"
+                  value="{{ s.level }}"
+                  class="w-24 rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-center"
+                  title="Strength 1–5 (1 = basic, 5 = expert)"
+                >
+                <button
+                  type="button"
+                  class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10"
+                  onclick="removeRow(this)"
+                  aria-label="Remove skill"
+                >
+                  ✖
+                </button>
               </div>
               {% endfor %}
             </div>
@@ -450,9 +525,28 @@ function removeCard(btn) {
 function addSkill() {
   document.getElementById("skills-container").insertAdjacentHTML("beforeend",
     `<div class="flex gap-2 items-center">
-      <input name="skills_names[]" placeholder="Skill" class="flex-1 rounded-xl px-3 py-2 bg-white/10 border border-white/20">
-      <input type="number" min="1" max="5" name="skills_levels[]" placeholder="1–5" class="w-24 rounded-xl px-3 py-2 bg-white/10 border border-white/20" title="Strength 1–5">
-      <button type="button" class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10" onclick="removeRow(this)">✖</button>
+      <input
+        name="skills_names[]"
+        placeholder="e.g., React, PostgreSQL, Power BI"
+        class="flex-1 rounded-xl px-3 py-2 bg-white/10 border border-white/20"
+      >
+      <input
+        type="number"
+        min="1"
+        max="5"
+        name="skills_levels[]"
+        placeholder="1–5"
+        class="w-24 rounded-xl px-3 py-2 bg-white/10 border border-white/20 text-center"
+        title="Strength 1–5 (1 = basic, 5 = expert)"
+      >
+      <button
+        type="button"
+        class="px-2 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:bg-white/10"
+        onclick="removeRow(this)"
+        aria-label="Remove skill"
+      >
+        ✖
+      </button>
     </div>`);
 }
 

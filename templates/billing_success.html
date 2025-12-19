@@ -2,22 +2,38 @@
 {% block title %}Payment Success — CareerAI{% endblock %}
 
 {% block content %}
-<section class="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8 pt-14">
-  <div class="glass-panel rounded-2xl p-8 text-center">
-    <div class="text-3xl mb-2">🎉</div>
-    <h1 class="text-2xl font-bold mb-2">Thanks! Checkout started.</h1>
-    <p class="text-white/70">
-      Stripe is processing your subscription. Your Pro status will update automatically
-      once the payment is confirmed.
-    </p>
-
-    <div class="mt-6 space-x-2">
-      <a href="{{ url_for('dashboard') }}" class="btn-primary inline-flex">Go to Dashboard</a>
-      <a href="{{ url_for('billing.index') }}" class="btn-ghost inline-flex">Back to Pricing</a>
+<section class="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8 pt-14 pb-16 text-white">
+  <div class="glass-panel rounded-2xl p-7 sm:p-8 text-center border border-emerald-400/40 shadow-xl space-y-4">
+    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/20 border border-emerald-300/70 shadow-lg">
+      <span class="text-3xl">🎉</span>
     </div>
 
-    <div class="text-xs text-white/50 mt-6">
-      Tip: If it doesn’t update after a minute, refresh this page or revisit Pricing.
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-bold mt-1">
+        Thanks! Checkout started.
+      </h1>
+      <p class="text-sm sm:text-base text-white/75 mt-2 max-w-md mx-auto">
+        Stripe is processing your subscription. Your <span class="font-semibold">Pro status</span> will update automatically
+        once the payment is confirmed.
+      </p>
+    </div>
+
+    <div class="mt-4 flex flex-wrap justify-center gap-2">
+      <a href="{{ url_for('dashboard') }}" class="btn-primary inline-flex items-center gap-1">
+        <span>Go to Dashboard</span>
+      </a>
+      <a href="{{ url_for('billing.index') }}" class="btn-ghost inline-flex items-center gap-1">
+        <span>Back to Pricing</span>
+      </a>
+    </div>
+
+    <div class="text-[11px] text-white/55 mt-4 space-y-1">
+      <p>
+        Tip: If it doesn’t update after a minute, refresh the dashboard or revisit the Pricing page.
+      </p>
+      <p>
+        CareerAI never sees your card details — all payments are handled by <span class="font-semibold">Stripe</span>.
+      </p>
     </div>
   </div>
 </section>

@@ -28,6 +28,9 @@ IMPORTANT:
       - "portfolio_idea_free" -> Free (1 idea, Silver 🪙)
       - "portfolio_idea_pro"  -> Pro (3 ideas, Gold ⭐)
       - "portfolio_publish"   -> Publishing portfolio page (Gold ⭐)
+
+    Dream Planner:
+      - "dream_planner"       -> Dream Job / Dream Startup Planner (Gold ⭐, Pro-only)
 """
 
 from __future__ import annotations
@@ -101,6 +104,13 @@ FEATURE_COSTS: Dict[str, Dict[str, int]] = {
     "portfolio_publish": {
         "silver": 0,
         "gold": 2,
+    },
+
+    # ---------------- Dream Planner ----------------
+    # Dream Job + Dream Startup Planner (Pro-only, Gold-based)
+    "dream_planner": {
+        "silver": 0,
+        "gold": 3,    # Gold ⭐ cost per Dream Planner run
     },
 }
 
@@ -190,7 +200,7 @@ SHOP_PACKAGES = {
         ShopPackage(
             code="gold_boost",
             label="Gold Boost",
-            description="Extra Pro runs for Job Pack Deep & Skill Mapper Pro.",
+            description="Extra Pro runs for Job Pack Deep, Skill Mapper Pro & Dream Planner.",
             kind="gold",
             gold=500,
             price_inr=299,

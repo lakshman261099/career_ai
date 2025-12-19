@@ -25,6 +25,8 @@ from modules.referral.routes import referral_bp
 from modules.settings.routes import settings_bp
 from modules.skillmapper import bp as skillmapper_bp
 from modules.admin.routes import admin_bp
+from modules.dream.routes import dream_bp
+from modules.coach.routes import coach_bp
 
 # 🔹 Central credits config (single source of truth)
 from modules.credits.config import FEATURE_COSTS, STARTING_BALANCES, SHOP_PACKAGES
@@ -274,6 +276,8 @@ def create_app():
     app.register_blueprint(skillmapper_bp)
     app.register_blueprint(settings_bp, url_prefix="/settings")
     app.register_blueprint(admin_bp, url_prefix="/admin")
+    app.register_blueprint(dream_bp, url_prefix="/dream")
+    app.register_blueprint(coach_bp, url_prefix="/coach")
 
     # Expose helper callables (legacy support)
     register_template_globals(app)
@@ -310,11 +314,19 @@ def create_app():
             except Exception:
                 return "#"
 
+        # Decide what "home" should be:
+        # - If logged in → dashboard
+        # - If logged out → landing
+        if getattr(current_user, "is_authenticated", False):
+            home_url = safe_url("dashboard")
+        else:
+            home_url = safe_url("landing")
+
         # Single portal for both resume scan & manual edit
         portal_url = safe_url("settings.profile")
 
         feature_paths = {
-            "home": safe_url("landing"),
+            "home": home_url,
             "dashboard": safe_url("dashboard"),
             "profile": portal_url,
             "resume": portal_url,  # back-compat
@@ -323,6 +335,8 @@ def create_app():
             "referral": safe_url("referral.index"),
             "jobpack": safe_url("jobpack.index"),
             "skillmapper": safe_url("skillmapper.index"),
+            "dream": safe_url("dream.index"),
+            "coach": safe_url("coach.index"),
             "settings": safe_url("settings.index"),
             "billing": safe_url("billing.shop"),
             "login": safe_url("auth.login"),
@@ -367,6 +381,7 @@ def create_app():
 
     @app.errorhandler(500)
     def srv_error(e):
+        
         try:
             app.logger.exception("Unhandled 500 error")
             db.session.rollback()

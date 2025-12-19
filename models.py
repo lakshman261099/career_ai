@@ -516,6 +516,326 @@ class ResumeAsset(db.Model):
 
 
 # ---------------------------------------------------------------------
+# Dream Plan Snapshots (for Weekly / Daily Coach)
+# ---------------------------------------------------------------------
+class DreamPlanSnapshot(db.Model):
+    __tablename__ = "dream_plan_snapshot"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    # "job" or "startup"
+    path_type = db.Column(db.String(20), nullable=False, index=True)
+
+    # Convenience label for UI, e.g. "Dream Job: Data Analyst, 8–12 LPA"
+    plan_title = db.Column(db.String(255), nullable=True)
+
+    # JSON-encoded Dream Plan dictionary (usually the plan_view from dream/routes.py)
+    plan_json = db.Column(db.Text, nullable=False)
+
+    # Copy of meta.inputs_digest (if available) for tying to credit logs / coach sessions
+    inputs_digest = db.Column(db.String(128), nullable=True, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    user = db.relationship(
+        "User",
+        backref=db.backref(
+            "dream_plan_snapshots", lazy=True, cascade="all, delete-orphan"
+        ),
+    )
+
+    def __repr__(self):
+        return (
+            f"<DreamPlanSnapshot {self.id} u={self.user_id} "
+            f"{self.path_type} created={self.created_at}>"
+        )
+
+# ---------------------------------------------------------------------
+# Daily Action Coach — sessions & tasks (upgraded for P3 project system)
+# ---------------------------------------------------------------------
+class DailyCoachSession(db.Model):
+    __tablename__ = "daily_coach_session"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+
+    # "job" or "startup"
+    path_type = db.Column(db.String(20), index=True, nullable=False, default="job")
+
+    # Digest of Dream Planner used for this week
+    plan_digest = db.Column(db.String(128), nullable=True, index=True)
+
+    plan_title = db.Column(db.String(255), nullable=True)
+
+    session_date = db.Column(db.Date, nullable=False, index=True)
+
+    day_index = db.Column(
+        db.Integer,
+        nullable=True,
+        comment="Week index (Weekly Coach) or Day index (daily mode)",
+    )
+
+    ai_note = db.Column(db.Text, nullable=True)
+    reflection = db.Column(db.Text, nullable=True)
+
+    is_closed = db.Column(db.Boolean, nullable=False, default=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    user = db.relationship(
+        "User",
+        backref=db.backref(
+            "daily_coach_sessions", lazy=True, cascade="all, delete-orphan"
+        ),
+    )
+
+    def __repr__(self):
+        return f"<DailyCoachSession {self.id} u={self.user_id} {self.path_type} {self.session_date}>"
+
+
+class DailyCoachTask(db.Model):
+    __tablename__ = "daily_coach_task"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    session_id = db.Column(
+        db.Integer,
+        db.ForeignKey("daily_coach_session.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+
+    # Core task fields
+    title = db.Column(db.String(255), nullable=False)
+    detail = db.Column(db.Text, nullable=True)
+    category = db.Column(db.String(64), nullable=True)
+    sort_order = db.Column(db.Integer, nullable=True)
+    is_done = db.Column(db.Boolean, nullable=False, default=False, index=True)
+
+    # NEW → Project system integration
+    project_id = db.Column(
+        db.Integer,
+        db.ForeignKey("dream_plan_projects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    milestone_id = db.Column(
+        db.Integer,
+        db.ForeignKey("project_milestones.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    subtask_id = db.Column(
+        db.Integer,
+        db.ForeignKey("project_subtasks.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Direct link to a specific project subtask",
+    )
+
+    milestone_title = db.Column(db.String(255), nullable=True)
+    milestone_step = db.Column(db.String(255), nullable=True)
+
+    # NEW → AI metadata
+    estimated_minutes = db.Column(db.Integer, nullable=True)
+    difficulty = db.Column(db.Integer, nullable=True)  # 1–5 scale
+    tags = db.Column(db.JSON, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    session = db.relationship(
+        "DailyCoachSession",
+        backref=db.backref(
+            "tasks",
+            lazy=True,
+            cascade="all, delete-orphan",
+            order_by="DailyCoachTask.sort_order",
+        ),
+    )
+
+    def __repr__(self):
+        return f"<DailyCoachTask {self.id} s={self.session_id} done={self.is_done}>"
+
+
+# ---------------------------------------------------------------------
+# NEW: P3 Project System (Normalised, used by Dream Plan + Weekly Coach)
+# ---------------------------------------------------------------------
+
+class ProjectTemplate(db.Model):
+    __tablename__ = "project_templates"
+
+    id = db.Column(db.Integer, primary_key=True)
+    role = db.Column(db.String(120), nullable=False)  # e.g., "Game Developer"
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+
+    difficulty = db.Column(db.String(50), nullable=True)  # Easy / Medium / Hard
+    tags = db.Column(db.JSON, nullable=True)  # ["unity", "c#", "3d"]
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Normalized milestone structure
+    milestones = db.relationship(
+        "ProjectMilestone",
+        backref="template",
+        cascade="all, delete-orphan",
+        order_by="ProjectMilestone.order",
+    )
+
+
+class ProjectMilestone(db.Model):
+    __tablename__ = "project_milestones"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    project_template_id = db.Column(
+        db.Integer,
+        db.ForeignKey("project_templates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+
+    order = db.Column(db.Integer, nullable=False)
+
+    estimated_weeks = db.Column(
+        db.Integer,
+        nullable=True,
+        comment="Optional rough estimate used for Week-mapping",
+    )
+
+    subtasks = db.relationship(
+        "ProjectSubtask",
+        backref="milestone",
+        cascade="all, delete-orphan",
+        order_by="ProjectSubtask.order",
+    )
+
+
+class ProjectSubtask(db.Model):
+    __tablename__ = "project_subtasks"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    milestone_id = db.Column(
+        db.Integer,
+        db.ForeignKey("project_milestones.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+
+    difficulty = db.Column(db.Integer, nullable=True)  # 1–5
+    minutes = db.Column(db.Integer, nullable=True)  # Estimated effort
+
+    tags = db.Column(db.JSON, nullable=True)  # ["api", "sql"]
+
+    order = db.Column(db.Integer, nullable=False)
+
+    def __repr__(self):
+        return f"<ProjectSubtask {self.id} m={self.milestone_id}>"
+
+
+# ---------------------------------------------------------------------
+# DreamPlanProject (user-selected project snapshot)
+# ---------------------------------------------------------------------
+class DreamPlanProject(db.Model):
+    __tablename__ = "dream_plan_projects"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+
+    path_type = db.Column(db.String(50), default="job")
+
+    project_template_id = db.Column(
+        db.Integer,
+        db.ForeignKey("project_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    custom_title = db.Column(db.String(255), nullable=True)
+
+    # Week window allocation from Dream Plan
+    week_start = db.Column(db.Integer, nullable=True)
+    week_end = db.Column(db.Integer, nullable=True)
+
+    # Snapshot of milestone → subtask structure at selection time
+    milestones = db.Column(db.JSON, nullable=True)
+
+    project_template = db.relationship("ProjectTemplate")
+
+    def __repr__(self):
+        return f"<DreamPlanProject {self.id} u={self.user_id}>"
+
+
+# ---------------------------------------------------------------------
+# Links Weekly Coach session → selected project → milestone output
+# ---------------------------------------------------------------------
+class SessionProjectLink(db.Model):
+    __tablename__ = "session_project_links"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    session_id = db.Column(
+        db.Integer,
+        db.ForeignKey("daily_coach_session.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    dream_plan_project_id = db.Column(
+        db.Integer,
+        db.ForeignKey("dream_plan_projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    week_index = db.Column(
+        db.Integer, nullable=False, comment="Coach week index (1–24)"
+    )
+
+    milestone_id = db.Column(
+        db.Integer,
+        db.ForeignKey("project_milestones.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    milestone_title = db.Column(db.String(255), nullable=True)
+    milestone_detail = db.Column(db.Text, nullable=True)
+
+    is_completed = db.Column(db.Boolean, default=False)
+
+    dream_plan_project = db.relationship("DreamPlanProject")
+
+    def __repr__(self):
+        return f"<SessionProjectLink s={self.session_id} p={self.dream_plan_project_id}>"
+
+
+# ---------------------------------------------------------------------
 # Credit Transactions (Phase 4 — logging & transparency)
 # ---------------------------------------------------------------------
 class CreditTransaction(db.Model):

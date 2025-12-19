@@ -5,14 +5,37 @@
 {% block meta_description %}{{ ((page.title if page else 'Portfolio Preview') ~ ' — public portfolio page') }}{% endblock %}
 
 {% block content %}
-  <section class="hero-card">
-    <div class="title">{{ (page.title if page else 'Portfolio Preview') }}</div>
-    <div class="subtitle">
-      Career-ready Portfolio · Built {{ page.created_at.strftime('%d %b %Y') if page and page.created_at else 'recently' }}
-    </div>
-  </section>
+  <main class="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-black text-slate-50">
+    <section class="hero-card max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-6">
+      <div class="rounded-2xl border border-white/10 bg-white/5/5 backdrop-blur-xl px-5 py-4 sm:px-6 sm:py-5 shadow-lg">
+        <div class="flex flex-col gap-1.5">
+          <h1 class="title text-2xl sm:text-3xl font-bold tracking-tight">
+            {{ (page.title if page else 'Portfolio Preview') }}
+          </h1>
+          {% if page and (page.subtitle or page.tagline) %}
+            <p class="subtitle text-sm sm:text-base text-slate-200/85">
+              {{ page.subtitle or page.tagline }}
+            </p>
+          {% endif %}
+          <p class="text-[11px] sm:text-xs text-slate-400 mt-1">
+            Career-ready portfolio · Built
+            {{ page.created_at.strftime('%d %b %Y') if page and page.created_at else 'recently' }}
+            {% if page and page.owner_name %}
+              · {{ page.owner_name }}
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </section>
 
-  <article class="content-card">
-    <div class="prose">{{ page_html | safe }}</div>
-  </article>
+    <article class="content-card max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+      <div class="prose prose-invert prose-sm sm:prose-base prose-headings:text-slate-50 prose-p:text-slate-200 prose-a:text-sky-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-slate-50 prose-code:text-slate-100 prose-li:marker:text-slate-400">
+        {{ page_html | safe }}
+      </div>
+      <p class="mt-8 text-[10px] sm:text-[11px] text-slate-500 text-center">
+        Powered by CareerAI · This page only renders your content plus minimal branding.
+        No dashboards, tracking panels, or student-only UI are embedded here.
+      </p>
+    </article>
+  </main>
 {% endblock %}

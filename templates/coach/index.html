@@ -1,0 +1,706 @@
+{% extends "base.html" %}
+{% block title %}Weekly Coach — CareerAI{% endblock %}
+
+{% block content %}
+{% set path_type = (path_type or 'job') %}
+
+<section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-8 text-white">
+
+  <!-- HEADER / HERO -->
+  <header class="glass-card rounded-2xl p-6 sm:p-7 border border-white/10 shadow-xl relative overflow-hidden">
+    <!-- Gradient overlay pushed behind content so navbar stays clickable -->
+    <div class="pointer-events-none absolute inset-0 opacity-60 -z-10">
+      <div class="w-full h-full bg-[radial-gradient(circle_at_top_left,rgba(129,140,248,0.25),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.24),transparent_55%)]"></div>
+    </div>
+
+    <div class="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+      <div class="space-y-2">
+        <div class="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-white/65">
+          <span class="px-2 py-0.5 rounded-full bg-black/30 border border-white/15 inline-flex items-center gap-1">
+            <i data-lucide="calendar-check" class="w-3.5 h-3.5"></i>
+            <span>Weekly Coach</span>
+          </span>
+          <span class="hidden sm:inline px-2 py-0.5 rounded-full bg-black/20 border border-white/10">
+            {% if path_type == 'startup' %}Startup path{% else %}Job path{% endif %}
+          </span>
+        </div>
+
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">
+          Turn your Dream Plan into weekly execution
+        </h1>
+
+        <p class="text-sm sm:text-base text-white/80 max-w-xl leading-relaxed">
+          The coach turns your 3-phase Dream Plan into <span class="font-semibold">small weekly focus packs</span>:
+          checklists, a focus timer, and short AI guidance. Use it 3–5 days a week to keep momentum.
+        </p>
+
+        {% if profile_snapshot %}
+          <p class="text-[11px] text-white/60 mt-1">
+            Profile completion:
+            <span class="font-semibold">{{ profile_snapshot.profile_strength_score or 0 }}%</span>
+            <span class="text-white/45">· More complete profiles → sharper tasks</span>
+          </p>
+        {% endif %}
+      </div>
+
+      <div class="space-y-2 text-xs text-right">
+        {% if streak_count %}
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/20">
+            <i data-lucide="flame" class="w-3.5 h-3.5"></i>
+            <span>Streak:</span>
+            <span class="font-semibold">{{ streak_count }} week{{ '' if streak_count == 1 else 's' }}</span>
+          </div>
+        {% endif %}
+        <p class="text-[11px] text-white/65">
+          Mode:
+          <span class="font-semibold">
+            {% if path_type == 'startup' %}Startup path{% else %}Job path{% endif %}
+          </span>
+        </p>
+
+        <div class="mt-2 flex flex-col items-end gap-1 text-[11px]">
+          <a href="{{ url_for('dream.index', path_type=path_type) }}" class="inline-flex items-center gap-1 text-white/60 hover:text-white">
+            <i data-lucide="sparkles" class="w-3 h-3"></i>
+            <span>Back to Dream Planner</span>
+          </a>
+          {% if feature_paths is defined and feature_paths.skillmapper %}
+            <a href="{{ feature_paths.skillmapper }}" class="inline-flex items-center gap-1 text-white/60 hover:text-white">
+              <i data-lucide="route" class="w-3 h-3"></i>
+              <span>Skill Mapper</span>
+            </a>
+          {% endif %}
+          <!-- Extra: back to home from header as well -->
+          <a href="/" class="inline-flex items-center gap-1 text-white/60 hover:text-white">
+            <i data-lucide="arrow-left" class="w-3 h-3"></i>
+            <span>Back to home</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- GATED MESSAGE FOR FREE USERS -->
+  {% if not is_pro_user %}
+    <div class="glass-card rounded-2xl p-6 border border-white/10 text-center space-y-4">
+      <h2 class="text-lg font-semibold">Weekly Coach is Pro-only ⭐</h2>
+      <p class="text-sm text-white/70 max-w-md mx-auto">
+        Upgrade to Pro to unlock:
+      </p>
+
+      <ul class="space-y-1 text-sm text-white/75 max-w-md mx-auto text-left">
+        <li>• Weekly focus packs derived from your Dream Plan</li>
+        <li>• A checklist view with task-by-task progress</li>
+        <li>• Focus timer with guided breaks and wellbeing nudges</li>
+        <li>• Progress tracking, streaks and reflection notes</li>
+      </ul>
+
+      <a href="{{ url_for('billing.index') }}"
+         class="btn-primary mt-4 inline-flex items-center justify-center gap-1 px-4 py-2">
+        <i data-lucide="sparkles" class="w-4 h-4"></i>
+        <span>Upgrade to Pro</span>
+      </a>
+
+      <div class="mt-3 space-y-1 text-xs text-white/60">
+        <p>Already Pro? Please logout and login again.</p>
+        <!-- 🔙 Clear escape hatch so you’re never “stuck” on this page -->
+        <p>
+          <a href="/" class="inline-flex items-center gap-1 text-white/70 hover:text-white underline underline-offset-2">
+            <i data-lucide="arrow-left" class="w-3 h-3"></i>
+            <span>Back to home</span>
+          </a>
+        </p>
+      </div>
+    </div>
+
+  {% else %}
+
+    <!-- PATH TOGGLE + GOLD STATUS -->
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="glass-card rounded-2xl p-4 border border-white/10 space-y-3 md:col-span-2">
+        <h2 class="text-sm font-semibold flex items-center gap-2">
+          <i data-lucide="route" class="w-4 h-4"></i>
+          <span>Which path are you executing right now?</span>
+        </h2>
+        <p class="text-xs text-white/70">
+          You can run separate streaks for your <span class="font-semibold">job</span> and <span class="font-semibold">startup</span> plans.
+          Pick one path and stick with it for a few weeks.
+        </p>
+
+        <div class="mt-3 inline-flex items-center gap-2 rounded-full bg-black/40 p-1 border border-white/15">
+          <a
+            href="{{ url_for('coach.index', path_type='job') }}"
+            class="px-3 py-1.5 rounded-full text-xs sm:text-[13px] inline-flex items-center gap-1
+                   {% if path_type != 'startup' %}bg-white text-black font-semibold shadow{% else %}text-white/70 hover:text-white{% endif %}"
+          >
+            <i data-lucide="briefcase" class="w-3.5 h-3.5"></i>
+            <span>Job path</span>
+          </a>
+          <a
+            href="{{ url_for('coach.index', path_type='startup') }}"
+            class="px-3 py-1.5 rounded-full text-xs sm:text-[13px] inline-flex items-center gap-1
+                   {% if path_type == 'startup' %}bg-white text-black font-semibold shadow{% else %}text-white/70 hover:text-white{% endif %}"
+          >
+            <i data-lucide="rocket" class="w-3.5 h-3.5"></i>
+            <span>Startup path</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-4 border border-white/10 space-y-2 text-sm">
+        <h3 class="text-xs font-semibold flex items-center gap-2">
+          <i data-lucide="coins" class="w-4 h-4"></i>
+          <span>Gold credits</span>
+        </h3>
+        {% if has_gold %}
+          <p class="text-emerald-300 text-xs sm:text-sm">
+            You have enough Gold ⭐ credits to start a new coach session.
+          </p>
+          <p class="text-[11px] text-white/60">
+            Credits are shared with Dream Planner. Each new session uses a small amount.
+          </p>
+        {% else %}
+          <p class="text-red-300 text-xs sm:text-sm">
+            You don’t have enough Gold ⭐ credits to start a new session.
+          </p>
+          <a href="{{ url_for('billing.index') }}"
+             class="underline text-white hover:text-emerald-200 text-[11px] mt-1 inline-block">
+            Add more Gold credits →
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    {# === Derive current week + phase from sessions for the roadmap UI === #}
+    {% set current_week = 1 %}
+    {% if today_session and today_session.day_index %}
+      {% set current_week = today_session.day_index %}
+    {% elif last_session and last_session.day_index %}
+      {% set current_week = last_session.day_index %}
+    {% endif %}
+
+    {% if current_week <= 4 %}
+      {% set current_phase = 1 %}
+    {% elif current_week <= 8 %}
+      {% set current_phase = 2 %}
+    {% else %}
+      {% set current_phase = 3 %}
+    {% endif %}
+
+    {# Roadmap helpers #}
+    {% set total_weeks = 12 %}
+    {% set unlocked_through = 1 %}
+    {% if last_session and last_session.day_index %}
+      {% if last_session.is_closed %}
+        {% set unlocked_through = last_session.day_index + 1 %}
+      {% else %}
+        {% set unlocked_through = last_session.day_index %}
+      {% endif %}
+    {% endif %}
+    {% if today_session and today_session.day_index %}
+      {% set unlocked_through = today_session.day_index %}
+    {% endif %}
+    {% if unlocked_through > total_weeks %}
+      {% set unlocked_through = total_weeks %}
+    {% endif %}
+
+    {% set active_week_index = current_week %}
+    {% if active_week_index < 1 %}
+      {% set active_week_index = 1 %}
+    {% endif %}
+    {% if active_week_index > total_weeks %}
+      {% set active_week_index = total_weeks %}
+    {% endif %}
+
+    {% set all_sessions = recent_sessions or [] %}
+
+    <!-- MAIN SESSION BLOCK + PHASE ROADMAP -->
+    <div class="glass-card rounded-2xl p-6 border border-white/10 space-y-6">
+
+      <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+        <!-- Left: explanation + status -->
+        <div class="flex-1 space-y-4">
+          <div class="space-y-2">
+            <h2 class="text-lg sm:text-xl font-semibold flex items-center gap-2">
+              <i data-lucide="check-square" class="w-5 h-5"></i>
+              <span>Your next focus pack</span>
+            </h2>
+            <p class="text-sm sm:text-base text-white/80 leading-relaxed max-w-xl">
+              Each coach session gives you a <span class="font-semibold">small, realistic task list</span> for this week or focus block,
+              based on your 3 phases. Finish what you can, mark the week closed, and let the streak grow.
+            </p>
+          </div>
+
+          <div class="text-xs text-white/70 space-y-1">
+            <p class="font-semibold uppercase tracking-[0.16em] text-white/55">Session status</p>
+            {% if today_session %}
+              <p>
+                You already have an active session:
+                <span class="font-semibold">{{ today_session.plan_title or 'Weekly Coach session' }}</span>.
+              </p>
+              {% if today_session.is_closed %}
+                <p class="text-emerald-300">
+                  This session is marked as <span class="font-semibold">done</span>. You can still open it to review tasks.
+                </p>
+              {% else %}
+                <p class="text-emerald-300">
+                  This session is <span class="font-semibold">in progress</span>. Re-open it to continue this week’s tasks.
+                </p>
+              {% endif %}
+            {% else %}
+              <p>
+                No active session for this path yet. Your next run will create a fresh focus pack aligned with your plan.
+              </p>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Right: phase roadmap mini-visual -->
+        <aside class="w-full lg:w-72 rounded-2xl bg-black/35 border border-white/15 p-4 space-y-3 text-xs">
+          <p class="font-semibold flex items-center gap-1.5 text-[11px] uppercase tracking-[0.16em] text-white/65">
+            <i data-lucide="map" class="w-3.5 h-3.5"></i>
+            <span>Your 3-phase roadmap</span>
+          </p>
+          <p class="text-[11px] text-white/65">
+            Weekly Coach maps your weeks into the same 3 phases from Dream Planner. Finish most tasks in a week → move to the next.
+          </p>
+
+          <div class="space-y-2">
+            <!-- Phase 1 -->
+            <div class="flex items-start gap-2">
+              <div class="mt-1 h-2 w-2 rounded-full
+                          {% if current_phase == 1 %}bg-emerald-400{% else %}bg-white/30{% endif %}"></div>
+              <div class="flex-1">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="font-semibold text-[13px]">
+                    Phase 1 · Foundation
+                  </p>
+                  <span class="text-[10px] text-white/55">Weeks 1–4</span>
+                </div>
+                <p class="text-[11px] text-white/65">
+                  Fix basics, profile hygiene, and core skills. Ideal for your first 3–4 weeks using the coach.
+                </p>
+              </div>
+            </div>
+
+            <!-- Phase 2 -->
+            <div class="flex items-start gap-2">
+              <div class="mt-1 h-2 w-2 rounded-full
+                          {% if current_phase == 2 %}bg-emerald-400{% else %}bg-white/30{% endif %}"></div>
+              <div class="flex-1">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="font-semibold text-[13px]">
+                    Phase 2 · Projects & depth
+                  </p>
+                  <span class="text-[10px] text-white/55">Weeks 5–8</span>
+                </div>
+                <p class="text-[11px] text-white/65">
+                  Build or ship 1–2 real projects, deepen your stack, and start light interview prep.
+                </p>
+              </div>
+            </div>
+
+            <!-- Phase 3 -->
+            <div class="flex items-start gap-2">
+              <div class="mt-1 h-2 w-2 rounded-full
+                          {% if current_phase == 3 %}bg-emerald-400{% else %}bg-white/30{% endif %}"></div>
+              <div class="flex-1">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="font-semibold text-[13px]">
+                    Phase 3 · Showcase & applications
+                  </p>
+                  <span class="text-[10px] text-white/55">Week 9+</span>
+                </div>
+                <p class="text-[11px] text-white/65">
+                  Polish resume & LinkedIn, share your work, and run structured job or customer outreach.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-[10px] text-white/50">
+            Rule of thumb: aim to honestly complete at least 60–70% of a week’s tasks before jumping ahead.
+          </p>
+        </aside>
+      </div>
+
+      <!-- MULTI-WEEK / MULTI-PHASE ROADMAP UI -->
+      <div class="rounded-2xl bg-black/35 border border-white/15 p-4 sm:p-5 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div class="space-y-1">
+            <p class="text-[11px] uppercase tracking-[0.16em] text-white/55 flex items-center gap-1.5">
+              <i data-lucide="radar" class="w-3.5 h-3.5"></i>
+              <span>Weekly roadmap</span>
+            </p>
+            <p class="text-sm">
+              Phase
+              <span class="font-semibold">
+                {% if current_phase == 1 %}1 · Foundation{% elif current_phase == 2 %}2 · Projects & depth{% else %}3 · Showcase & applications{% endif %}
+              </span>
+              · Week <span class="font-semibold">{{ active_week_index }}</span> of <span class="font-semibold">{{ total_weeks }}</span>
+            </p>
+          </div>
+
+          <div class="flex items-center gap-3 text-[11px] text-white/60">
+            <div class="inline-flex items-center gap-1">
+              <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border border-emerald-400/70">
+                <i data-lucide="sparkles" class="w-3 h-3"></i>
+              </span>
+              <span>Active</span>
+            </div>
+            <div class="inline-flex items-center gap-1">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+              <span>Completed</span>
+            </div>
+            <div class="inline-flex items-center gap-1">
+              <i data-lucide="circle-dot" class="w-3.5 h-3.5"></i>
+              <span>Unlocked</span>
+            </div>
+            <div class="inline-flex items-center gap-1">
+              <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+              <span>Locked</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase blocks with week nodes (1–4, 5–8, 9–12) -->
+        <div class="space-y-4 text-xs">
+          <!-- Phase 1 Weeks 1–4 -->
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <p class="font-semibold flex items-center gap-1.5 text-[12px]">
+                <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                <span>Phase 1 · Foundation</span>
+              </p>
+              <span class="text-[11px] text-white/55">Weeks 1–4</span>
+            </div>
+            <div class="flex items-center gap-2 overflow-x-auto pb-1">
+              {% for week in range(1, 5) %}
+                {% set matching = all_sessions | selectattr('day_index', 'equalto', week) | list %}
+                {% if matching|length > 0 %}
+                  {% set week_session = matching[0] %}
+                {% else %}
+                  {% set week_session = None %}
+                {% endif %}
+                {% set is_completed = week_session and week_session.is_closed %}
+                {% set is_active = (week == active_week_index) %}
+                {% set is_locked = (week > unlocked_through) %}
+
+                {% if is_locked %}
+                  <div class="flex flex-col items-center gap-1 min-w-[64px] opacity-40">
+                    <div class="w-9 h-9 rounded-full border border-white/20 bg-black/40 flex items-center justify-center">
+                      <i data-lucide="lock" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-white/70">Week {{ week }}</span>
+                  </div>
+                {% elif is_completed and week_session %}
+                  <a href="{{ url_for('coach.session', session_id=week_session.id) }}"
+                     class="group flex flex-col items-center gap-1 min-w-[64px]">
+                    <div class="w-9 h-9 rounded-full border border-emerald-400/70 bg-emerald-500/15 flex items-center justify-center group-hover:bg-emerald-500/25 transition-all">
+                      <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-emerald-200 font-semibold">Week {{ week }}</span>
+                  </a>
+                {% elif is_active and week_session %}
+                  <a href="{{ url_for('coach.session', session_id=week_session.id) }}"
+                     class="group flex flex-col items-center gap-1 min-w-[70px]">
+                    <div class="w-10 h-10 rounded-full border border-emerald-300/80 bg-emerald-400/15 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:bg-emerald-400/25 transition-all">
+                      <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-emerald-200 font-semibold">Week {{ week }}</span>
+                  </a>
+                {% else %}
+                  <div class="flex flex-col items-center gap-1 min-w-[64px]">
+                    <div class="w-8 h-8 rounded-full border border-white/30 bg-black/40 flex items-center justify-center">
+                      <i data-lucide="circle-dot" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-white/75">Week {{ week }}</span>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Phase 2 Weeks 5–8 -->
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <p class="font-semibold flex items-center gap-1.5 text-[12px]">
+                <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
+                <span>Phase 2 · Projects & depth</span>
+              </p>
+              <span class="text-[11px] text-white/55">Weeks 5–8</span>
+            </div>
+            <div class="flex items-center gap-2 overflow-x-auto pb-1">
+              {% for week in range(5, 9) %}
+                {% set matching = all_sessions | selectattr('day_index', 'equalto', week) | list %}
+                {% if matching|length > 0 %}
+                  {% set week_session = matching[0] %}
+                {% else %}
+                  {% set week_session = None %}
+                {% endif %}
+                {% set is_completed = week_session and week_session.is_closed %}
+                {% set is_active = (week == active_week_index) %}
+                {% set is_locked = (week > unlocked_through) %}
+
+                {% if is_locked %}
+                  <div class="flex flex-col items-center gap-1 min-w-[64px] opacity-40">
+                    <div class="w-9 h-9 rounded-full border border-white/20 bg-black/40 flex items-center justify-center">
+                      <i data-lucide="lock" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-white/70">Week {{ week }}</span>
+                  </div>
+                {% elif is_completed and week_session %}
+                  <a href="{{ url_for('coach.session', session_id=week_session.id) }}"
+                     class="group flex flex-col items-center gap-1 min-w-[64px]">
+                    <div class="w-9 h-9 rounded-full border border-emerald-400/70 bg-emerald-500/15 flex items-center justify-center group-hover:bg-emerald-500/25 transition-all">
+                      <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-emerald-200 font-semibold">Week {{ week }}</span>
+                  </a>
+                {% elif is_active and week_session %}
+                  <a href="{{ url_for('coach.session', session_id=week_session.id) }}"
+                     class="group flex flex-col items-center gap-1 min-w-[70px]">
+                    <div class="w-10 h-10 rounded-full border border-emerald-300/80 bg-emerald-400/15 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:bg-emerald-400/25 transition-all">
+                      <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-emerald-200 font-semibold">Week {{ week }}</span>
+                  </a>
+                {% else %}
+                  <div class="flex flex-col items-center gap-1 min-w-[64px]">
+                    <div class="w-8 h-8 rounded-full border border-white/30 bg-black/40 flex items-center justify-center">
+                      <i data-lucide="circle-dot" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-white/75">Week {{ week }}</span>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Phase 3 Weeks 9–12 -->
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <p class="font-semibold flex items-center gap-1.5 text-[12px]">
+                <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                <span>Phase 3 · Showcase & applications</span>
+              </p>
+              <span class="text-[11px] text-white/55">Weeks 9–12</span>
+            </div>
+            <div class="flex items-center gap-2 overflow-x-auto pb-1">
+              {% for week in range(9, total_weeks + 1) %}
+                {% set matching = all_sessions | selectattr('day_index', 'equalto', week) | list %}
+                {% if matching|length > 0 %}
+                  {% set week_session = matching[0] %}
+                {% else %}
+                  {% set week_session = None %}
+                {% endif %}
+                {% set is_completed = week_session and week_session.is_closed %}
+                {% set is_active = (week == active_week_index) %}
+                {% set is_locked = (week > unlocked_through) %}
+
+                {% if is_locked %}
+                  <div class="flex flex-col items-center gap-1 min-w-[64px] opacity-40">
+                    <div class="w-9 h-9 rounded-full border border-white/20 bg-black/40 flex items-center justify-center">
+                      <i data-lucide="lock" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-white/70">Week {{ week }}</span>
+                  </div>
+                {% elif is_completed and week_session %}
+                  <a href="{{ url_for('coach.session', session_id=week_session.id) }}"
+                     class="group flex flex-col items-center gap-1 min-w-[64px]">
+                    <div class="w-9 h-9 rounded-full border border-emerald-400/70 bg-emerald-500/15 flex items-center justify-center group-hover:bg-emerald-500/25 transition-all">
+                      <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-emerald-200 font-semibold">Week {{ week }}</span>
+                  </a>
+                {% elif is_active and week_session %}
+                  <a href="{{ url_for('coach.session', session_id=week_session.id) }}"
+                     class="group flex flex-col items-center gap-1 min-w-[70px]">
+                    <div class="w-10 h-10 rounded-full border border-emerald-300/80 bg-emerald-400/15 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:bg-emerald-400/25 transition-all">
+                      <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-emerald-200 font-semibold">Week {{ week }}</span>
+                  </a>
+                {% else %}
+                  <div class="flex flex-col items-center gap-1 min-w-[64px]">
+                    <div class="w-8 h-8 rounded-full border border-white/30 bg-black/40 flex items-center justify-center">
+                      <i data-lucide="circle-dot" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-[11px] text-white/75">Week {{ week }}</span>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <p class="text-[11px] text-white/55 mt-1">
+          You can click completed weeks to review past focus packs. Future weeks stay locked until you close the previous one.
+        </p>
+      </div>
+
+      <!-- TODAY / LAST SESSION DETAILS -->
+      <div class="grid md:grid-cols-2 gap-4 text-xs sm:text-sm text-white/80">
+
+        <div class="rounded-xl bg-black/30 border border-white/10 p-4 space-y-2">
+          <p class="font-semibold flex items-center gap-1.5">
+            <i data-lucide="clock" class="w-4 h-4"></i>
+            <span>Current session</span>
+          </p>
+          {% if today_session %}
+            <p>
+              Session date:
+              <span class="font-semibold">
+                {{ today_session.session_date.strftime("%d %b %Y") if today_session.session_date else "Unknown date" }}
+              </span>
+            </p>
+            <p>
+              Tasks:
+              {% set t_total = today_session.tasks|length %}
+              {% set t_done = (today_session.tasks | selectattr('is_done') | list | length) if today_session.tasks else 0 %}
+              <span class="font-semibold">{{ t_done }}/{{ t_total }}</span> completed
+            </p>
+            <a href="{{ url_for('coach.session', session_id=today_session.id) }}"
+               class="inline-flex items-center gap-1 mt-2 text-emerald-300 underline hover:text-emerald-100">
+              <i data-lucide="play" class="w-3.5 h-3.5"></i>
+              <span>Open current coach session</span>
+            </a>
+          {% else %}
+            <p>You don’t have an active session yet.</p>
+            <p class="text-white/60">
+              Start one to get tasks and a focus timer for the next block of deep work.
+            </p>
+          {% endif %}
+        </div>
+
+        <div class="rounded-xl bg-black/30 border border-white/10 p-4 space-y-2">
+          <p class="font-semibold flex items-center gap-1.5">
+            <i data-lucide="calendar-range" class="w-4 h-4"></i>
+            <span>Last session</span>
+          </p>
+          {% if last_session %}
+            <p>
+              Date:
+              <span class="font-semibold">
+                {{ last_session.session_date.strftime("%d %b %Y") if last_session.session_date else "Unknown date" }}
+              </span>
+            </p>
+            {% set lt_total = last_session.tasks|length %}
+            {% set lt_done = (last_session.tasks | selectattr('is_done') | list | length) if last_session.tasks else 0 %}
+            <p>
+              Tasks: <span class="font-semibold">{{ lt_done }}/{{ lt_total }}</span> completed
+              {% if last_session.is_closed %}
+                · closed
+              {% else %}
+                · still open
+              {% endif %}
+            </p>
+            <a href="{{ url_for('coach.session', session_id=last_session.id) }}"
+               class="inline-flex items-center gap-1 mt-2 underline hover:text-white">
+              <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+              <span>Review last session</span>
+            </a>
+          {% else %}
+            <p>You haven’t run Weekly Coach yet. Your first session will appear here.</p>
+          {% endif %}
+        </div>
+
+      </div>
+
+      <!-- CTA BUTTON -->
+      <form method="POST" action="{{ url_for('coach.start') }}">
+        <input type="hidden" name="path_type" value="{{ path_type }}">
+
+        <button
+          {% if not has_gold %}disabled{% endif %}
+          class="btn-primary w-full mt-3 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <i data-lucide="play" class="w-4 h-4"></i>
+          {% if today_session %}
+            <span>Open / refresh current focus pack</span>
+          {% else %}
+            <span>Start a new focus pack</span>
+          {% endif %}
+        </button>
+      </form>
+
+      <p class="text-[11px] text-white/60 mt-3 text-center">
+        Sessions are meant to be <span class="font-semibold">small weekly blocks</span>. Missing a week is okay —
+        just restart. Consistency beats perfection.
+      </p>
+
+      <!-- Extra small footer nav so users can always go back out -->
+      <div class="mt-4 flex flex-wrap items-center justify-center gap-3 text-[11px] text-white/65">
+        <a href="/" class="inline-flex items-center gap-1 hover:text-white underline underline-offset-2">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+          <span>Back to home</span>
+        </a>
+        <a href="{{ url_for('dream.index', path_type=path_type) }}" class="inline-flex items-center gap-1 hover:text-white underline underline-offset-2">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          <span>Dream Planner</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- RECENT SESSIONS HISTORY -->
+    {% if recent_sessions %}
+      <div class="glass-card rounded-2xl p-6 border border-white/10 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <h3 class="text-sm font-semibold flex items-center gap-2">
+            <i data-lucide="history" class="w-4 h-4"></i>
+            <span>Recent sessions</span>
+          </h3>
+          <p class="text-[11px] text-white/55">
+            Last {{ recent_sessions|length }} {{ 'session' if recent_sessions|length == 1 else 'sessions' }} for this path
+          </p>
+        </div>
+
+        <div class="space-y-1 text-xs sm:text-sm">
+          {% for s in recent_sessions %}
+            {% set s_total = s.tasks|length %}
+            {% set s_done = (s.tasks | selectattr('is_done') | list | length) if s.tasks else 0 %}
+            <a href="{{ url_for('coach.session', session_id=s.id) }}"
+               class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-black/30 border border-white/10 hover:bg-black/50 hover:border-white/25 transition-all">
+              <div class="flex flex-col">
+                <span class="font-semibold text-white">
+                  {{ s.session_date.strftime("%d %b %Y") if s.session_date else "Unknown date" }}
+                </span>
+                <span class="text-[11px] text-white/60">
+                  {{ s.plan_title or 'Weekly Coach session' }}
+                  {% if s.day_index %}· Week {{ s.day_index }}{% endif %}
+                </span>
+              </div>
+              <div class="flex items-center gap-3 text-[11px] text-white/65">
+                <span>{{ s_done }}/{{ s_total }} tasks</span>
+                {% if s.is_closed %}
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/40 text-emerald-300">
+                    <i data-lucide="check-circle-2" class="w-3 h-3"></i>
+                    <span>Closed</span>
+                  </span>
+                {% else %}
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/40 text-yellow-200">
+                    <i data-lucide="circle-dot" class="w-3 h-3"></i>
+                    <span>Open</span>
+                  </span>
+                {% endif %}
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+  {% endif %}
+
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  });
+</script>
+{% endblock %}
