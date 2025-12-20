@@ -48,7 +48,6 @@
           <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/20">
             <i data-lucide="flame" class="w-3.5 h-3.5"></i>
             <span>Streak:</span>
-            {# ✅ Upgrade: streak_count is a day-based streak in your backend #}
             <span class="font-semibold">{{ streak_count }} day{{ '' if streak_count == 1 else 's' }}</span>
           </div>
         {% endif %}
@@ -70,7 +69,6 @@
               <span>Skill Mapper</span>
             </a>
           {% endif %}
-          <!-- Extra: back to home from header as well -->
           <a href="/" class="inline-flex items-center gap-1 text-white/60 hover:text-white">
             <i data-lucide="arrow-left" class="w-3 h-3"></i>
             <span>Back to home</span>
@@ -80,16 +78,14 @@
     </div>
   </header>
 
- 
-
   <!-- DUAL-TRACK DASHBOARD (if cycle exists) -->
   {% if cycle_sessions %}
   <div class="space-y-6">
-    
+
     <!-- STREAK & READY SCORE BAR -->
     <div class="glass-card rounded-2xl p-6 border border-white/10">
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        
+
         <!-- Streak Counter -->
         <div class="flex items-center gap-4">
           <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500/20 to-red-500/20 border border-orange-500/30 flex items-center justify-center">
@@ -99,14 +95,14 @@
             <div class="text-2xl font-bold">{{ user_streak }}</div>
             <div class="text-xs text-white/60">Day Streak 🔥</div>
             <div class="text-[10px] text-white/50">
-              Longest: {{ current_user.longest_streak or 0 }}
-              {% if current_user.streak_freezes_remaining > 0 %}
-              · ❄️ {{ current_user.streak_freezes_remaining }} freeze
+              Longest: {{ current_user.longest_streak|default(0) }}
+              {% if (current_user.streak_freezes_remaining|default(0)) > 0 %}
+              · ❄️ {{ current_user.streak_freezes_remaining|default(0) }} freeze
               {% endif %}
             </div>
           </div>
         </div>
-        
+
         <!-- Ready Score -->
         <div class="flex items-center gap-4">
           <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center">
@@ -124,24 +120,24 @@
             </div>
           </div>
         </div>
-        
+
         <!-- Milestones -->
         <div class="flex items-center gap-4">
           <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center">
             <i data-lucide="award" class="w-7 h-7 text-emerald-400"></i>
           </div>
           <div>
-            <div class="text-2xl font-bold">{{ current_user.weekly_milestones_completed or 0 }}</div>
+            <div class="text-2xl font-bold">{{ current_user.weekly_milestones_completed|default(0) }}</div>
             <div class="text-xs text-white/60">Milestones 🏆</div>
             <div class="text-[10px] text-white/50">
               Weekly goals completed
             </div>
           </div>
         </div>
-        
+
       </div>
     </div>
-    
+
     <!-- TODAY'S CAREER BITE (Daily Task) -->
     {% if today_daily_task %}
     <div class="glass-card rounded-2xl p-6 border border-white/10">
@@ -157,10 +153,10 @@
           Daily
         </div>
       </div>
-      
+
       <form method="POST" action="{{ url_for('coach.complete_task', task_id=today_daily_task.id) }}" class="space-y-3">
         <div class="flex items-start gap-3">
-          <button type="submit" 
+          <button type="submit"
                   class="mt-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-all
                          {% if today_daily_task.is_done %}
                          bg-emerald-500 border-emerald-500
@@ -190,7 +186,7 @@
       </form>
     </div>
     {% endif %}
-    
+
     <!-- THIS WEEK'S BIG GOAL (Weekly Task) -->
     {% if current_weekly_task %}
     <div class="glass-card rounded-2xl p-6 border border-white/10">
@@ -206,10 +202,10 @@
           Weekly
         </div>
       </div>
-      
+
       <form method="POST" action="{{ url_for('coach.complete_task', task_id=current_weekly_task.id) }}" class="space-y-3">
         <div class="flex items-start gap-3">
-          <button type="submit" 
+          <button type="submit"
                   class="mt-1 w-6 h-6 rounded border-2 flex items-center justify-center transition-all
                          {% if current_weekly_task.is_done %}
                          bg-indigo-500 border-indigo-500
@@ -260,14 +256,14 @@
       </form>
     </div>
     {% endif %}
-    
+
     <!-- WEEK VIEW (All 4 Weeks) -->
     <div class="glass-card rounded-2xl p-6 border border-white/10">
       <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
         <i data-lucide="calendar" class="w-5 h-5"></i>
         28-Day Roadmap
       </h3>
-      
+
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {% for session in cycle_sessions %}
         <a href="{{ url_for('coach.session', session_id=session.id) }}"
@@ -289,12 +285,12 @@
             <i data-lucide="circle" class="w-4 h-4 text-white/30"></i>
             {% endif %}
           </div>
-          
+
           <div class="text-xs text-white/60 space-y-1">
             <div>{{ session.daily_tasks_completed or 0 }}/7 daily</div>
             <div>{% if session.weekly_task_completed %}✓{% else %}○{% endif %} Weekly goal</div>
           </div>
-          
+
           <div class="mt-3">
             <div class="h-1 bg-white/10 rounded-full overflow-hidden">
               <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500"
@@ -305,25 +301,25 @@
         {% endfor %}
       </div>
     </div>
-    
+
   </div>
   {% else %}
-  
+
   <!-- NO CYCLE YET - Show Start Button -->
   <div class="glass-card rounded-2xl p-8 border border-white/10 text-center">
     <div class="max-w-2xl mx-auto space-y-4">
       <div class="w-16 h-16 mx-auto rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center">
         <i data-lucide="rocket" class="w-8 h-8 text-indigo-400"></i>
       </div>
-      
+
       <h2 class="text-2xl font-bold">Ready to start your 28-day journey?</h2>
-      
+
       <p class="text-white/70 max-w-lg mx-auto">
         Get a personalized dual-track plan:
         <span class="font-semibold">7 daily tasks</span> (5-15 min each) +
         <span class="font-semibold">1 weekly goal</span> (3-5 hours) for 4 weeks.
       </p>
-      
+
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto text-left text-sm">
         <div class="p-3 rounded-lg bg-white/5 border border-white/10">
           <div class="font-semibold text-amber-300 mb-1">Daily Tasks</div>
@@ -344,7 +340,7 @@
           </div>
         </div>
       </div>
-      
+
       <form method="POST" action="{{ url_for('coach.start', path_type=path_type) }}" class="mt-6">
         <button type="submit" class="btn-primary px-6 py-3 text-base">
           <i data-lucide="play" class="w-5 h-5"></i>
@@ -381,7 +377,6 @@
 
       <div class="mt-3 space-y-1 text-xs text-white/60">
         <p>Already Pro? Please logout and login again.</p>
-        <!-- 🔙 Clear escape hatch so you’re never “stuck” on this page -->
         <p>
           <a href="/" class="inline-flex items-center gap-1 text-white/70 hover:text-white underline underline-offset-2">
             <i data-lucide="arrow-left" class="w-3 h-3"></i>
@@ -907,7 +902,6 @@
         just restart. Consistency beats perfection.
       </p>
 
-      <!-- Extra small footer nav so users can always go back out -->
       <div class="mt-4 flex flex-wrap items-center justify-center gap-3 text-[11px] text-white/65">
         <a href="/" class="inline-flex items-center gap-1 hover:text-white underline underline-offset-2">
           <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>

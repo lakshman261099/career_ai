@@ -157,20 +157,14 @@
     }
 
     /* ---------- Pro lock helpers (used by features) ---------- */
-
-    /* Wrapper: add class 'pro-locked' to show blur + overlay for Free users */
     .pro-lock-wrapper {
       position: relative;
       border-radius: 0.9rem;
       overflow: hidden;
     }
-
-    /* Content that should blur when locked */
     .pro-lock-blur {
       transition: filter 160ms ease-out, opacity 160ms ease-out;
     }
-
-    /* Overlay panel that appears when locked */
     .pro-lock-overlay {
       position: absolute;
       inset: 0;
@@ -186,7 +180,6 @@
       pointer-events: none;
       transition: opacity 160ms ease-out;
     }
-
     .pro-lock-overlay h3 {
       font-size: .9rem;
       font-weight: 600;
@@ -197,8 +190,6 @@
       opacity: .8;
       max-width: 260px;
     }
-
-    /* When wrapper has 'pro-locked' class, activate blur + overlay */
     .pro-locked .pro-lock-blur {
       filter: blur(4px) grayscale(0.1);
       pointer-events: none;
@@ -215,7 +206,7 @@
   <div class="ca-root-gradient"></div>
 
   <!-- Top navigation -->
-  <header class="sticky top-0 z-40">
+  <header class="fixed top-0 inset-x-0 z-[99999] pointer-events-auto isolate">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4 pb-2">
       <div class="relative glass-bar rounded-2xl px-4 py-3 flex items-center justify-between shadow-lg shadow-black/40">
         <!-- Logo + name -->
@@ -243,16 +234,13 @@
              href="{{ feature_paths.referral }}">Referrals</a>
           <a class="nav-link {% if request.endpoint and request.endpoint.startswith('jobpack.') %}nav-active{% endif %}"
              href="{{ feature_paths.jobpack }}">Job Packs</a>
-          <!-- NEW: Dream Planner tab -->
           <a class="nav-link {% if request.endpoint and request.endpoint.startswith('dream.') %}nav-active{% endif %}"
              href="{{ feature_paths.dream }}">Dream Planner</a>
-          <!-- NEW: Coach tab (always accessible once logged in) -->
           <a class="nav-link {% if request.endpoint and request.endpoint.startswith('coach.') %}nav-active{% endif %}"
-             href="{{ feature_paths.coach }}">Coach</a>
+             href="{{ feature_paths.coach if feature_paths and feature_paths.coach else url_for('coach.index') }}">Coach</a>
           <a class="nav-link {% if request.endpoint and request.endpoint.startswith('billing.') %}nav-active{% endif %}"
              href="{{ feature_paths.billing }}">Pricing</a>
 
-          {# Admin nav item – only visible for admin users (role or ADMIN_EMAILS) #}
           {% if nav_is_admin %}
             <a class="nav-link {% if request.endpoint and request.endpoint.startswith('admin.') %}nav-active{% endif %}"
                href="{{ url_for('admin.dashboard') }}">
@@ -270,7 +258,6 @@
           </div>
 
           {% if current_user.is_authenticated %}
-            <!-- Profile Portal is the first step and powers all tools -->
             <a href="{{ feature_paths.profile }}"
                class="btn-ghost hidden sm:inline {% if request.endpoint=='settings.profile' %}nav-active{% endif %}">
               <span>Profile Portal</span>
@@ -292,69 +279,141 @@
     </div>
   </header>
 
-  <!-- Flash messages -->
-  <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-4 space-y-2">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for cat, msg in messages %}
-          <div class="glass-card border-l-4 px-4 py-3
-                      {% if cat in ['danger','error'] %}border-red-400
-                      {% elif cat == 'warning' %}border-yellow-400
-                      {% elif cat=='success' %}border-emerald-400
-                      {% else %}border-brand-500{% endif %}">
-            <p class="text-sm">{{ msg|safe }}</p>
+  <!-- Content wrapper (offset fixed header height) -->
+  <div class="pt-24">
+    <!-- Flash messages -->
+    <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-4 space-y-2">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for cat, msg in messages %}
+            <div class="glass-card border-l-4 px-4 py-3
+                        {% if cat in ['danger','error'] %}border-red-400
+                        {% elif cat == 'warning' %}border-yellow-400
+                        {% elif cat=='success' %}border-emerald-400
+                        {% else %}border-brand-500{% endif %}">
+              <p class="text-sm">{{ msg|safe }}</p>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+    </div>
+
+    {# Email verification banner #}
+    {% set _is_verified = (
+         current_user.is_authenticated
+         and (
+           (current_user.email_verified|default(false))
+           or
+           (current_user.verified|default(false))
+         )
+       )
+    %}
+    {% if current_user.is_authenticated and not _is_verified %}
+      <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-3">
+        <div class="glass-card rounded-2xl border border-yellow-400/70 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-amber-100">
+          <div class="space-y-0.5">
+            <p class="font-semibold">Verify your email to unlock AI features.</p>
+            <p class="text-amber-100/80 text-[11px] sm:text-xs">
+              You can browse all tools, but AI actions (analyze, generate, etc.) need a one-time email code.
+            </p>
           </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+          <a href="{{ url_for('auth.otp_request') }}" class="btn-primary text-xs whitespace-nowrap">
+            Get login code
+          </a>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if current_user.is_authenticated %}
+      <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 mt-3">
+        <div class="glass-card rounded-2xl px-4 py-2.5 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
+          <span class="font-semibold text-white/80">Simple way to use CareerAI:</span>
+          <span>1) <strong>Fill Profile Portal</strong></span>
+          <span class="hidden sm:inline">→ 2) Run <strong>Dream Planner</strong> &amp; <strong>Coach</strong></span>
+          <span class="hidden sm:inline">→ 3) Map roles with <strong>Skill Mapper</strong></span>
+          <span class="hidden sm:inline">→ 4) Build <strong>Projects in Portfolio</strong></span>
+          <span class="hidden sm:inline">→ 5) Use <strong>Job Packs &amp; Internship Analyzer</strong></span>
+          <span class="hidden sm:inline">→ 6) Send <strong>Referral messages</strong></span>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Page content -->
+    <main class="relative z-0">
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-16 mb-10">
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="glass-bar rounded-2xl p-4 text-[11px] text-white/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <span>© {{ now.year if now else 2025 }} CareerAI · Built for students &amp; new grads</span>
+          <span>Flask · SQLAlchemy · OpenAI · Glass UI</span>
+        </div>
+      </div>
+    </footer>
   </div>
 
-  {# 🔔 Global email verification banner (only when logged in & not verified) #}
-  {% if current_user.is_authenticated and not current_user.verified %}
-    <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-3">
-      <div class="glass-card rounded-2xl border border-yellow-400/70 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-amber-100">
-        <div class="space-y-0.5">
-          <p class="font-semibold">Verify your email to unlock AI features.</p>
-          <p class="text-amber-100/80 text-[11px] sm:text-xs">
-            You can browse all tools, but AI actions (analyze, generate, etc.) need a one-time email code.
-          </p>
-        </div>
-        <a href="{{ url_for('auth.otp_request') }}" class="btn-primary text-xs whitespace-nowrap">
-          Get login code
-        </a>
-      </div>
-    </div>
-  {% endif %}
+  <!-- Safety: unlock body on history navigation -->
+  <script>
+    (function () {
+      function unlockBody() {
+        document.body.classList.remove("overflow-hidden");
+      }
+      window.addEventListener("pageshow", unlockBody);
+      window.addEventListener("popstate", unlockBody);
+    })();
+  </script>
 
-  {% if current_user.is_authenticated %}
-    <!-- Global "how to use" strip so students see the flow everywhere -->
-    <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 mt-3">
-      <div class="glass-card rounded-2xl px-4 py-2.5 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
-        <span class="font-semibold text-white/80">Simple way to use CareerAI:</span>
-        <span>1) <strong>Fill Profile Portal</strong></span>
-        <span class="hidden sm:inline">→ 2) Run <strong>Dream Planner</strong> &amp; <strong>Coach</strong></span>
-        <span class="hidden sm:inline">→ 3) Map roles with <strong>Skill Mapper</strong></span>
-        <span class="hidden sm:inline">→ 4) Build <strong>Projects in Portfolio</strong></span>
-        <span class="hidden sm:inline">→ 5) Use <strong>Job Packs &amp; Internship Analyzer</strong></span>
-        <span class="hidden sm:inline">→ 6) Send <strong>Referral messages</strong></span>
-      </div>
-    </div>
-  {% endif %}
+  <!-- 🔧 Safer fix: only handle explicitly-marked <a> inside forms, never header/nav -->
+  <script>
+    (function () {
+      document.addEventListener(
+        "click",
+        function (e) {
+          // Only normal left-clicks, no modifier keys
+          if (e.button !== 0) return;
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 
-  <!-- Page content -->
-  <main class="relative z-0">
-    {% block content %}{% endblock %}
-  </main>
+          const target = e.target;
+          if (!target || !target.closest) return;
 
-  <!-- Footer -->
-  <footer class="mt-16 mb-10">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="glass-bar rounded-2xl p-4 text-[11px] text-white/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <span>© {{ now.year if now else 2025 }} CareerAI · Built for students &amp; new grads</span>
-        <span>Flask · SQLAlchemy · OpenAI · Glass UI</span>
-      </div>
-    </div>
-  </footer>
+          // Only anchors explicitly marked for this behavior
+          const anchor = target.closest("a[data-form-overlay-fix='1']");
+          if (!anchor) return;
+
+          // Never intercept clicks in the fixed header/nav
+          if (anchor.closest("header")) return;
+
+          // Only care when that anchor is inside a form
+          const form = anchor.closest("form");
+          if (!form) return;
+
+          // Treat as form action, not navigation
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof e.stopImmediatePropagation === "function") {
+            e.stopImmediatePropagation();
+          }
+
+          // If the click was on a submit button, actually submit the form
+          const submitter = target.closest("button, input[type='submit']");
+          if (submitter) {
+            try {
+              if (typeof form.requestSubmit === "function") {
+                form.requestSubmit(submitter);
+              } else {
+                form.submit();
+              }
+            } catch (err) {
+              try { form.submit(); } catch (err2) {}
+            }
+          }
+        },
+        true // capture phase so we beat overlay handlers
+      );
+    })();
+  </script>
 
   {% block scripts %}{% endblock %}
 </body>

@@ -63,7 +63,7 @@ def _current_is_pro_user() -> bool:
     """Helper: determine if user is Pro based on flags + subscription_status."""
     if not getattr(current_user, "is_authenticated", False):
         return False
-    if getattr(current_user, "is_pro", False):
+    if bool(getattr(current_user, "is_pro", False)):
         return True
     status = (getattr(current_user, "subscription_status", "free") or "free").lower()
     return status == "pro"
@@ -97,6 +97,60 @@ def _is_email_verified(user: User) -> bool:
     Some older code uses 'verified'. We support both.
     """
     return bool(getattr(user, "email_verified", False) or getattr(user, "verified", False))
+
+
+def _safe_int(v: Any, default: int = 0) -> int:
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+
+def _get_user_int(user: User, field: str, default: int = 0) -> int:
+    return _safe_int(getattr(user, field, default), default)
+
+
+def _set_user_int(user: User, field: str, value: int) -> None:
+    # We avoid assuming the column exists. Setting may still fail at commit if DB is behind.
+    try:
+        setattr(user, field, int(value))
+    except Exception:
+        # swallow safely; commit wrapper will handle if needed
+        pass
+
+
+def _get_user_date(user: User, field: str) -> date | None:
+    try:
+        v = getattr(user, field, None)
+        return v if isinstance(v, date) else None
+    except Exception:
+        return None
+
+
+def _set_user_date(user: User, field: str, value: date | None) -> None:
+    try:
+        setattr(user, field, value)
+    except Exception:
+        pass
+
+
+def _safe_commit(context: str) -> bool:
+    """
+    Commit with rollback safety. If DB schema is behind models,
+    this prevents the app from getting stuck in a broken session.
+    """
+    try:
+        db.session.commit()
+        return True
+    except Exception:
+        current_app.logger.exception(f"Coach: commit failed ({context}). Possible schema mismatch.")
+        db.session.rollback()
+        flash(
+            "We hit a database mismatch while saving Coach progress. "
+            "Your model may have fields not yet migrated. Please run migrations or guard columns.",
+            "danger",
+        )
+        return False
 
 
 def _app_day(user: User, now_utc: datetime | None = None) -> date:
@@ -214,34 +268,43 @@ def _update_user_streak(user: User, task_completed_date: date):
     - Weekly reset of freeze tokens (every Monday)
     """
     today = task_completed_date
-    last_date = user.last_daily_task_date
+    last_date = _get_user_date(user, "last_daily_task_date")
 
-    # Weekly freeze reset
-    if user.last_freeze_reset_date:
-        days_since_reset = (today - user.last_freeze_reset_date).days
+    # Weekly freeze reset (guarded)
+    last_reset = _get_user_date(user, "last_freeze_reset_date")
+    freezes = _get_user_int(user, "streak_freezes_remaining", 0)
+
+    if last_reset:
+        days_since_reset = (today - last_reset).days
         if days_since_reset >= 7 and today.weekday() == 0:
-            user.streak_freezes_remaining = 1
-            user.last_freeze_reset_date = today
+            freezes = 1
+            _set_user_date(user, "last_freeze_reset_date", today)
     else:
-        user.last_freeze_reset_date = today
-        user.streak_freezes_remaining = 1
+        _set_user_date(user, "last_freeze_reset_date", today)
+        freezes = 1
+
+    current_streak = _get_user_int(user, "current_streak", 0)
+    longest_streak = _get_user_int(user, "longest_streak", 0)
 
     if not last_date:
-        user.current_streak = 1
-        user.longest_streak = max(user.longest_streak or 0, 1)
+        current_streak = 1
+        longest_streak = max(longest_streak, 1)
     elif last_date == today:
         pass
     elif last_date == today - timedelta(days=1):
-        user.current_streak = (user.current_streak or 0) + 1
-        user.longest_streak = max(user.longest_streak or 0, user.current_streak)
+        current_streak = current_streak + 1
+        longest_streak = max(longest_streak, current_streak)
     else:
         days_missed = (today - last_date).days - 1
-        if days_missed == 1 and (user.streak_freezes_remaining or 0) > 0:
-            user.streak_freezes_remaining = (user.streak_freezes_remaining or 0) - 1
+        if days_missed == 1 and freezes > 0:
+            freezes = max(freezes - 1, 0)
         else:
-            user.current_streak = 1
+            current_streak = 1
 
-    user.last_daily_task_date = today
+    _set_user_int(user, "current_streak", current_streak)
+    _set_user_int(user, "longest_streak", longest_streak)
+    _set_user_int(user, "streak_freezes_remaining", freezes)
+    _set_user_date(user, "last_daily_task_date", today)
 
 
 def _recalc_session_aggregates(session: DailyCoachSession):
@@ -268,7 +331,6 @@ def _apply_template_aliases(tasks: list[DailyCoachTask]):
     """
     for t in tasks:
         try:
-            # session.html uses t.suggested_minutes
             if not hasattr(t, "suggested_minutes"):
                 t.suggested_minutes = (
                     t.estimated_time_minutes
@@ -279,7 +341,6 @@ def _apply_template_aliases(tasks: list[DailyCoachTask]):
             t.suggested_minutes = None
 
         try:
-            # session.html uses t.guide optionally; keep None unless you store something elsewhere
             if not hasattr(t, "guide"):
                 t.guide = None
         except Exception:
@@ -311,14 +372,12 @@ def _feature_cost_amount_safe(feature: str, currency: str) -> int:
     Prefers credits.engine.get_feature_cost_amount if available.
     Falls back to app config FEATURE_COSTS.
     """
-    # Preferred path (if you added helper in credits engine)
     if callable(get_feature_cost_amount):
         try:
             return int(get_feature_cost_amount(feature, currency))  # type: ignore
         except Exception:
             pass
 
-    # Fallback: read from Flask config (works if FEATURE_COSTS is set)
     try:
         cfg = current_app.config.get("FEATURE_COSTS") or {}
         raw = (cfg.get(feature) or {}) if isinstance(cfg, dict) else {}
@@ -345,15 +404,15 @@ def index():
     profile_snapshot = load_profile_snapshot(current_user)
     today = _today_date()
 
-    # ✅ Soft check credits (works whether can_afford returns bool OR tuple)
+    # ✅ Soft check credits
     has_gold = False
     try:
         has_gold, _reason = _can_afford_safe(current_user, "dream_planner", currency="gold")
     except Exception:
         current_app.logger.exception("Coach: can_afford check failed on index().")
 
-    user_streak = current_user.current_streak or 0
-    user_ready_score = current_user.ready_score or 0
+    user_streak = _get_user_int(current_user, "current_streak", 0)
+    user_ready_score = _get_user_int(current_user, "ready_score", 0)
 
     month_cycle_id = f"user_{current_user.id}_path_{path_type}_month_{today.year}_{today.month:02d}"
 
@@ -401,7 +460,6 @@ def index():
     if cycle_sessions:
         today_session = current_week_session
         last_session = cycle_sessions[-1] if cycle_sessions else None
-        # If current is not last, last_session should be most recent by date
         try:
             last_session = (
                 DailyCoachSession.query.filter_by(user_id=current_user.id, path_type=path_type)
@@ -427,11 +485,9 @@ def index():
         current_weekly_task=current_weekly_task,
         recent_sessions=recent_sessions,
         month_cycle_id=month_cycle_id,
-
-        # ✅ legacy roadmap variables expected in your index.html
         today_session=today_session,
         last_session=last_session,
-        feature_paths=getattr(current_app, "feature_paths", None),
+        # ❌ DO NOT override feature_paths here; the context_processor already injects it
     )
 
 
@@ -448,17 +504,14 @@ def start():
     """
     path_type = _normalize_path_type(request.form.get("path_type") or request.args.get("path_type"))
 
-    # Email verify
     if not _is_email_verified(current_user):
         flash("Please verify your email with a login code before using Weekly Coach.", "warning")
         return redirect(url_for("auth.otp_request"))
 
-    # Pro gate
     if not _current_is_pro_user():
         flash("Weekly Coach is available for Pro ⭐ members only.", "warning")
         return redirect(url_for("billing.index"))
 
-    # Gold gate (works whether can_afford returns bool OR tuple)
     try:
         can_pay, reason = _can_afford_safe(current_user, "dream_planner", currency="gold")
         if not can_pay:
@@ -483,7 +536,6 @@ def start():
         flash("You already have a plan for this month!", "info")
         return redirect(url_for("coach.index", path_type=path_type))
 
-    # Deduct credits first
     run_id = f"coach_{current_user.id}_{path_type}_{today.isoformat()}"
     try:
         ok = deduct_pro(current_user, "dream_planner", run_id=run_id)
@@ -495,12 +547,10 @@ def start():
         flash("We couldn't process your credits right now. Please try again.", "danger")
         return redirect(url_for("coach.index", path_type=path_type))
 
-    # Dream plan context
     dream_context = _get_dream_plan_context(current_user.id, path_type)
     target_lpa = dream_context["target_lpa"]
     dream_plan = dream_context["dream_plan"] or {}
 
-    # Generate dual-track month plan (one call)
     try:
         plan, used_live_ai = generate_dualtrack_month_plan(
             path_type=path_type,
@@ -531,19 +581,15 @@ def start():
                 progress_percent=0,
             )
             db.session.add(session)
-            db.session.flush()  # session.id
+            db.session.flush()
 
-            # Daily tasks (7)
             daily_tasks = week_obj.get("daily_tasks") or []
             for dt in daily_tasks[:7]:
                 day = int(dt.get("day") or 1)
                 day_number_in_month = (week_num - 1) * 7 + day
 
                 est = dt.get("estimated_minutes")
-                try:
-                    est_int = int(est) if est is not None else 10
-                except Exception:
-                    est_int = 10
+                est_int = _safe_int(est, 10)
 
                 tags = dt.get("tags") if isinstance(dt.get("tags"), list) else None
 
@@ -557,11 +603,8 @@ def start():
                     category=(dt.get("category") or "skills")[:64],
                     sort_order=day,
                     is_done=False,
-
-                    # ✅ write BOTH fields for your model
-                    estimated_time_minutes=est_int,   # UI field (non-null)
-                    estimated_minutes=est_int,        # AI metadata field
-
+                    estimated_time_minutes=est_int,
+                    estimated_minutes=est_int,
                     target_lpa_level=target_lpa,
                     tags=tags,
                     milestone_title=(dt.get("milestone_title") or "")[:255] if dt.get("milestone_title") else None,
@@ -569,13 +612,8 @@ def start():
                 )
                 db.session.add(task)
 
-            # Weekly task (1)
             wt = week_obj.get("weekly_task") or {}
-            w_est = wt.get("estimated_minutes")
-            try:
-                w_est_int = int(w_est) if w_est is not None else 240
-            except Exception:
-                w_est_int = 240
+            w_est_int = _safe_int(wt.get("estimated_minutes"), 240)
 
             weekly_task = DailyCoachTask(
                 session_id=session.id,
@@ -597,7 +635,10 @@ def start():
             )
             db.session.add(weekly_task)
 
-        db.session.commit()
+        if not _safe_commit("start_plan"):
+            # If commit failed, refund like failure path.
+            raise RuntimeError("DB commit failed while saving plan")
+
         flash(f"✅ 28-day plan created! {target_lpa} LPA track", "success")
         return redirect(url_for("coach.index", path_type=path_type))
 
@@ -605,7 +646,6 @@ def start():
         current_app.logger.exception("Coach: generation failed")
         db.session.rollback()
 
-        # ✅ Refund credits (works with your upgraded engine refund(amount=None) OR strict refund(amount=...))
         try:
             amt = _feature_cost_amount_safe("dream_planner", "gold")
             if amt > 0:
@@ -617,7 +657,6 @@ def start():
                     run_id=run_id,
                 )
             else:
-                # If your engine supports amount=None and auto-refunds by feature cost, this still works:
                 refund(
                     current_user,
                     "dream_planner",
@@ -641,44 +680,41 @@ def complete_task(task_id):
     if session.user_id != current_user.id:
         abort(403)
 
-    task.is_done = not task.is_done
+    task.is_done = not bool(task.is_done)
     task.completed_at = datetime.utcnow() if task.is_done else None
+
+    ready_score = _get_user_int(current_user, "ready_score", 0)
+    milestones = _get_user_int(current_user, "weekly_milestones_completed", 0)
+    freezes = _get_user_int(current_user, "streak_freezes_remaining", 0)
 
     if task.is_done:
         if task.task_type == "daily":
             completed_app_day = _app_day(current_user, now_utc=datetime.utcnow())
             _update_user_streak(current_user, completed_app_day)
-
-            current_user.ready_score = (current_user.ready_score or 0) + 1
+            ready_score = ready_score + 1
 
         elif task.task_type == "weekly":
-            current_user.ready_score = (current_user.ready_score or 0) + 14  # 10 + 4 badge
-            current_user.weekly_milestones_completed = (current_user.weekly_milestones_completed or 0) + 1
-
-            # Earn freeze by completing weekly task
-            try:
-                current_user.streak_freezes_remaining = (current_user.streak_freezes_remaining or 0) + 1
-            except Exception:
-                pass
+            ready_score = ready_score + 14  # 10 + 4 badge
+            milestones = milestones + 1
+            freezes = freezes + 1  # earn freeze
 
     else:
         if task.task_type == "daily":
-            current_user.ready_score = max((current_user.ready_score or 0) - 1, 0)
+            ready_score = max(ready_score - 1, 0)
 
         elif task.task_type == "weekly":
-            current_user.ready_score = max((current_user.ready_score or 0) - 14, 0)
-            current_user.weekly_milestones_completed = max((current_user.weekly_milestones_completed or 0) - 1, 0)
+            ready_score = max(ready_score - 14, 0)
+            milestones = max(milestones - 1, 0)
+            freezes = max(freezes - 1, 0)
 
-            # Revert earned freeze
-            try:
-                current_user.streak_freezes_remaining = max((current_user.streak_freezes_remaining or 0) - 1, 0)
-            except Exception:
-                pass
+    _set_user_int(current_user, "ready_score", ready_score)
+    _set_user_int(current_user, "weekly_milestones_completed", milestones)
+    _set_user_int(current_user, "streak_freezes_remaining", freezes)
 
-    # Update session aggregates (safe recompute)
     _recalc_session_aggregates(session)
 
-    db.session.commit()
+    if not _safe_commit("complete_task"):
+        return redirect(request.referrer or url_for("coach.index"))
 
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify(
@@ -686,8 +722,8 @@ def complete_task(task_id):
                 "ok": True,
                 "task_id": task_id,
                 "is_done": task.is_done,
-                "user_streak": current_user.current_streak,
-                "user_ready_score": current_user.ready_score,
+                "user_streak": _get_user_int(current_user, "current_streak", 0),
+                "user_ready_score": _get_user_int(current_user, "ready_score", 0),
                 "session_progress": session.progress_percent,
             }
         )
@@ -715,7 +751,6 @@ def update_session(session_id: int):
         .all()
     )
 
-    # Build desired state from form
     desired_done = set()
     for k in request.form.keys():
         if k.startswith("task_"):
@@ -725,8 +760,12 @@ def update_session(session_id: int):
             except Exception:
                 continue
 
-    # Apply deltas safely
     now = datetime.utcnow()
+
+    ready_score = _get_user_int(current_user, "ready_score", 0)
+    milestones = _get_user_int(current_user, "weekly_milestones_completed", 0)
+    freezes = _get_user_int(current_user, "streak_freezes_remaining", 0)
+
     for t in tasks:
         before = bool(t.is_done)
         after = (t.id in desired_done)
@@ -737,39 +776,35 @@ def update_session(session_id: int):
         t.is_done = after
         t.completed_at = now if after else None
 
-        # Adjust user scoring based on delta
         if after and not before:
             if t.task_type == "daily":
                 completed_app_day = _app_day(current_user, now_utc=now)
                 _update_user_streak(current_user, completed_app_day)
-                current_user.ready_score = (current_user.ready_score or 0) + 1
+                ready_score = ready_score + 1
             elif t.task_type == "weekly":
-                current_user.ready_score = (current_user.ready_score or 0) + 14
-                current_user.weekly_milestones_completed = (current_user.weekly_milestones_completed or 0) + 1
-                try:
-                    current_user.streak_freezes_remaining = (current_user.streak_freezes_remaining or 0) + 1
-                except Exception:
-                    pass
+                ready_score = ready_score + 14
+                milestones = milestones + 1
+                freezes = freezes + 1
 
         if (not after) and before:
             if t.task_type == "daily":
-                current_user.ready_score = max((current_user.ready_score or 0) - 1, 0)
+                ready_score = max(ready_score - 1, 0)
             elif t.task_type == "weekly":
-                current_user.ready_score = max((current_user.ready_score or 0) - 14, 0)
-                current_user.weekly_milestones_completed = max((current_user.weekly_milestones_completed or 0) - 1, 0)
-                try:
-                    current_user.streak_freezes_remaining = max((current_user.streak_freezes_remaining or 0) - 1, 0)
-                except Exception:
-                    pass
+                ready_score = max(ready_score - 14, 0)
+                milestones = max(milestones - 1, 0)
+                freezes = max(freezes - 1, 0)
 
-    # Mark week done if requested
     if request.form.get("mark_done") == "1":
         session.is_closed = True
 
-    # Recompute session aggregates
+    _set_user_int(current_user, "ready_score", ready_score)
+    _set_user_int(current_user, "weekly_milestones_completed", milestones)
+    _set_user_int(current_user, "streak_freezes_remaining", freezes)
+
     _recalc_session_aggregates(session)
 
-    db.session.commit()
+    if not _safe_commit("update_session"):
+        return redirect(url_for("coach.session", session_id=session.id))
 
     flash("✅ Progress saved.", "success")
     return redirect(url_for("coach.session", session_id=session.id))
@@ -784,9 +819,14 @@ def reflect(session_id: int):
         abort(403)
 
     reflection = (request.form.get("reflection") or "").strip()
-    session.reflection = reflection
+    try:
+        session.reflection = reflection
+    except Exception:
+        pass
 
-    db.session.commit()
+    if not _safe_commit("reflect"):
+        return redirect(url_for("coach.session", session_id=session.id))
+
     flash("✅ Reflection saved.", "success")
     return redirect(url_for("coach.session", session_id=session.id))
 
@@ -795,48 +835,47 @@ def reflect(session_id: int):
 @login_required
 def session(session_id):
     """View a specific week's tasks."""
-    session = DailyCoachSession.query.get_or_404(session_id)
+    session_obj = DailyCoachSession.query.get_or_404(session_id)
 
-    if session.user_id != current_user.id:
+    if session_obj.user_id != current_user.id:
         abort(403)
 
     tasks = (
-        DailyCoachTask.query.filter_by(session_id=session.id)
+        DailyCoachTask.query.filter_by(session_id=session_obj.id)
         .order_by(DailyCoachTask.task_type.desc(), DailyCoachTask.sort_order)
         .all()
     )
 
-    # ✅ attach aliases so your existing session.html works
     _apply_template_aliases(tasks)
 
     daily_tasks = [t for t in tasks if t.task_type == "daily"]
     weekly_task = next((t for t in tasks if t.task_type == "weekly"), None)
 
-    path_type = session.path_type or "job"
+    path_type = session_obj.path_type or "job"
     is_pro_user = _current_is_pro_user()
     profile_snapshot = load_profile_snapshot(current_user)
 
-    streak_count = current_user.current_streak or 0
+    streak_count = _get_user_int(current_user, "current_streak", 0)
 
     return render_template(
         "coach/session.html",
-        session=session,
-        session_id=session.id,              # ✅ your template uses session_id in forms
+        session=session_obj,
+        session_id=session_obj.id,
         tasks=tasks,
         daily_tasks=daily_tasks,
         weekly_task=weekly_task,
         path_type=path_type,
         is_pro_user=is_pro_user,
         profile_snapshot=profile_snapshot,
-        session_date=session.session_date.isoformat() if session.session_date else None,
-        session_is_closed=session.is_closed,
-        plan_title=session.plan_title,
-        day_index=session.day_index,
+        session_date=session_obj.session_date.isoformat() if session_obj.session_date else None,
+        session_is_closed=bool(session_obj.is_closed),
+        plan_title=getattr(session_obj, "plan_title", None),
+        day_index=getattr(session_obj, "day_index", None),
         streak_count=streak_count,
-        phase_label=f"Week {session.day_index}",
-        week_label=f"Week {session.day_index}",
+        phase_label=f"Week {getattr(session_obj, 'day_index', 1) or 1}",
+        week_label=f"Week {getattr(session_obj, 'day_index', 1) or 1}",
         session_scope_label="This week",
-        ai_note=session.ai_note,
-        reflection=session.reflection,      # ✅ your template expects reflection
-        feature_paths=getattr(current_app, "feature_paths", None),
+        ai_note=getattr(session_obj, "ai_note", None),
+        reflection=getattr(session_obj, "reflection", None),
+        # ❌ again, don't pass feature_paths here
     )

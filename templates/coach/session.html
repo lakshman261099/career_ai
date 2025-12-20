@@ -7,7 +7,6 @@
 {% set week_label = week_label|default('Week 1', true) %}
 {% set session_scope_label = session_scope_label|default('This week', true) %}
 
-{# ✅ Upgrade: ensure session_id is always available #}
 {% if session and session.id %}
   {% set session_id = session.id %}
 {% endif %}
@@ -16,7 +15,6 @@
 
   <!-- HEADER -->
   <header class="glass-card rounded-2xl p-6 sm:p-7 border border-white/10 shadow-xl relative overflow-hidden">
-    <!-- Gradient overlay pushed behind everything so it never blocks navbar -->
     <div class="pointer-events-none absolute inset-0 opacity-60 -z-10">
       <div class="w-full h-full bg-[radial-gradient(circle_at_top_left,rgba(129,140,248,0.25),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.24),transparent_55%)]"></div>
     </div>
@@ -58,7 +56,6 @@
           <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/20">
             <i data-lucide="flame" class="w-3.5 h-3.5"></i>
             <span>Streak:</span>
-            {# ✅ Upgrade: streak_count is day-based in your backend #}
             <span class="font-semibold">{{ streak_count }} day{{ '' if streak_count == 1 else 's' }}</span>
           </div>
         {% endif %}
@@ -91,13 +88,11 @@
     </div>
   {% else %}
 
-    {# ====== MULTI-WEEK ROADMAP RAIL (SESSION VIEW) ====== #}
     {% set total_weeks = 12 %}
     {% set active_week = (day_index or 1) %}
     {% if active_week < 1 %}{% set active_week = 1 %}{% endif %}
     {% if active_week > total_weeks %}{% set active_week = total_weeks %}{% endif %}
 
-    {# If week is closed, visually "unlock" the next one; backend still enforces actual gating #}
     {% if session_is_closed %}
       {% set unlocked_through = active_week + 1 %}
     {% else %}
@@ -400,7 +395,6 @@
         {% endif %}
       </div>
 
-      {# Small phase rail #}
       <div class="mt-1 rounded-xl bg-black/30 border border-white/10 p-3 text-[11px] flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-2">
           <span class="uppercase tracking-[0.18em] text-white/55 flex items-center gap-1">
@@ -434,7 +428,6 @@
 
       <ul class="mt-4 space-y-3">
         {% for t in tasks %}
-          {# ✅ Upgrade: dual-track tasks use estimated_time_minutes; fallback to estimated_minutes #}
           {% set est = (t.estimated_time_minutes if t.estimated_time_minutes is not none else (t.estimated_minutes if t.estimated_minutes is not none else None)) %}
           <li class="flex items-start gap-3 text-sm sm:text-base">
             <div class="w-full">
@@ -851,7 +844,6 @@
       if (!isRunning) initFromInputs();
     });
 
-    // ✅ Upgrade: Reflection saved locally (no missing backend route)
     const reflectionEl = document.getElementById('coachReflection');
     const saveBtn = document.getElementById('saveReflectionBtn');
     const key = "coach_reflection_session_{{ session_id or 0 }}";

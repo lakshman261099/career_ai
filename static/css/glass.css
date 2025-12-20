@@ -22,6 +22,18 @@ body{
 }
 
 /* ===========================================================
+   GLOBAL SAFETY: keep navbar clickable above any overlays
+   =========================================================== */
+header{
+  z-index: 99999 !important;
+}
+
+/* Optional helper: ensure overlay is constrained to its card/container */
+.lock-parent{
+  position: relative;
+}
+
+/* ===========================================================
    Core Glass Surfaces
    =========================================================== */
 
@@ -386,6 +398,7 @@ label {
   justify-content: center;
   padding: 24px;
   z-index: 10;
+  pointer-events: auto;
 }
 
 .lock-card {
