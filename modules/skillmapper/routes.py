@@ -26,7 +26,7 @@ from modules.common.profile_loader import load_profile_snapshot
 from modules.auth.guards import require_verified_email
 
 # Phase 4: central credits engine
-from modules.credits.engine import can_afford, deduct_free, deduct_pro
+from modules.credits.engine import can_afford, deduct_free, deduct_pro, refund  # ✅ add refund
 
 from . import bp
 
@@ -154,7 +154,9 @@ def index():
       - Require Pro subscription + Gold ⭐ credits.
       - Deep roadmap with 3+ angles, micro-projects & trends.
 
-    Credits are only deducted AFTER a successful AI call + snapshot save.
+    IMPORTANT (upgraded):
+    Credits are deducted BEFORE the AI run.
+    If AI or DB save fails, credits are refunded.
     """
     is_pro_user = _current_is_pro_user()
     mode = (request.form.get("mode") or request.args.get("mode") or "free").lower()
@@ -188,7 +190,10 @@ def index():
         region_focus = (request.form.get("region_focus") or "").strip()
         time_horizon = (request.form.get("time_horizon") or "").strip()  # months
 
-        # ------------------ Credits: check BEFORE AI, deduct AFTER success ------------------
+        # ------------------ Credits: check BEFORE AI ------------------
+        feature_key = "skill_mapper_pro" if pro_mode else "skill_mapper_free"
+        currency = "gold" if pro_mode else "silver"
+
         if pro_mode:
             # Pro mode requires Pro subscription + Gold ⭐ credits
             if not is_pro_user:
@@ -198,7 +203,7 @@ def index():
                 )
                 return redirect(url_for("billing.index"))
 
-            if not can_afford(current_user, "skill_mapper_pro", currency="gold"):
+            if not can_afford(current_user, feature_key, currency=currency):
                 flash(
                     "You don’t have enough Gold ⭐ credits to run Skill Mapper Pro. "
                     "Upgrade your plan or add more credits in the Coins Shop.",
@@ -207,13 +212,35 @@ def index():
                 return redirect(url_for("billing.index"))
         else:
             # Free/basic mode always uses Silver 🪙
-            if not can_afford(current_user, "skill_mapper_free", currency="silver"):
+            if not can_afford(current_user, feature_key, currency=currency):
                 flash(
                     "You don’t have enough Silver 🪙 credits to run Skill Mapper. "
                     "Upgrade to Pro ⭐ or add more credits in the Coins Shop.",
                     "warning",
                 )
                 return redirect(url_for("billing.index"))
+
+        # ✅ Deduct BEFORE AI (hard gate)
+        run_id = f"sm_{current_user.id}_{datetime.utcnow().isoformat()}"
+        try:
+            ok = (
+                deduct_pro(current_user, feature_key, run_id=run_id)
+                if pro_mode
+                else deduct_free(current_user, feature_key, run_id=run_id)
+            )
+            if not ok:
+                flash(
+                    "We couldn’t deduct your credits right now. Please try again.",
+                    "danger",
+                )
+                return redirect(url_for("skillmapper.index", mode=mode, path_type=path_type))
+        except Exception:
+            current_app.logger.exception("SkillMapper: credit deduction failed (pre-run).")
+            flash(
+                "We couldn’t process your credits right now. Please try again in a bit.",
+                "danger",
+            )
+            return redirect(url_for("skillmapper.index", mode=mode, path_type=path_type))
 
         # Load Profile Portal + latest resume on file
         profile = _profile_json(current_user.id)
@@ -222,6 +249,11 @@ def index():
             resume_text = resume_text[:MAX_RESUME_TEXT]
 
         if not profile and not resume_text and not extra_skills:
+            # ✅ Refund because we already deducted
+            try:
+                refund(current_user, feature_key, currency=currency, run_id=run_id)
+            except Exception:
+                current_app.logger.exception("SkillMapper: refund failed after missing inputs.")
             flash(
                 "We couldn’t find a Profile Portal or resume yet. "
                 "Add your basics in Profile Portal, then try again.",
@@ -240,6 +272,11 @@ def index():
             if pro_mode:
                 # For Pro, require some profile content (it’s a profile-tuned roadmap)
                 if not profile:
+                    # ✅ Refund because we already deducted
+                    try:
+                        refund(current_user, feature_key, currency=currency, run_id=run_id)
+                    except Exception:
+                        current_app.logger.exception("SkillMapper: refund failed after empty profile.")
                     flash(
                         "Your Profile Portal looks empty. "
                         "Please add basic details and skills first.",
@@ -254,7 +291,6 @@ def index():
                         CAREER_AI_VERSION=CAREER_AI_VERSION,
                     )
 
-                # Hints for Pro (Job / Startup / Freelance all use same engine with path_type)
                 hints = {
                     "path_type": path_type,  # "job" | "startup" | "freelance"
                     "region_sector": region_focus
@@ -273,7 +309,6 @@ def index():
                 if len(extra_skills) > MAX_FREE_TEXT:
                     extra_skills = extra_skills[:MAX_FREE_TEXT]
 
-                # Hints for Free (also path-aware)
                 hints = {
                     "path_type": path_type,  # "job" | "startup" | "freelance"
                     "region_focus": region_focus
@@ -303,12 +338,15 @@ def index():
             )
         except Exception as e:
             current_app.logger.exception("SkillMapper analysis failed: %s", e)
+            try:
+                refund(current_user, feature_key, currency=currency, run_id=run_id)
+            except Exception:
+                current_app.logger.exception("SkillMapper: refund failed after AI error.")
             flash(
                 "Skill Mapper had a problem generating your roadmap. "
-                "Please try again in a bit.",
+                "Your credits were refunded. Please try again in a bit.",
                 "danger",
             )
-            # No credits deducted, because AI call failed.
             return render_template(
                 "skillmapper/index.html",
                 mode=mode,
@@ -322,7 +360,7 @@ def index():
         if isinstance(skillmap, dict):
             skillmap = _normalize_roles(skillmap)
 
-        # Persist snapshot (best-effort) BEFORE deducting credits
+        # Persist snapshot (required) — if this fails, refund
         snapshot = None
         try:
             snap = SkillMapSnapshot(
@@ -355,47 +393,21 @@ def index():
             current_app.logger.warning(
                 "SkillMapper snapshot save failed.", exc_info=True
             )
-
-        # Deduct credits AFTER successful AI call + snapshot
-        try:
-            if pro_mode:
-                if not deduct_pro(
-                    current_user,
-                    "skill_mapper_pro",
-                    run_id=(snapshot.id if snapshot is not None else None),
-                ):
-                    log.warning(
-                        "SkillMapper: deduct_pro failed after analysis for user %s",
-                        current_user.id,
-                    )
-                    flash(
-                        "Your Pro roadmap was generated, but your Pro credits "
-                        "could not be updated correctly. Please contact support if this keeps happening.",
-                        "warning",
-                    )
-            else:
-                if not deduct_free(
-                    current_user,
-                    "skill_mapper_free",
-                    run_id=(snapshot.id if snapshot is not None else None),
-                ):
-                    log.warning(
-                        "SkillMapper: deduct_free failed after analysis for user %s",
-                        current_user.id,
-                    )
-                    flash(
-                        "Your Skill Mapper run completed, but your Silver credits "
-                        "could not be updated correctly. Please contact support if this keeps happening.",
-                        "warning",
-                    )
-        except Exception as e:
-            current_app.logger.exception(
-                "SkillMapper credit deduction error after analysis: %s", e
-            )
+            try:
+                refund(current_user, feature_key, currency=currency, run_id=run_id)
+            except Exception:
+                current_app.logger.exception("SkillMapper: refund failed after DB save error.")
             flash(
-                "Your roadmap was generated, but we had trouble updating your credits. "
-                "Please contact support if this keeps happening.",
-                "warning",
+                "We couldn’t save your Skill Mapper results. Your credits were refunded. Please try again.",
+                "danger",
+            )
+            return render_template(
+                "skillmapper/index.html",
+                mode=mode,
+                is_pro_user=is_pro_user,
+                profile_snapshot=profile_snapshot,
+                path_type=path_type,
+                CAREER_AI_VERSION=CAREER_AI_VERSION,
             )
 
         # Enrich meta for the template
@@ -475,7 +487,6 @@ def snapshot(snapshot_id: int):
         raw = {}
 
     skillmap = raw if isinstance(raw, dict) else {}
-    # Normalize roles when reopening from history too
     skillmap = _normalize_roles(skillmap)
 
     meta = skillmap.get("meta") or {}
@@ -483,7 +494,6 @@ def snapshot(snapshot_id: int):
         meta = {}
     meta.setdefault("snapshot_id", snap.id)
     meta.setdefault("restored_from_history", True)
-    # If path_type wasn't present yet, try to infer from source_title
     if "path_type" not in meta:
         st = (snap.source_title or "").lower()
         if "startup" in st:
@@ -518,14 +528,10 @@ def snapshot(snapshot_id: int):
 @require_verified_email
 def run_free():
     """
-    Skill Mapper Free (JSON API):
-    - Always uses Profile Portal + latest resume as the *primary* source.
-    - Extra pasted text is just a hint (optional).
-    - Costs Silver 🪙 (feature_key='skill_mapper_free') for ALL users.
-    - Returns a compact roadmap JSON; Pro-only sections are *not* generated here.
+    Skill Mapper Free (JSON API).
+    Billing upgraded: deduct BEFORE AI; refund on AI/DB failure.
     """
     try:
-        # Silver credit check for all users (Free runs use 🪙)
         if not can_afford(current_user, "skill_mapper_free", currency="silver"):
             return (
                 jsonify(
@@ -538,21 +544,48 @@ def run_free():
                 402,
             )
 
+        # ✅ Deduct BEFORE AI
+        run_id = f"sm_free_{current_user.id}_{datetime.utcnow().isoformat()}"
+        try:
+            if not deduct_free(current_user, "skill_mapper_free", run_id=run_id):
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": "We couldn’t deduct your Silver credits right now. Please try again.",
+                        }
+                    ),
+                    402,
+                )
+        except Exception:
+            log.exception("SkillMapper /free: credit deduction error (pre-run)")
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "We couldn’t process your credits right now. Please try again.",
+                    }
+                ),
+                500,
+            )
+
         payload = request.get_json(silent=True) or {}
         extra_text = (payload.get("free_text_skills") or "").strip()
         target_domain = (payload.get("target_domain") or "").strip()
 
-        # Cap size to keep prompts bounded (optional, since it's just a hint)
         if len(extra_text) > MAX_FREE_TEXT:
             extra_text = extra_text[:MAX_FREE_TEXT]
 
-        # Main source: Profile Portal + latest resume
         profile = _profile_json(current_user.id)
         resume_text = _latest_resume_text(current_user.id)
         if len(resume_text) > MAX_RESUME_TEXT:
             resume_text = resume_text[:MAX_RESUME_TEXT]
 
         if not profile and not resume_text and not extra_text:
+            try:
+                refund(current_user, "skill_mapper_free", currency="silver", run_id=run_id)
+            except Exception:
+                log.exception("SkillMapper /free: refund failed after missing inputs")
             return (
                 jsonify(
                     {
@@ -571,29 +604,27 @@ def run_free():
         if target_domain:
             free_hints["target_domain"] = target_domain
 
-        data, used_live_ai = generate_skillmap(
-            pro_mode=False,
-            profile_json=profile or None,
-            resume_text=resume_text,
-            free_text_skills=extra_text,
-            return_source=True,
-            hints=free_hints,
-        )
+        try:
+            data, used_live_ai = generate_skillmap(
+                pro_mode=False,
+                profile_json=profile or None,
+                resume_text=resume_text,
+                free_text_skills=extra_text,
+                return_source=True,
+                hints=free_hints,
+            )
+        except Exception:
+            log.exception("SkillMapper /free: AI failed")
+            try:
+                refund(current_user, "skill_mapper_free", currency="silver", run_id=run_id)
+            except Exception:
+                log.exception("SkillMapper /free: refund failed after AI error")
+            return jsonify({"ok": False, "error": "Internal error (free). Credits refunded."}), 500
 
-        # Normalize roles for API clients too
         if isinstance(data, dict):
             data = _normalize_roles(data)
 
-        log.info(
-            "SM/free used_live_ai=%s extra_len=%d domain_hint=%s has_profile=%s has_resume=%s",
-            used_live_ai,
-            len(extra_text),
-            bool(target_domain),
-            bool(profile),
-            bool(resume_text),
-        )
-
-        # Persist snapshot (best-effort)
+        # Persist snapshot (required) — refund if fails
         snapshot = None
         try:
             snap = SkillMapSnapshot(
@@ -616,20 +647,11 @@ def run_free():
         except Exception:
             db.session.rollback()
             log.warning("SkillMapper snapshot save failed (free).", exc_info=True)
-
-        # Deduct Silver 🪙 AFTER successful AI + snapshot
-        try:
-            if not deduct_free(
-                current_user,
-                "skill_mapper_free",
-                run_id=(snapshot.id if snapshot is not None else None),
-            ):
-                log.warning(
-                    "SkillMapper /free: deduct_free failed after analysis for user %s",
-                    current_user.id,
-                )
-        except Exception:
-            log.exception("SkillMapper /free credit deduction error")
+            try:
+                refund(current_user, "skill_mapper_free", currency="silver", run_id=run_id)
+            except Exception:
+                log.exception("SkillMapper /free: refund failed after DB save error")
+            return jsonify({"ok": False, "error": "Could not save results. Credits refunded."}), 500
 
         return jsonify({"ok": True, "data": data, "used_live_ai": used_live_ai})
     except Exception as e:
@@ -650,11 +672,8 @@ def run_free():
 @require_verified_email
 def run_pro():
     """
-    Skill Mapper Pro (JSON API):
-    - Uses Profile Portal + latest resume (or pasted override).
-    - Requires Pro subscription + Gold ⭐ credits.
-    - Focus is “current snapshot” for India by default.
-    - Deep roadmap + richer India market context.
+    Skill Mapper Pro (JSON API).
+    Billing upgraded: deduct BEFORE AI; refund on AI/DB failure.
     """
     try:
         if not current_user.is_pro:
@@ -668,7 +687,6 @@ def run_pro():
                 403,
             )
 
-        # Gold credit check
         if not can_afford(current_user, "skill_mapper_pro", currency="gold"):
             return (
                 jsonify(
@@ -682,6 +700,23 @@ def run_pro():
                 402,
             )
 
+        # ✅ Deduct BEFORE AI
+        run_id = f"sm_pro_{current_user.id}_{datetime.utcnow().isoformat()}"
+        try:
+            if not deduct_pro(current_user, "skill_mapper_pro", run_id=run_id):
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": "We couldn’t deduct your Gold credits right now. Please try again.",
+                        }
+                    ),
+                    402,
+                )
+        except Exception:
+            log.exception("SkillMapper /pro: credit deduction error (pre-run)")
+            return jsonify({"ok": False, "error": "Credit processing failed."}), 500
+
         payload = request.get_json(silent=True) or {}
         use_profile = bool(payload.get("use_profile", True))
         pasted_resume_text = (payload.get("resume_text") or "").strip()
@@ -690,6 +725,10 @@ def run_pro():
         profile = _profile_json(current_user.id) if use_profile else {}
 
         if use_profile and not profile:
+            try:
+                refund(current_user, "skill_mapper_pro", currency="gold", run_id=run_id)
+            except Exception:
+                log.exception("SkillMapper /pro: refund failed after empty profile")
             return (
                 jsonify(
                     {
@@ -701,7 +740,6 @@ def run_pro():
                 400,
             )
 
-        # Resume selection: pasted > latest on file
         resume_text = pasted_resume_text or _latest_resume_text(current_user.id)
         if len(resume_text) > MAX_RESUME_TEXT:
             resume_text = resume_text[:MAX_RESUME_TEXT]
@@ -712,27 +750,26 @@ def run_pro():
             "focus": "current_snapshot",
         }
 
-        data, used_live_ai = generate_skillmap(
-            pro_mode=True,
-            profile_json=profile if use_profile else None,
-            resume_text=resume_text,
-            return_source=True,
-            hints=hints,
-        )
+        try:
+            data, used_live_ai = generate_skillmap(
+                pro_mode=True,
+                profile_json=profile if use_profile else None,
+                resume_text=resume_text,
+                return_source=True,
+                hints=hints,
+            )
+        except Exception:
+            log.exception("SkillMapper /pro: AI failed")
+            try:
+                refund(current_user, "skill_mapper_pro", currency="gold", run_id=run_id)
+            except Exception:
+                log.exception("SkillMapper /pro: refund failed after AI error")
+            return jsonify({"ok": False, "error": "Internal error (pro). Credits refunded."}), 500
 
-        # Normalize roles for API clients
         if isinstance(data, dict):
             data = _normalize_roles(data)
 
-        log.info(
-            "SM/pro used_live_ai=%s profile_keys=%s resume_len=%d region=%s",
-            used_live_ai,
-            list((profile or {}).keys()),
-            len(resume_text or ""),
-            region_sector or "India-default",
-        )
-
-        # Persist snapshot (best-effort)
+        # Persist snapshot (required) — refund if fails
         snapshot = None
         try:
             snap = SkillMapSnapshot(
@@ -751,20 +788,11 @@ def run_pro():
         except Exception:
             db.session.rollback()
             log.warning("SkillMapper snapshot save failed (pro).", exc_info=True)
-
-        # Deduct Gold ⭐ AFTER successful AI + snapshot
-        try:
-            if not deduct_pro(
-                current_user,
-                "skill_mapper_pro",
-                run_id=(snapshot.id if snapshot is not None else None),
-            ):
-                log.warning(
-                    "SkillMapper /pro: deduct_pro failed after analysis for user %s",
-                    current_user.id,
-                )
-        except Exception:
-            log.exception("SkillMapper /pro credit deduction error")
+            try:
+                refund(current_user, "skill_mapper_pro", currency="gold", run_id=run_id)
+            except Exception:
+                log.exception("SkillMapper /pro: refund failed after DB save error")
+            return jsonify({"ok": False, "error": "Could not save results. Credits refunded."}), 500
 
         return jsonify({"ok": True, "data": data, "used_live_ai": used_live_ai})
     except Exception as e:

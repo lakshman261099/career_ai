@@ -1,0 +1,286 @@
+{# templates/admin/university_wallets.html #}
+{% extends "admin/_layout.html" %}
+
+{% block title %}Admin · Wallets · CareerAI{% endblock %}
+{% set active_tab = 'wallets' %}
+
+{% block admin_body %}
+<div>
+
+  <h1 class="text-xl sm:text-2xl font-semibold tracking-tight mb-4">
+    Admin · University Wallets
+  </h1>
+
+  {% if not current_user.is_super_admin and not current_user.is_ultra_admin %}
+    <p class="text-[12px] text-amber-300/80 mb-4">
+      You do not have permission to manage university wallets.
+    </p>
+  {% else %}
+
+  <!-- Wallets Overview -->
+  <div class="glass-card rounded-2xl px-4 py-4 mb-6 text-[12px]">
+    <h2 class="text-sm font-semibold mb-2">University credit wallets</h2>
+    <p class="text-[11px] text-slate-300/80 mb-3">
+      Manage annual credit pools for university-managed students.
+      Each university has a yearly silver 🪙 and gold ⭐ wallet that auto-renews.
+    </p>
+
+    {% if wallets %}
+      <div class="overflow-x-auto -mx-2">
+        <table class="min-w-full text-[11px]">
+          <thead class="bg-slate-900/80 text-slate-200/80">
+            <tr>
+              <th class="px-3 py-2 text-left font-semibold">University</th>
+              <th class="px-3 py-2 text-left font-semibold">Silver 🪙</th>
+              <th class="px-3 py-2 text-left font-semibold">Gold ⭐</th>
+              <th class="px-3 py-2 text-left font-semibold">Annual Caps</th>
+              <th class="px-3 py-2 text-left font-semibold">Renewal</th>
+              <th class="px-3 py-2 text-right font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in wallets %}
+            <tr class="border-t border-slate-700/60">
+              
+              <!-- University -->
+              <td class="px-3 py-2">
+                <div class="text-slate-100/90 font-semibold">{{ item.university.name }}</div>
+                <div class="text-[10px] text-slate-400/80">
+                  {{ item.university.domain or item.university.tenant_slug or '—' }}
+                </div>
+              </td>
+
+              <!-- Silver Balance -->
+              <td class="px-3 py-2 text-slate-200/90">
+                <div class="font-semibold">{{ "{:,}".format(item.silver_balance) }}</div>
+                {% if item.silver_cap %}
+                <div class="text-[10px] text-slate-400/80">
+                  of {{ "{:,}".format(item.silver_cap) }} cap
+                </div>
+                {% endif %}
+              </td>
+
+              <!-- Gold Balance -->
+              <td class="px-3 py-2 text-slate-200/90">
+                <div class="font-semibold">{{ "{:,}".format(item.gold_balance) }}</div>
+                {% if item.gold_cap %}
+                <div class="text-[10px] text-slate-400/80">
+                  of {{ "{:,}".format(item.gold_cap) }} cap
+                </div>
+                {% endif %}
+              </td>
+
+              <!-- Annual Caps -->
+              <td class="px-3 py-2 text-slate-200/90">
+                {% if item.silver_cap or item.gold_cap %}
+                <div class="text-[11px]">
+                  <div>🪙 {{ "{:,}".format(item.silver_cap or 0) }}</div>
+                  <div>⭐ {{ "{:,}".format(item.gold_cap or 0) }}</div>
+                </div>
+                {% else %}
+                <span class="text-slate-400/70">Not set</span>
+                {% endif %}
+              </td>
+
+              <!-- Renewal Info -->
+              <td class="px-3 py-2 text-slate-200/90">
+                {% if item.renewal_date %}
+                <div class="text-[11px]">{{ item.renewal_date.strftime('%Y-%m-%d') }}</div>
+                {% if item.is_renewable %}
+                <div class="text-[10px] text-emerald-300/90 font-medium">Due now</div>
+                {% endif %}
+                {% else %}
+                <span class="text-slate-400/70">Not set</span>
+                {% endif %}
+              </td>
+
+              <!-- Actions -->
+              <td class="px-3 py-2 text-right">
+                <div class="flex flex-col items-end gap-1.5">
+                  
+                  <!-- Top Up -->
+                  <button 
+                    onclick="showTopUpModal({{ item.university.id }}, '{{ item.university.name }}')" 
+                    class="btn-ghost text-[10px] px-3 py-1">
+                    Top Up
+                  </button>
+                  
+                  <!-- Set Caps -->
+                  <button 
+                    onclick="showSetCapsModal({{ item.university.id }}, '{{ item.university.name }}', {{ item.silver_cap or 0 }}, {{ item.gold_cap or 0 }})" 
+                    class="btn-ghost text-[10px] px-3 py-1">
+                    Set Caps
+                  </button>
+                  
+                  <!-- Renew (if due) -->
+                  {% if item.is_renewable %}
+                  <form method="POST" action="{{ url_for('admin.university_wallet_renew', uni_id=item.university.id) }}" class="inline">
+                    <button 
+                      type="submit" 
+                      class="text-[10px] px-3 py-1 rounded-full border border-emerald-400/70 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20"
+                      onclick="return confirm('Renew wallet for {{ item.university.name }}? This will reset balances to annual caps.')">
+                      Renew Now
+                    </button>
+                  </form>
+                  {% endif %}
+                  
+                  <!-- Stats -->
+                  <a 
+                    href="{{ url_for('admin.university_wallet_stats', uni_id=item.university.id) }}" 
+                    class="text-[10px] text-slate-300/80 hover:text-white underline decoration-slate-400/70">
+                    View Stats
+                  </a>
+                </div>
+              </td>
+
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-[11px] text-slate-400/80">
+        No university wallets created yet. Create a university first, then wallets are auto-created.
+      </p>
+    {% endif %}
+  </div>
+
+  {% endif %}
+
+</div>
+
+<!-- Top Up Modal -->
+<div id="topUpModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50">
+  <div class="glass-card rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl shadow-black/60">
+    <h2 class="text-xl font-semibold mb-3">Top Up Wallet</h2>
+    <p class="text-[12px] text-slate-300/80 mb-4">
+      University: <span id="topUpUniversityName" class="font-semibold text-white"></span>
+    </p>
+    
+    <form method="POST" id="topUpForm" class="space-y-3 text-[13px]">
+      
+      <!-- Amount -->
+      <div>
+        <label class="block text-xs font-semibold mb-1 text-slate-200/90">Amount</label>
+        <input 
+          type="number" 
+          name="amount" 
+          min="1" 
+          required
+          class="w-full rounded-lg border border-slate-600/70 bg-slate-950/80 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        />
+      </div>
+      
+      <!-- Currency -->
+      <div>
+        <label class="block text-xs font-semibold mb-1 text-slate-200/90">Currency</label>
+        <select 
+          name="currency" 
+          class="w-full rounded-lg border border-slate-600/70 bg-slate-950/80 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400">
+          <option value="silver">Silver 🪙</option>
+          <option value="gold">Gold ⭐</option>
+        </select>
+      </div>
+      
+      <!-- Reason -->
+      <div>
+        <label class="block text-xs font-semibold mb-1 text-slate-200/90">Reason</label>
+        <input 
+          type="text" 
+          name="reason" 
+          value="admin_topup"
+          class="w-full rounded-lg border border-slate-600/70 bg-slate-950/80 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        />
+      </div>
+      
+      <!-- Buttons -->
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="btn-primary text-xs flex-1">
+          Top Up
+        </button>
+        <button type="button" onclick="hideTopUpModal()" class="btn-ghost text-xs flex-1">
+          Cancel
+        </button>
+      </div>
+      
+    </form>
+  </div>
+</div>
+
+<!-- Set Caps Modal -->
+<div id="setCapsModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50">
+  <div class="glass-card rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl shadow-black/60">
+    <h2 class="text-xl font-semibold mb-3">Set Annual Caps</h2>
+    <p class="text-[12px] text-slate-300/80 mb-4">
+      University: <span id="setCapsUniversityName" class="font-semibold text-white"></span>
+    </p>
+    
+    <form method="POST" id="setCapsForm" class="space-y-3 text-[13px]">
+      
+      <!-- Silver Cap -->
+      <div>
+        <label class="block text-xs font-semibold mb-1 text-slate-200/90">Silver Cap 🪙</label>
+        <input 
+          type="number" 
+          name="silver_cap" 
+          min="0" 
+          id="silverCapInput"
+          class="w-full rounded-lg border border-slate-600/70 bg-slate-950/80 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        />
+      </div>
+      
+      <!-- Gold Cap -->
+      <div>
+        <label class="block text-xs font-semibold mb-1 text-slate-200/90">Gold Cap ⭐</label>
+        <input 
+          type="number" 
+          name="gold_cap" 
+          min="0" 
+          id="goldCapInput"
+          class="w-full rounded-lg border border-slate-600/70 bg-slate-950/80 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        />
+      </div>
+      
+      <!-- Buttons -->
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="btn-primary text-xs flex-1">
+          Set Caps
+        </button>
+        <button type="button" onclick="hideSetCapsModal()" class="btn-ghost text-xs flex-1">
+          Cancel
+        </button>
+      </div>
+      
+    </form>
+  </div>
+</div>
+
+<script>
+function showTopUpModal(uniId, uniName) {
+  document.getElementById('topUpUniversityName').textContent = uniName;
+  document.getElementById('topUpForm').action = `/admin/university-wallets/${uniId}/top-up`;
+  document.getElementById('topUpModal').classList.remove('hidden');
+  document.getElementById('topUpModal').classList.add('flex');
+}
+
+function hideTopUpModal() {
+  document.getElementById('topUpModal').classList.add('hidden');
+  document.getElementById('topUpModal').classList.remove('flex');
+}
+
+function showSetCapsModal(uniId, uniName, silverCap, goldCap) {
+  document.getElementById('setCapsUniversityName').textContent = uniName;
+  document.getElementById('setCapsForm').action = `/admin/university-wallets/${uniId}/set-cap`;
+  document.getElementById('silverCapInput').value = silverCap;
+  document.getElementById('goldCapInput').value = goldCap;
+  document.getElementById('setCapsModal').classList.remove('hidden');
+  document.getElementById('setCapsModal').classList.add('flex');
+}
+
+function hideSetCapsModal() {
+  document.getElementById('setCapsModal').classList.add('hidden');
+  document.getElementById('setCapsModal').classList.remove('flex');
+}
+</script>
+
+{% endblock %}

@@ -91,6 +91,11 @@
           Universities
         </a>
 
+        <a href="{{ url_for('admin.university_wallets') }}"
+           class="nav-link {% if active_tab == 'wallets' %}nav-active{% endif %}">
+          Wallets
+        </a>
+
         <a href="{{ url_for('admin.deals') }}"
            class="nav-link {% if active_tab == 'deals' %}nav-active{% endif %}">
           Deals

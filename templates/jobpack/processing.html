@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CareerAI — Running Recruiter Scan</title>
+
+  <!-- Tailwind (already in your project; fallback CDN just in case) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    /* subtle animated gradient */
+    .bg-animate {
+      background-size: 400% 400%;
+      animation: gradient 10s ease infinite;
+    }
+    @keyframes gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* glass scanner overlay */
+    .scanner-wrap {
+      position: relative;
+      overflow: hidden;
+      border-radius: 1.25rem;
+    }
+    .scanline {
+      position: absolute;
+      left: -20%;
+      top: -30%;
+      width: 140%;
+      height: 14%;
+      background: linear-gradient(
+        90deg,
+        rgba(99,102,241,0) 0%,
+        rgba(99,102,241,0.25) 40%,
+        rgba(236,72,153,0.28) 50%,
+        rgba(99,102,241,0.25) 60%,
+        rgba(99,102,241,0) 100%
+      );
+      transform: rotate(10deg);
+      filter: blur(0.5px);
+      animation: sweep 2.8s ease-in-out infinite;
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+    @keyframes sweep {
+      0%   { transform: translateY(-120%) rotate(10deg); opacity: 0.35; }
+      40%  { opacity: 0.65; }
+      100% { transform: translateY(820%) rotate(10deg); opacity: 0.35; }
+    }
+
+    /* subtle noise layer */
+    .noise {
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
+      opacity: 0.08;
+      pointer-events: none;
+      mix-blend-mode: overlay;
+    }
+
+    /* shimmer border */
+    .shimmer {
+      background: linear-gradient(120deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02), rgba(255,255,255,0.10));
+      background-size: 200% 200%;
+      animation: shimmer 5.5s ease infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+  </style>
+</head>
+
+<body class="min-h-screen bg-animate bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-950 text-white flex items-center justify-center">
+
+  <div class="w-full max-w-2xl px-6">
+    <!-- Top header -->
+    <div class="mb-5 text-center">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 backdrop-blur">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-xs text-indigo-100">Recruiter-Grade Scan in progress</span>
+      </div>
+      <h1 class="text-3xl font-semibold mt-3 tracking-tight">
+        CareerAI is analyzing your profile
+      </h1>
+      <p class="text-sm text-indigo-200 mt-1">
+        ATS simulation • Keyword graph • Role-fit scoring • Rewrite suggestions
+      </p>
+    </div>
+
+    <!-- Card -->
+    <div class="scanner-wrap bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 shimmer">
+      <div class="scanline"></div>
+      <div class="noise"></div>
+
+      <div class="p-8">
+        <!-- Icon row -->
+        <div class="flex items-center justify-between gap-3 mb-6">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 flex items-center justify-center border border-white/10">
+              <span class="text-2xl">🧠</span>
+            </div>
+            <div>
+              <div class="text-sm text-indigo-200">Pipeline</div>
+              <div id="liveChip" class="text-base font-semibold">Initializing…</div>
+            </div>
+          </div>
+
+          <div class="text-right">
+            <div class="text-xs text-indigo-300">Estimated</div>
+            <div class="text-sm text-indigo-100 font-medium">20–40 seconds</div>
+          </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="w-full bg-white/10 rounded-full h-3 mb-3 overflow-hidden border border-white/10">
+          <div
+            id="progressBar"
+            class="h-3 bg-gradient-to-r from-indigo-400 to-violet-500 rounded-full transition-all duration-700"
+            style="width: 7%;">
+          </div>
+        </div>
+
+        <!-- Stage line -->
+        <p id="statusText" class="text-sm text-indigo-100 font-medium min-h-[24px]">
+          Booting analysis engine…
+        </p>
+
+        <!-- Detail bullets -->
+        <div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-indigo-200/90">
+          <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+            <div class="font-semibold text-indigo-100">What we’re doing</div>
+            <ul class="mt-2 space-y-1">
+              <li>• Parsing resume structure & sections</li>
+              <li>• Building skill vectors & role signals</li>
+              <li>• Matching JD keywords + seniority cues</li>
+            </ul>
+          </div>
+          <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+            <div class="font-semibold text-indigo-100">What you’ll get</div>
+            <ul class="mt-2 space-y-1">
+              <li>• ATS score + subscores</li>
+              <li>• Missing skills + exact phrases to add</li>
+              <li>• Rewrite actions + interview Q&A</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Warning row -->
+        <div class="mt-6 flex items-start gap-2 text-xs text-indigo-200">
+          <span class="mt-[2px]">⚡</span>
+          <p>
+            Keep this tab open. Don’t refresh.
+            If the report takes longer than expected, we’ll keep trying automatically.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer reassurance -->
+    <p class="text-center text-xs text-indigo-300 mt-6">
+      CareerAI uses recruiter-style scoring + ATS heuristics — not generic tips.
+    </p>
+  </div>
+
+<script>
+  // Provided by server (routes.py)
+  const jobId = "{{ job_id }}";
+  const reportId = "{{ report_id }}";
+  const STATUS_URL = "{{ status_url }}";
+  const REPORT_URL = "{{ report_url }}";
+
+  const statusText = document.getElementById("statusText");
+  const progressBar = document.getElementById("progressBar");
+  const liveChip = document.getElementById("liveChip");
+
+  // “Big words” stages
+  const stages = [
+    { pct: 12, text: "Parsing resume sections (education, experience, projects)…" },
+    { pct: 24, text: "Extracting skill entities + seniority signals…" },
+    { pct: 36, text: "Building keyword graph from JD + role requirements…" },
+    { pct: 50, text: "Running ATS simulation (format + relevance scoring)…" },
+    { pct: 64, text: "Computing recruiter-fit score + gap analysis…" },
+    { pct: 78, text: "Generating rewrite actions + exact phrases to add…" },
+    { pct: 90, text: "Drafting interview Q&A + practice plan…" }
+  ];
+
+  let stageIndex = 0;
+  let lastKnown = "queued";
+  let startedAt = Date.now();
+  let pollDelayMs = 2500;
+
+  function setChip(label, sub) {
+    if (!sub) {
+      liveChip.textContent = label;
+      return;
+    }
+    liveChip.textContent = `${label} — ${sub}`;
+  }
+
+  function advanceStage() {
+    if (stageIndex < stages.length) {
+      progressBar.style.width = stages[stageIndex].pct + "%";
+      statusText.textContent = stages[stageIndex].text;
+      stageIndex++;
+    }
+  }
+
+  // rotate fake progress every 3s (premium feeling)
+  setInterval(advanceStage, 3000);
+  advanceStage();
+
+  function normalizeStatus(s) {
+    return (s || "").toLowerCase();
+  }
+
+  async function pollStatus() {
+    try {
+      const res = await fetch(STATUS_URL, { cache: "no-store" });
+      const data = await res.json();
+      const st = normalizeStatus(data.status);
+
+      // show live chip status
+      if (st && st !== lastKnown) lastKnown = st;
+
+      if (st === "queued") setChip("Queued", "waiting for worker slot");
+      else if (st === "started") setChip("Processing", "AI engine running");
+      else if (st === "finished") setChip("Completed", "finalizing report");
+      else if (st === "failed") setChip("Failed", "refunded credits (if deducted)");
+      else setChip("Working", st || "queued");
+
+      if (st === "finished") {
+        progressBar.style.width = "100%";
+        statusText.textContent = "Finalizing report… Redirecting…";
+        setTimeout(() => { window.location.href = REPORT_URL; }, 650);
+        return;
+      }
+
+      if (st === "failed") {
+        progressBar.style.width = "100%";
+        statusText.textContent = data.error || "Analysis failed. Please go back and try again.";
+        return;
+      }
+
+      // reset backoff on success
+      pollDelayMs = 2500;
+
+    } catch (e) {
+      // gentle backoff on network hiccups
+      pollDelayMs = Math.min(pollDelayMs + 750, 7000);
+    }
+
+    // “timeout” message after 2 minutes but keep polling
+    const elapsed = (Date.now() - startedAt) / 1000;
+    if (elapsed > 120) {
+      statusText.textContent = "Still working… Deep analysis can take longer on long resumes. Please keep this tab open.";
+    }
+
+    setTimeout(pollStatus, pollDelayMs);
+  }
+
+  // start immediately
+  pollStatus();
+</script>
+
+</body>
+</html>

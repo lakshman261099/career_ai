@@ -1,6 +1,7 @@
 # modules/jobpack/routes.py
 import io
 import json
+import os
 from datetime import datetime
 from typing import Any, List
 
@@ -14,6 +15,7 @@ from flask import (
     request,
     send_file,
     url_for,
+    jsonify,
 )
 from flask_login import current_user, login_required
 from reportlab.lib import colors
@@ -26,6 +28,9 @@ from modules.common.profile_loader import load_profile_snapshot
 
 # Phase 4: central credits engine
 from modules.credits.engine import can_afford, deduct_free, deduct_pro
+
+# RQ tasks
+from modules.jobpack.tasks import enqueue_jobpack_analysis, get_job_status
 
 jobpack_bp = Blueprint("jobpack", __name__, template_folder="../../templates/jobpack")
 
@@ -81,6 +86,10 @@ def _safe_result(raw) -> dict:
     if isinstance(raw, dict):
         for k in base.keys():
             base[k] = raw.get(k, base[k])
+        # preserve status metadata if present
+        for meta_k in ("_status", "_job_id", "_completed_at", "_failed_at", "error"):
+            if meta_k in raw:
+                base[meta_k] = raw.get(meta_k)
     return base
 
 
@@ -95,6 +104,28 @@ def _coerce_skill_names(skills_any: Any) -> List[str]:
     return out
 
 
+def _feature_cost_amount(feature_key: str, currency: str) -> int:
+    """
+    Read feature cost from app config / credits config.
+    We only need this to pass refund_amount to the worker.
+    """
+    cfg = current_app.config.get("FEATURE_COSTS") or {}
+    raw = (cfg.get(feature_key) or {}) if isinstance(cfg, dict) else {}
+    if currency == "silver":
+        return int(raw.get("silver") or raw.get("coins_free") or 0)
+    return int(raw.get("gold") or raw.get("coins_pro") or 0)
+
+
+def _async_enabled() -> bool:
+    """
+    Feature flag:
+    JOBPACK_ASYNC=1 enables RQ flow.
+    Default: enabled in dev (safer under load).
+    """
+    v = os.getenv("JOBPACK_ASYNC", "1").strip()
+    return v not in ("0", "false", "False")
+
+
 # ---------------------- main route ----------------------
 
 
@@ -106,6 +137,10 @@ def index():
     Free: standard match analysis (gpt-4o-mini) using Silver 🪙.
     Pro: CareerAI Deep Evaluation (gpt-4o) using Gold ⭐.
     Profile Portal is the main resume source for ALL runs.
+
+    UPGRADE:
+    - Async RQ mode (default) to avoid blocking the web server.
+    - Credits deducted BEFORE enqueue; refunded by worker on failure.
     """
     mode = (request.form.get("mode") or "basic").lower()
     is_pro_run = mode == "pro"
@@ -134,9 +169,11 @@ def index():
                 profile_snapshot=profile_snapshot,
             )
 
-        # ------------------ Credits: check BEFORE AI, deduct AFTER success ------------------
+        # ------------------ Credits: check BEFORE AI/enqueue ------------------
+        feature_key = "jobpack_pro" if is_pro_run else "jobpack_free"
+        currency = "gold" if is_pro_run else "silver"
+
         if is_pro_run:
-            # Pro mode requires Pro subscription + Gold credits
             if not current_user.is_pro:
                 flash(
                     "Job Pack Deep Evaluation is available for Pro ⭐ members only.",
@@ -144,7 +181,7 @@ def index():
                 )
                 return redirect(url_for("billing.index"))
 
-            if not can_afford(current_user, "jobpack_pro", currency="gold"):
+            if not can_afford(current_user, feature_key, currency=currency):
                 flash(
                     "You don’t have enough Gold ⭐ credits to run Deep Evaluation. "
                     "Upgrade your plan or add more credits in the Coins Shop.",
@@ -152,8 +189,7 @@ def index():
                 )
                 return redirect(url_for("billing.index"))
         else:
-            # Free/basic mode uses Silver credits
-            if not can_afford(current_user, "jobpack_free", currency="silver"):
+            if not can_afford(current_user, feature_key, currency=currency):
                 flash(
                     "You don’t have enough Silver 🪙 credits to run Job Pack. "
                     "Upgrade to Pro ⭐ or add more credits in the Coins Shop.",
@@ -171,7 +207,93 @@ def index():
                 "warning",
             )
 
-        # Run AI
+        # ------------------ ASYNC (RQ) default path ------------------
+        if _async_enabled():
+            refund_amount = _feature_cost_amount(feature_key, currency)
+
+            try:
+                # Create report row FIRST (so we have report_id as run_id)
+                report = JobPackReport(
+                    user_id=current_user.id,
+                    job_title=None,
+                    company=None,
+                    jd_text=jd_text,
+                    analysis=json.dumps({"_status": "queued"}, ensure_ascii=False),
+                    created_at=datetime.utcnow(),
+                )
+                db.session.add(report)
+                db.session.flush()  # get report.id without committing
+
+                # Deduct credits BEFORE enqueue (same transaction)
+                if is_pro_run:
+                    ok = deduct_pro(
+                        current_user,
+                        feature_key,
+                        run_id=str(report.id),
+                        commit=False,
+                    )
+                else:
+                    ok = deduct_free(
+                        current_user,
+                        feature_key,
+                        run_id=str(report.id),
+                        commit=False,
+                    )
+
+                if not ok:
+                    db.session.rollback()
+                    flash(
+                        "We couldn’t reserve credits for this run. Please try again.",
+                        "danger",
+                    )
+                    return redirect(url_for("jobpack.index"))
+
+                db.session.commit()
+
+                # Enqueue worker job
+                job_id = enqueue_jobpack_analysis(
+                    user_id=current_user.id,
+                    report_id=report.id,
+                    jd_text=jd_text,
+                    resume_text=resume_text or "",
+                    is_pro_run=is_pro_run,
+                    feature_key=feature_key,
+                    currency=currency,
+                    refund_amount=int(refund_amount or 0),
+                )
+
+                # Store job id in analysis meta (optional, best effort)
+                try:
+                    report.analysis = json.dumps(
+                        {"_status": "queued", "_job_id": job_id}, ensure_ascii=False
+                    )
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+
+                # ✅ FIX: because blueprint template_folder already points to templates/jobpack,
+                # render "processing.html" (NOT "jobpack/processing.html")
+                return render_template(
+                    "processing.html",
+                    job_id=job_id,
+                    report_id=report.id,
+                    status_url=url_for("jobpack.api_job_status", job_id=job_id),
+                    report_url=url_for("jobpack.report", report_id=report.id),
+                )
+
+            except Exception as e:
+                current_app.logger.exception("JobPack async enqueue failed: %s", e)
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                flash(
+                    "We could not start the Job Pack analysis. Please try again.",
+                    "danger",
+                )
+                return redirect(url_for("jobpack.index"))
+
+        # ------------------ SYNC fallback (kept, not removed) ------------------
         try:
             raw = analyze_jobpack(jd_text, resume_text, pro_mode=is_pro_run)
         except Exception as e:
@@ -179,7 +301,6 @@ def index():
             flash(
                 "An error occurred during analysis. Please try again later.", "danger"
             )
-            # No credits deducted, because AI call failed.
             return render_template(
                 "jobpack/index.html",
                 result=None,
@@ -189,7 +310,6 @@ def index():
 
         result = _safe_result(raw)
 
-        # Mark resume_missing for UI if resume_text was empty
         if not resume_text:
             result["resume_missing"] = True
 
@@ -214,10 +334,9 @@ def index():
             except Exception:
                 pass
 
-        # Deduct credits AFTER successful AI call
+        # Deduct credits AFTER successful AI call (legacy sync behavior)
         try:
             if is_pro_run:
-                # Gold ⭐ debit
                 if not deduct_pro(current_user, "jobpack_pro", run_id=report_id):
                     current_app.logger.warning(
                         "JobPack: deduct_pro failed after analysis for user %s",
@@ -229,7 +348,6 @@ def index():
                         "warning",
                     )
             else:
-                # Silver 🪙 debit
                 if not deduct_free(current_user, "jobpack_free", run_id=report_id):
                     current_app.logger.warning(
                         "JobPack: deduct_free failed after analysis for user %s",
@@ -241,16 +359,13 @@ def index():
                         "warning",
                     )
         except Exception as e:
-            current_app.logger.exception(
-                "JobPack credit deduction error after analysis: %s", e
-            )
+            current_app.logger.exception("JobPack credit deduction error: %s", e)
             flash(
                 "Your analysis completed, but we had trouble updating your credits. "
                 "Please contact support if this keeps happening.",
                 "warning",
             )
 
-        # SAFE RENDER: if the template raises, show a small inline debug view
         try:
             return render_template(
                 "jobpack/result.html",
@@ -279,6 +394,22 @@ def index():
         mode=mode,
         profile_snapshot=profile_snapshot,
     )
+
+
+# ---------------------- RQ status endpoint ----------------------
+
+
+@jobpack_bp.route("/api/status/<job_id>", methods=["GET"], endpoint="api_job_status")
+@login_required
+def api_job_status(job_id: str):
+    """
+    Polled by the processing page.
+    """
+    try:
+        return jsonify(get_job_status(job_id)), 200
+    except Exception as e:
+        current_app.logger.exception("JobPack api_job_status error: %s", e)
+        return jsonify({"status": "error"}), 200
 
 
 # ---------------------- history + single report ----------------------
@@ -325,9 +456,18 @@ def report(report_id: int):
         raw = {}
     result = _safe_result(raw)
 
-    # Infer pro-ness for display: deep reports generally carry a non-standard tier
     tier = (result.get("report_tier") or "").lower()
     is_pro_run = "deep" in tier or "careerai" in tier
+
+    # If still processing, show a soft message
+    if (result.get("_status") or "").lower() in ("queued", "processing"):
+        flash(
+            "This report is still processing. Please wait a moment and refresh.",
+            "info",
+        )
+
+    if (result.get("_status") or "").lower() == "failed":
+        flash("This report failed. Credits were refunded. Please try again.", "warning")
 
     return render_template(
         "jobpack/result.html",
@@ -358,7 +498,6 @@ def export_pdf():
     try:
         safe: dict
 
-        # Prefer loading from DB when report_id is provided
         report_id = request.form.get("report_id")
         if report_id:
             try:
@@ -392,7 +531,6 @@ def export_pdf():
         width, height = A4
         y = height - 60
 
-        # simple text wrapper (characters-based, not perfect but readable)
         def _wrap_line(text: str, max_chars: int = 100) -> List[str]:
             text = (text or "").replace("\r", "")
             lines_out: List[str] = []
@@ -436,14 +574,12 @@ def export_pdf():
                         new_page()
                         c.setFont("Helvetica", 9 if small else 10)
 
-        # Header bar
         c.setFillColorRGB(0.1, 0.12, 0.18)
         c.rect(0, height - 80, width, 80, fill=True, stroke=False)
         c.setFont("Helvetica-Bold", 16)
         c.setFillColor(colors.white)
         c.drawString(40, height - 50, "CareerAI Deep Evaluation Report ⭐")
 
-        # ---- ROLE SUMMARY ----
         section(
             "Role Summary",
             [
@@ -452,7 +588,6 @@ def export_pdf():
             ],
         )
 
-        # ---- FIT OVERVIEW ----
         fit_lines: List[str] = []
         for f in safe["fit_overview"]:
             if isinstance(f, dict):
@@ -463,7 +598,6 @@ def export_pdf():
         if fit_lines:
             section("Fit Overview", fit_lines)
 
-        # ---- ATS SCORE + SUBSCORES ----
         subs = safe.get("subscores") or {}
         subs_lines = [
             f"Overall ATS Alignment (model estimate): {safe['ats_score']}%",
@@ -474,7 +608,6 @@ def export_pdf():
         ]
         section("ATS Score & Subscores (model estimates)", subs_lines)
 
-        # ---- SKILL TABLE (JD vs resume) ----
         skill_lines: List[str] = []
         for row in safe["skill_table"]:
             if isinstance(row, dict):
@@ -485,7 +618,6 @@ def export_pdf():
         if skill_lines:
             section("JD vs Resume Skill Match", skill_lines, small=True)
 
-        # ---- RESUME ATS DETAILS ----
         ra = safe.get("resume_ats") or {}
         kc = ra.get("keyword_coverage") or {}
         blockers = [f"• {b}" for b in (ra.get("blockers") or [])] or ["None"]
@@ -527,7 +659,6 @@ def export_pdf():
                 small=True,
             )
 
-        # ---- LEARNING LINKS ----
         if safe["learning_links"]:
             ll_lines: List[str] = []
             for link in safe["learning_links"]:
@@ -540,7 +671,6 @@ def export_pdf():
                         ll_lines.append(f"  • {why}")
             section("Learning Resources", ll_lines, small=True)
 
-        # ---- INTERVIEW Q&A ----
         if safe["interview_qa"]:
             qa_lines: List[str] = []
             for qa in safe["interview_qa"]:
@@ -558,10 +688,9 @@ def export_pdf():
                     qa_lines.append(f"Why it matters: {why}")
                 if follow:
                     qa_lines.append(f"Follow-up: {follow}")
-                qa_lines.append("")  # blank line between Qs
+                qa_lines.append("")
             section("Interview Q&A Practice", qa_lines, small=True)
 
-        # ---- PRACTICE PLAN ----
         if safe["practice_plan"]:
             pp_lines: List[str] = []
             for blk in safe["practice_plan"]:
@@ -582,7 +711,6 @@ def export_pdf():
                 pp_lines.append("")
             section("Practice Plan", pp_lines, small=True)
 
-        # ---- APPLICATION CHECKLIST ----
         if safe["application_checklist"]:
             section(
                 "Application Checklist",
@@ -590,7 +718,6 @@ def export_pdf():
                 small=True,
             )
 
-        # ---- RESUME REWRITE SUGGESTIONS ----
         if safe["rewrite_suggestions"]:
             section(
                 "Resume Rewrite Suggestions",
@@ -598,18 +725,10 @@ def export_pdf():
                 small=True,
             )
 
-        # ---- NEXT STEPS ----
         if safe["next_steps"]:
-            section(
-                "Next Steps",
-                [f"• {s}" for s in safe["next_steps"]],
-            )
+            section("Next Steps", [f"• {s}" for s in safe["next_steps"]])
 
-        # ---- IMPACT SUMMARY ----
-        section(
-            "Impact Summary",
-            [safe["impact_summary"] or "Evaluation complete."],
-        )
+        section("Impact Summary", [safe["impact_summary"] or "Evaluation complete."])
 
         c.save()
         buffer.seek(0)

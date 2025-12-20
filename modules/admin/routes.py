@@ -24,6 +24,7 @@ from sqlalchemy import func
 from models import (
     User,
     University,
+    UniversityWallet,
     CreditTransaction,
     UniversityDeal,
     VoucherCampaign,
@@ -1792,3 +1793,352 @@ def audit_export():
     resp.headers["Content-Type"] = "text/csv; charset=utf-8"
     resp.headers["Content-Disposition"] = "attachment; filename=careerai_admin_audit.csv"
     return resp
+
+# =====================================================================
+# ADD THIS TO YOUR modules/admin/routes.py
+# 
+# Add these imports at the top (around line 37):
+# =====================================================================
+
+from models import (
+    User,
+    University,
+    UniversityWallet,  # ← ADD THIS
+    CreditTransaction,
+    UniversityDeal,
+    VoucherCampaign,
+    VoucherRedemption,
+    SkillMapSnapshot,
+    JobPackReport,
+    InternshipRecord,
+    AdminActionLog,
+    db,
+)
+
+# =============================================================================
+# ADD THESE ROUTES TO: modules/admin/routes.py
+# 
+# Location: At the END of the file (after all existing routes)
+#
+# These are MINIMAL routes for Phase 1 - just viewing and topping up wallets
+# =============================================================================
+
+# ---------------------------------------------------------------------
+# University Wallets Management
+# ---------------------------------------------------------------------
+@admin_bp.route("/university-wallets", methods=["GET"], endpoint="university_wallets")
+@login_required
+def university_wallets():
+    """
+    View university credit wallets.
+    
+    Global admins see all universities.
+    University admins see only their own.
+    """
+    if not _is_admin_user():
+        flash("You are not allowed to access university wallets.", "danger")
+        return redirect(url_for("dashboard"))
+
+    tenant = getattr(g, "current_tenant", None)
+    is_global = _is_global_admin()
+
+    # Query universities with their wallets
+    from models import UniversityWallet
+    
+    query = db.session.query(
+        University,
+        UniversityWallet
+    ).outerjoin(
+        UniversityWallet,
+        University.id == UniversityWallet.university_id
+    )
+
+    # Tenant scoping for non-global admins
+    if not is_global:
+        if tenant:
+            query = query.filter(University.id == tenant.id)
+        else:
+            query = query.filter(University.id == -1)  # Show nothing
+
+    results = query.all()
+
+    # Format wallet data for template
+    wallets_data = []
+    for uni, wallet in results:
+        # Check if wallet is renewable (if renewal_date has passed)
+        from datetime import date
+        is_renewable = False
+        if wallet and wallet.renewal_date:
+            is_renewable = date.today() >= wallet.renewal_date
+        
+        wallets_data.append({
+            "university": uni,
+            "wallet": wallet,
+            "has_wallet": wallet is not None,
+            "silver_balance": wallet.silver_balance if wallet else 0,
+            "gold_balance": wallet.gold_balance if wallet else 0,
+            "silver_cap": wallet.silver_annual_cap if wallet else None,
+            "gold_cap": wallet.gold_annual_cap if wallet else None,
+            "renewal_date": wallet.renewal_date if wallet else None,
+            "is_renewable": is_renewable,
+        })
+
+    return render_template(
+        "admin/university_wallets.html",
+        wallets=wallets_data,
+        is_global=is_global,
+        tenant=tenant,
+    )
+
+
+@admin_bp.route("/university-wallets/<int:uni_id>/top-up", methods=["POST"], endpoint="university_wallet_topup")
+@login_required
+def university_wallet_topup(uni_id: int):
+    """
+    Add credits to a university wallet.
+    
+    Only global admins can do this.
+    """
+    if not _is_global_admin():
+        flash("Only global admins can top up university wallets.", "danger")
+        return redirect(url_for("admin.university_wallets"))
+
+    uni = University.query.get_or_404(uni_id)
+    
+    from models import UniversityWallet
+    wallet = UniversityWallet.query.filter_by(university_id=uni.id).first()
+
+    if not wallet:
+        # Create wallet if it doesn't exist
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        
+        wallet = UniversityWallet(
+            university_id=uni.id,
+            silver_balance=0,
+            gold_balance=0,
+            silver_annual_cap=10000,  # Default cap
+            gold_annual_cap=5000,      # Default cap
+            renewal_date=date.today() + relativedelta(years=1)
+        )
+        db.session.add(wallet)
+        db.session.flush()
+
+    try:
+        amount = int(request.form.get("amount") or "0")
+        currency = (request.form.get("currency") or "silver").lower()
+        reason = (request.form.get("reason") or "admin_topup").strip()
+
+        if amount <= 0:
+            flash("Please enter a positive amount.", "warning")
+            return redirect(url_for("admin.university_wallets"))
+
+        before_balance = wallet.silver_balance if currency == "silver" else wallet.gold_balance
+
+        # Update wallet
+        if currency == "silver":
+            wallet.silver_balance += amount
+            after_balance = wallet.silver_balance
+        else:
+            wallet.gold_balance += amount
+            after_balance = wallet.gold_balance
+
+        # Log the action
+        _log_admin_action(
+            "university_wallet_topup",
+            university=uni,
+            meta={
+                "admin_email": current_user.email,
+                "university_name": uni.name,
+                "amount": amount,
+                "currency": currency,
+                "reason": reason,
+                "before_balance": before_balance,
+                "after_balance": after_balance,
+            },
+        )
+
+        db.session.commit()
+
+        flash(
+            f"Added {amount} {'Gold ⭐' if currency == 'gold' else 'Silver 🪙'} "
+            f"to {uni.name}'s wallet.",
+            "success"
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to top up wallet: {e}", "danger")
+
+    return redirect(url_for("admin.university_wallets"))
+
+
+@admin_bp.route("/university-wallets/<int:uni_id>/set-cap", methods=["POST"], endpoint="university_wallet_set_cap")
+@login_required
+def university_wallet_set_cap(uni_id: int):
+    """
+    Set annual cap for a university wallet.
+    
+    Only global admins can do this.
+    """
+    if not _is_global_admin():
+        flash("Only global admins can set wallet caps.", "danger")
+        return redirect(url_for("admin.university_wallets"))
+
+    uni = University.query.get_or_404(uni_id)
+    
+    from models import UniversityWallet
+    wallet = UniversityWallet.query.filter_by(university_id=uni.id).first()
+
+    if not wallet:
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        
+        wallet = UniversityWallet(
+            university_id=uni.id,
+            renewal_date=date.today() + relativedelta(years=1)
+        )
+        db.session.add(wallet)
+        db.session.flush()
+
+    try:
+        silver_cap = request.form.get("silver_cap")
+        gold_cap = request.form.get("gold_cap")
+
+        before_caps = {
+            "silver": wallet.silver_annual_cap,
+            "gold": wallet.gold_annual_cap,
+        }
+
+        if silver_cap:
+            wallet.silver_annual_cap = int(silver_cap)
+        if gold_cap:
+            wallet.gold_annual_cap = int(gold_cap)
+
+        after_caps = {
+            "silver": wallet.silver_annual_cap,
+            "gold": wallet.gold_annual_cap,
+        }
+
+        _log_admin_action(
+            "university_wallet_set_cap",
+            university=uni,
+            meta={
+                "admin_email": current_user.email,
+                "university_name": uni.name,
+                "before_caps": before_caps,
+                "after_caps": after_caps,
+            },
+        )
+
+        db.session.commit()
+
+        flash(f"Updated annual caps for {uni.name}.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to update caps: {e}", "danger")
+
+    return redirect(url_for("admin.university_wallets"))
+
+
+@admin_bp.route("/university-wallets/<int:uni_id>/renew", methods=["POST"], endpoint="university_wallet_renew")
+@login_required
+def university_wallet_renew(uni_id: int):
+    """
+    Manually renew a university wallet (reset to annual caps).
+    
+    Only global admins can do this.
+    """
+    if not _is_global_admin():
+        flash("Only global admins can renew wallets.", "danger")
+        return redirect(url_for("admin.university_wallets"))
+
+    uni = University.query.get_or_404(uni_id)
+    
+    from models import UniversityWallet
+    wallet = UniversityWallet.query.filter_by(university_id=uni.id).first()
+
+    if not wallet:
+        flash("Wallet not found.", "danger")
+        return redirect(url_for("admin.university_wallets"))
+
+    try:
+        before_balances = {
+            "silver": wallet.silver_balance,
+            "gold": wallet.gold_balance,
+        }
+
+        # Reset to caps
+        wallet.silver_balance = wallet.silver_annual_cap or 0
+        wallet.gold_balance = wallet.gold_annual_cap or 0
+        
+        # Update renewal date (add 1 year)
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        wallet.renewal_date = date.today() + relativedelta(years=1)
+        wallet.last_renewed_at = date.today()
+
+        after_balances = {
+            "silver": wallet.silver_balance,
+            "gold": wallet.gold_balance,
+        }
+
+        _log_admin_action(
+            "university_wallet_renew",
+            university=uni,
+            meta={
+                "admin_email": current_user.email,
+                "university_name": uni.name,
+                "before_balances": before_balances,
+                "after_balances": after_balances,
+            },
+        )
+
+        db.session.commit()
+        flash(f"Renewed wallet for {uni.name}.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Failed to renew wallet: {e}", "danger")
+
+    return redirect(url_for("admin.university_wallets"))
+
+
+@admin_bp.route("/university-wallets/<int:uni_id>/stats", methods=["GET"], endpoint="university_wallet_stats")
+@login_required
+def university_wallet_stats(uni_id: int):
+    """
+    Show detailed usage statistics for a university.
+    
+    For Phase 1, just show basic stats.
+    Full implementation coming in Phase 2.
+    """
+    if not _is_admin_user():
+        flash("You are not allowed to view university stats.", "danger")
+        return redirect(url_for("dashboard"))
+
+    uni = University.query.get_or_404(uni_id)
+
+    # Tenant scoping
+    if not _is_global_admin():
+        tenant = getattr(g, "current_tenant", None)
+        if not tenant or uni.id != tenant.id:
+            flash("You can only view your own university's stats.", "danger")
+            return redirect(url_for("admin.dashboard"))
+
+    # Basic stats for now
+    from models import UniversityWallet
+    wallet = UniversityWallet.query.filter_by(university_id=uni.id).first()
+    
+    total_students = User.query.filter_by(university_id=uni.id).count()
+    
+    # For now, just show a simple page
+    # Full analytics implementation in Phase 2
+    flash(f"Stats page for {uni.name} - Full implementation coming soon!", "info")
+    return redirect(url_for("admin.university_wallets"))
+
+
+# =============================================================================
+# END OF ROUTES TO ADD
+# =============================================================================

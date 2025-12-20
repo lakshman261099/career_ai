@@ -48,7 +48,8 @@
           <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/20">
             <i data-lucide="flame" class="w-3.5 h-3.5"></i>
             <span>Streak:</span>
-            <span class="font-semibold">{{ streak_count }} week{{ '' if streak_count == 1 else 's' }}</span>
+            {# ✅ Upgrade: streak_count is a day-based streak in your backend #}
+            <span class="font-semibold">{{ streak_count }} day{{ '' if streak_count == 1 else 's' }}</span>
           </div>
         {% endif %}
         <p class="text-[11px] text-white/65">
@@ -63,7 +64,7 @@
             <i data-lucide="sparkles" class="w-3 h-3"></i>
             <span>Back to Dream Planner</span>
           </a>
-          {% if feature_paths is defined and feature_paths.skillmapper %}
+          {% if feature_paths is defined and feature_paths and feature_paths.skillmapper %}
             <a href="{{ feature_paths.skillmapper }}" class="inline-flex items-center gap-1 text-white/60 hover:text-white">
               <i data-lucide="route" class="w-3 h-3"></i>
               <span>Skill Mapper</span>
@@ -78,6 +79,284 @@
       </div>
     </div>
   </header>
+
+ 
+
+  <!-- DUAL-TRACK DASHBOARD (if cycle exists) -->
+  {% if cycle_sessions %}
+  <div class="space-y-6">
+    
+    <!-- STREAK & READY SCORE BAR -->
+    <div class="glass-card rounded-2xl p-6 border border-white/10">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        
+        <!-- Streak Counter -->
+        <div class="flex items-center gap-4">
+          <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500/20 to-red-500/20 border border-orange-500/30 flex items-center justify-center">
+            <i data-lucide="flame" class="w-7 h-7 text-orange-400"></i>
+          </div>
+          <div>
+            <div class="text-2xl font-bold">{{ user_streak }}</div>
+            <div class="text-xs text-white/60">Day Streak 🔥</div>
+            <div class="text-[10px] text-white/50">
+              Longest: {{ current_user.longest_streak or 0 }}
+              {% if current_user.streak_freezes_remaining > 0 %}
+              · ❄️ {{ current_user.streak_freezes_remaining }} freeze
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        
+        <!-- Ready Score -->
+        <div class="flex items-center gap-4">
+          <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center">
+            <i data-lucide="trophy" class="w-7 h-7 text-indigo-400"></i>
+          </div>
+          <div>
+            <div class="text-2xl font-bold">{{ user_ready_score }}</div>
+            <div class="text-xs text-white/60">Ready Score ⭐</div>
+            <div class="text-[10px] text-white/50">
+              {% if user_ready_score >= 80 %}Top Tier
+              {% elif user_ready_score >= 60 %}Job Ready
+              {% elif user_ready_score >= 40 %}Building
+              {% else %}Getting Started
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        
+        <!-- Milestones -->
+        <div class="flex items-center gap-4">
+          <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center">
+            <i data-lucide="award" class="w-7 h-7 text-emerald-400"></i>
+          </div>
+          <div>
+            <div class="text-2xl font-bold">{{ current_user.weekly_milestones_completed or 0 }}</div>
+            <div class="text-xs text-white/60">Milestones 🏆</div>
+            <div class="text-[10px] text-white/50">
+              Weekly goals completed
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <!-- TODAY'S CAREER BITE (Daily Task) -->
+    {% if today_daily_task %}
+    <div class="glass-card rounded-2xl p-6 border border-white/10">
+      <div class="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h3 class="text-lg font-semibold flex items-center gap-2">
+            <i data-lucide="coffee" class="w-5 h-5 text-amber-400"></i>
+            Today's Career Bite
+          </h3>
+          <p class="text-xs text-white/60 mt-1">5-15 minutes · Builds your streak</p>
+        </div>
+        <div class="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-xs text-amber-300">
+          Daily
+        </div>
+      </div>
+      
+      <form method="POST" action="{{ url_for('coach.complete_task', task_id=today_daily_task.id) }}" class="space-y-3">
+        <div class="flex items-start gap-3">
+          <button type="submit" 
+                  class="mt-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-all
+                         {% if today_daily_task.is_done %}
+                         bg-emerald-500 border-emerald-500
+                         {% else %}
+                         border-white/30 hover:border-white/50
+                         {% endif %}">
+            {% if today_daily_task.is_done %}
+            <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
+            {% endif %}
+          </button>
+          <div class="flex-1">
+            <h4 class="font-medium {% if today_daily_task.is_done %}line-through text-white/50{% endif %}">
+              {{ today_daily_task.title }}
+            </h4>
+            {% if today_daily_task.detail %}
+            <p class="text-sm text-white/70 mt-1">{{ today_daily_task.detail }}</p>
+            {% endif %}
+            <div class="flex items-center gap-3 mt-2 text-xs text-white/50">
+              <span>⏱️ {{ today_daily_task.estimated_time_minutes or 10 }} min</span>
+              {% if today_daily_task.category %}
+              <span>·</span>
+              <span class="capitalize">{{ today_daily_task.category }}</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+    
+    <!-- THIS WEEK'S BIG GOAL (Weekly Task) -->
+    {% if current_weekly_task %}
+    <div class="glass-card rounded-2xl p-6 border border-white/10">
+      <div class="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h3 class="text-lg font-semibold flex items-center gap-2">
+            <i data-lucide="target" class="w-5 h-5 text-indigo-400"></i>
+            This Week's Big Goal
+          </h3>
+          <p class="text-xs text-white/60 mt-1">3-5 hours · Builds your portfolio</p>
+        </div>
+        <div class="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-xs text-indigo-300">
+          Weekly
+        </div>
+      </div>
+      
+      <form method="POST" action="{{ url_for('coach.complete_task', task_id=current_weekly_task.id) }}" class="space-y-3">
+        <div class="flex items-start gap-3">
+          <button type="submit" 
+                  class="mt-1 w-6 h-6 rounded border-2 flex items-center justify-center transition-all
+                         {% if current_weekly_task.is_done %}
+                         bg-indigo-500 border-indigo-500
+                         {% else %}
+                         border-white/30 hover:border-white/50
+                         {% endif %}">
+            {% if current_weekly_task.is_done %}
+            <i data-lucide="check" class="w-4 h-4 text-white"></i>
+            {% endif %}
+          </button>
+          <div class="flex-1">
+            <h4 class="font-semibold text-lg {% if current_weekly_task.is_done %}line-through text-white/50{% endif %}">
+              {{ current_weekly_task.title }}
+            </h4>
+            {% if current_weekly_task.detail %}
+            <p class="text-sm text-white/70 mt-2">{{ current_weekly_task.detail }}</p>
+            {% endif %}
+            <div class="flex items-center gap-4 mt-3">
+              <div class="flex-1">
+                <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all"
+                       style="width: {% if current_weekly_task.is_done %}100{% elif current_week_session %}{{ current_week_session.progress_percent }}{% else %}0{% endif %}%"></div>
+                </div>
+                <div class="flex justify-between text-xs text-white/50 mt-1">
+                  <span>Progress</span>
+                  <span>{% if current_week_session %}{{ current_week_session.progress_percent }}%{% else %}0%{% endif %}</span>
+                </div>
+              </div>
+              {% if current_weekly_task.milestone_badge and current_weekly_task.is_done %}
+              <div class="px-3 py-1 rounded-full bg-yellow-500/20 border border-yellow-500/30 text-xs text-yellow-300">
+                🏆 {{ current_weekly_task.milestone_badge }}
+              </div>
+              {% endif %}
+            </div>
+            <div class="flex items-center gap-3 mt-2 text-xs text-white/50">
+              <span>⏱️ {{ (current_weekly_task.estimated_time_minutes or 240) // 60 }} hours</span>
+              {% if current_weekly_task.category %}
+              <span>·</span>
+              <span class="capitalize">{{ current_weekly_task.category }}</span>
+              {% endif %}
+              {% if current_weekly_task.target_lpa_level %}
+              <span>·</span>
+              <span>{{ current_weekly_task.target_lpa_level }} LPA track</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+    
+    <!-- WEEK VIEW (All 4 Weeks) -->
+    <div class="glass-card rounded-2xl p-6 border border-white/10">
+      <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+        <i data-lucide="calendar" class="w-5 h-5"></i>
+        28-Day Roadmap
+      </h3>
+      
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {% for session in cycle_sessions %}
+        <a href="{{ url_for('coach.session', session_id=session.id) }}"
+           class="block p-4 rounded-xl border transition-all
+                  {% if session.is_closed %}
+                  bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20
+                  {% elif current_week_session and session.day_index == current_week_session.day_index %}
+                  bg-indigo-500/10 border-indigo-500/30 hover:bg-indigo-500/20
+                  {% else %}
+                  bg-white/5 border-white/10 hover:bg-white/10
+                  {% endif %}">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-semibold">Week {{ session.day_index }}</span>
+            {% if session.is_closed %}
+            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+            {% elif current_week_session and session.day_index == current_week_session.day_index %}
+            <i data-lucide="play-circle" class="w-4 h-4 text-indigo-400"></i>
+            {% else %}
+            <i data-lucide="circle" class="w-4 h-4 text-white/30"></i>
+            {% endif %}
+          </div>
+          
+          <div class="text-xs text-white/60 space-y-1">
+            <div>{{ session.daily_tasks_completed or 0 }}/7 daily</div>
+            <div>{% if session.weekly_task_completed %}✓{% else %}○{% endif %} Weekly goal</div>
+          </div>
+          
+          <div class="mt-3">
+            <div class="h-1 bg-white/10 rounded-full overflow-hidden">
+              <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500"
+                   style="width: {{ session.progress_percent or 0 }}%"></div>
+            </div>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    
+  </div>
+  {% else %}
+  
+  <!-- NO CYCLE YET - Show Start Button -->
+  <div class="glass-card rounded-2xl p-8 border border-white/10 text-center">
+    <div class="max-w-2xl mx-auto space-y-4">
+      <div class="w-16 h-16 mx-auto rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center">
+        <i data-lucide="rocket" class="w-8 h-8 text-indigo-400"></i>
+      </div>
+      
+      <h2 class="text-2xl font-bold">Ready to start your 28-day journey?</h2>
+      
+      <p class="text-white/70 max-w-lg mx-auto">
+        Get a personalized dual-track plan:
+        <span class="font-semibold">7 daily tasks</span> (5-15 min each) +
+        <span class="font-semibold">1 weekly goal</span> (3-5 hours) for 4 weeks.
+      </p>
+      
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto text-left text-sm">
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+          <div class="font-semibold text-amber-300 mb-1">Daily Tasks</div>
+          <div class="text-xs text-white/60">
+            • LinkedIn updates<br>
+            • Networking<br>
+            • Job applications<br>
+            • Quick learning
+          </div>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+          <div class="font-semibold text-indigo-300 mb-1">Weekly Goals</div>
+          <div class="text-xs text-white/60">
+            • Project milestones<br>
+            • Technical content<br>
+            • Portfolio building<br>
+            • Interview prep
+          </div>
+        </div>
+      </div>
+      
+      <form method="POST" action="{{ url_for('coach.start', path_type=path_type) }}" class="mt-6">
+        <button type="submit" class="btn-primary px-6 py-3 text-base">
+          <i data-lucide="play" class="w-5 h-5"></i>
+          <span>Generate My 28-Day Plan</span>
+        </button>
+        <p class="text-xs text-white/50 mt-2">
+          Cost: 3 Gold ⭐ (one-time for the month)
+        </p>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- GATED MESSAGE FOR FREE USERS -->
   {% if not is_pro_user %}
@@ -555,8 +834,8 @@
             </p>
             <p>
               Tasks:
-              {% set t_total = today_session.tasks|length %}
-              {% set t_done = (today_session.tasks | selectattr('is_done') | list | length) if today_session.tasks else 0 %}
+              {% set t_total = (today_session.tasks|length) if today_session.tasks is defined and today_session.tasks else 0 %}
+              {% set t_done = (today_session.tasks | selectattr('is_done') | list | length) if today_session.tasks is defined and today_session.tasks else 0 %}
               <span class="font-semibold">{{ t_done }}/{{ t_total }}</span> completed
             </p>
             <a href="{{ url_for('coach.session', session_id=today_session.id) }}"
@@ -584,8 +863,8 @@
                 {{ last_session.session_date.strftime("%d %b %Y") if last_session.session_date else "Unknown date" }}
               </span>
             </p>
-            {% set lt_total = last_session.tasks|length %}
-            {% set lt_done = (last_session.tasks | selectattr('is_done') | list | length) if last_session.tasks else 0 %}
+            {% set lt_total = (last_session.tasks|length) if last_session.tasks is defined and last_session.tasks else 0 %}
+            {% set lt_done = (last_session.tasks | selectattr('is_done') | list | length) if last_session.tasks is defined and last_session.tasks else 0 %}
             <p>
               Tasks: <span class="font-semibold">{{ lt_done }}/{{ lt_total }}</span> completed
               {% if last_session.is_closed %}
@@ -656,8 +935,8 @@
 
         <div class="space-y-1 text-xs sm:text-sm">
           {% for s in recent_sessions %}
-            {% set s_total = s.tasks|length %}
-            {% set s_done = (s.tasks | selectattr('is_done') | list | length) if s.tasks else 0 %}
+            {% set s_total = (s.tasks|length) if s.tasks is defined and s.tasks else 0 %}
+            {% set s_done = (s.tasks | selectattr('is_done') | list | length) if s.tasks is defined and s.tasks else 0 %}
             <a href="{{ url_for('coach.session', session_id=s.id) }}"
                class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-black/30 border border-white/10 hover:bg-black/50 hover:border-white/25 transition-all">
               <div class="flex flex-col">

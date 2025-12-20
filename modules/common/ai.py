@@ -221,7 +221,7 @@ def _light_validate_portfolio_free(data: Any) -> Dict[str, Any]:
         i = ideas[0]
         i["title"] = (i.get("title") or "Portfolio Project")[:120]
         i["why"] = _to_sentence(i.get("why") or "")
-        i["what"] = [(str(x)[:110]) for x in (i.get("what") or [])][:3]
+        i["what"] = [(str(x)[:110]) for x in (i.get("what") or [])][:6]
         i["milestones"] = [(str(x)[:110]) for x in (i.get("milestones") or [])][:3]
         i["resume_bullets"] = [(str(x)[:160]) for x in (i.get("resume_bullets") or [])][:3]
         i["stack"] = [(str(x)[:32]) for x in (i.get("stack") or [])][:4]
@@ -1277,6 +1277,171 @@ def _light_validate_daily_coach(data: Any) -> Dict[str, Any]:
         "meta": meta,
     }
 
+def _light_validate_dualtrack_month(data: Any) -> Dict[str, Any]:
+    """
+    Defensive validator for 28-day dual-track month plan.
+
+    Normalizes:
+    - month_cycle: str
+    - ai_note: str
+    - weeks: exactly 4 entries (week_number 1..4)
+      - each with daily_tasks (7 items day=1..7) + weekly_task
+    """
+    if not isinstance(data, dict):
+        data = {}
+
+    month_cycle = str(data.get("month_cycle") or "").strip()[:64]
+    ai_note = str(data.get("ai_note") or "").strip()[:1600]
+    weeks_raw = data.get("weeks") or []
+    meta = data.get("meta") or {}
+
+    if not isinstance(meta, dict):
+        meta = {}
+
+    # helper clamps
+    def _clamp_int(v: Any, lo: int, hi: int, default: int) -> int:
+        try:
+            x = int(v)
+        except Exception:
+            return default
+        return max(lo, min(hi, x))
+
+    def _clean_category(cat: Any) -> str:
+        c = str(cat or "").strip().lower()
+        allowed = {"skills", "projects", "career_capital", "planning", "mindset", "wellbeing"}
+        return c if c in allowed else "skills"
+
+    def _clean_difficulty(d: Any, default: str = "easy") -> str:
+        v = str(d or "").strip().lower()
+        allowed = {"easy", "medium", "hard"}
+        return v if v in allowed else default
+
+    def _clean_tags(tags_val: Any) -> List[str]:
+        if not isinstance(tags_val, list):
+            return []
+        out = []
+        for x in tags_val[:6]:
+            s = str(x).strip()
+            if s:
+                out.append(s[:32])
+        return out
+
+    # Normalize weeks by mapping week_number => week payload
+    week_map: Dict[int, Dict[str, Any]] = {}
+    if isinstance(weeks_raw, list):
+        for w in weeks_raw:
+            if not isinstance(w, dict):
+                continue
+            wn = w.get("week_number")
+            try:
+                wn_int = int(wn)
+            except Exception:
+                continue
+            if wn_int < 1 or wn_int > 4:
+                continue
+            week_map[wn_int] = w
+
+    clean_weeks: List[Dict[str, Any]] = []
+
+    for wn in range(1, 5):
+        w = week_map.get(wn) or {}
+        week_note = str(w.get("week_note") or f"Week {wn} focus.").strip()[:1200]
+
+        # daily tasks
+        dailies_raw = w.get("daily_tasks") or []
+        day_map: Dict[int, Dict[str, Any]] = {}
+        if isinstance(dailies_raw, list):
+            for t in dailies_raw:
+                if not isinstance(t, dict):
+                    continue
+                try:
+                    day = int(t.get("day"))
+                except Exception:
+                    continue
+                if 1 <= day <= 7:
+                    day_map[day] = t
+
+        daily_tasks: List[Dict[str, Any]] = []
+        for day in range(1, 8):
+            t = day_map.get(day) or {}
+            title = str(t.get("title") or f"Day {day} task").strip()[:255]
+            detail = str(t.get("detail") or "").strip()[:1200]
+            category = _clean_category(t.get("category"))
+            est = _clamp_int(t.get("estimated_minutes"), 5, 60, 10)
+            # For dailies, prefer 5-20 (but keep within schema 5-60)
+            if est > 20:
+                est = 20
+            difficulty = _clean_difficulty(t.get("difficulty"), default="easy")
+            tags = _clean_tags(t.get("tags"))
+
+            daily_tasks.append(
+                {
+                    "day": day,
+                    "title": title,
+                    "detail": detail,
+                    "category": category,
+                    "estimated_minutes": est,
+                    "difficulty": difficulty,
+                    "tags": tags,
+                    "phase_label": str(t.get("phase_label") or "").strip()[:160],
+                    "week_index": t.get("week_index") if isinstance(t.get("week_index"), int) else None,
+                    "project_label": str(t.get("project_label") or "").strip()[:255],
+                    "milestone_title": str(t.get("milestone_title") or "").strip()[:255],
+                    "milestone_step": str(t.get("milestone_step") or "").strip()[:255],
+                }
+            )
+
+        # weekly task
+        weekly_raw = w.get("weekly_task") or {}
+        if not isinstance(weekly_raw, dict):
+            weekly_raw = {}
+
+        weekly_title = str(weekly_raw.get("title") or f"Week {wn} milestone").strip()[:255]
+        weekly_detail = str(weekly_raw.get("detail") or "").strip()[:1800]
+        weekly_category = _clean_category(weekly_raw.get("category"))
+        weekly_est = _clamp_int(weekly_raw.get("estimated_minutes"), 90, 480, 240)
+        badge = str(weekly_raw.get("milestone_badge") or f"Week {wn} Master").strip()[:64]
+        deliverable = str(weekly_raw.get("deliverable") or "").strip()[:255]
+        if not deliverable:
+            deliverable = "Shipped weekly artifact + README proof"
+
+        weekly_task = {
+            "title": weekly_title,
+            "detail": weekly_detail,
+            "category": weekly_category,
+            "estimated_minutes": weekly_est,
+            "milestone_badge": badge,
+            "phase_label": str(weekly_raw.get("phase_label") or "").strip()[:160],
+            "week_index": weekly_raw.get("week_index") if isinstance(weekly_raw.get("week_index"), int) else None,
+            "project_label": str(weekly_raw.get("project_label") or "").strip()[:255],
+            "milestone_title": str(weekly_raw.get("milestone_title") or "").strip()[:255],
+            "milestone_step": str(weekly_raw.get("milestone_step") or "").strip()[:255],
+            "deliverable": deliverable,
+        }
+
+        clean_weeks.append(
+            {
+                "week_number": wn,
+                "week_note": week_note,
+                "daily_tasks": daily_tasks,
+                "weekly_task": weekly_task,
+            }
+        )
+
+    # meta defaults
+    if "generated_at_utc" not in meta:
+        meta["generated_at_utc"] = _utc_now_iso()
+    if "inputs_digest" not in meta:
+        meta["inputs_digest"] = _inputs_digest({"source": "dualtrack_month"})
+    meta.setdefault("career_ai_version", CAREER_AI_VERSION)
+
+    return {
+        "month_cycle": month_cycle,
+        "ai_note": ai_note,
+        "weeks": clean_weeks,
+        "meta": meta,
+    }
+
 
 def _extract_coach_roadmap(path_type: str, dream_plan: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """
@@ -1598,6 +1763,341 @@ def _analyze_progress_history(progress_history: List[Dict[str, Any]]) -> Dict[st
         "sessions_considered": sessions_considered,
     }
 
+# -------------------------------------------------------------------
+# Weekly Coach (Dual-Track) — 28-day month plan (4 weeks) JSON schema + prompt
+# -------------------------------------------------------------------
+
+DUALTRACK_MONTH_JSON_SCHEMA = r"""\
+{
+  "type": "object",
+  "required": ["month_cycle", "ai_note", "weeks", "meta"],
+  "additionalProperties": false,
+  "properties": {
+    "month_cycle": { "type": "string", "minLength": 6, "maxLength": 64 },
+    "ai_note": { "type": "string", "minLength": 10, "maxLength": 1600 },
+    "weeks": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["week_number", "week_note", "daily_tasks", "weekly_task"],
+        "additionalProperties": false,
+        "properties": {
+          "week_number": { "type": "integer", "minimum": 1, "maximum": 4 },
+          "week_note": { "type": "string", "minLength": 8, "maxLength": 1200 },
+
+          "daily_tasks": {
+            "type": "array",
+            "minItems": 7,
+            "maxItems": 7,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["day", "title", "detail", "category", "estimated_minutes"],
+              "properties": {
+                "day": { "type": "integer", "minimum": 1, "maximum": 7 },
+                "title": { "type": "string", "minLength": 3, "maxLength": 255 },
+                "detail": { "type": "string", "minLength": 0, "maxLength": 1200 },
+                "category": { "type": "string", "minLength": 0, "maxLength": 64 },
+                "estimated_minutes": { "type": "integer", "minimum": 5, "maximum": 60 },
+                "difficulty": { "type": "string", "minLength": 0, "maxLength": 32 },
+                "tags": {
+                  "type": "array",
+                  "items": { "type": "string", "maxLength": 32 }
+                },
+
+                "phase_label": { "type": "string", "minLength": 0, "maxLength": 160 },
+                "week_index": { "type": ["integer", "null"] },
+                "project_label": { "type": "string", "minLength": 0, "maxLength": 255 },
+                "milestone_title": { "type": "string", "minLength": 0, "maxLength": 255 },
+                "milestone_step": { "type": "string", "minLength": 0, "maxLength": 255 }
+              }
+            }
+          },
+
+          "weekly_task": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title", "detail", "category", "estimated_minutes", "milestone_badge", "deliverable"],
+            "properties": {
+              "title": { "type": "string", "minLength": 3, "maxLength": 255 },
+              "detail": { "type": "string", "minLength": 0, "maxLength": 1800 },
+              "category": { "type": "string", "minLength": 0, "maxLength": 64 },
+              "estimated_minutes": { "type": "integer", "minimum": 90, "maximum": 480 },
+              "milestone_badge": { "type": "string", "minLength": 3, "maxLength": 64 },
+
+              "phase_label": { "type": "string", "minLength": 0, "maxLength": 160 },
+              "week_index": { "type": ["integer", "null"] },
+              "project_label": { "type": "string", "minLength": 0, "maxLength": 255 },
+              "milestone_title": { "type": "string", "minLength": 0, "maxLength": 255 },
+              "milestone_step": { "type": "string", "minLength": 0, "maxLength": 255 },
+              "deliverable": { "type": "string", "minLength": 0, "maxLength": 255 }
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["generated_at_utc", "inputs_digest"],
+      "properties": {
+        "generated_at_utc": { "type": "string" },
+        "inputs_digest": { "type": "string" },
+        "path_type": { "type": "string" },
+        "career_ai_version": { "type": "string" },
+        "target_lpa": { "type": "string" }
+      }
+    }
+  }
+}
+"""
+
+
+DUALTRACK_MONTH_PROMPT = """\
+You are CareerAI Coach for a Flask web app.
+Return ONLY valid JSON matching the schema below.
+No markdown. No commentary. No code fences.
+
+Freshness: {freshness}
+
+GOAL:
+Generate a 28-day dual-track plan for ONE month cycle (4 weeks).
+
+DUAL-TRACK RULES:
+- Daily Tasks (Maintenance): 7 per week
+  - Each is 5–15 minutes (but allow up to 20 if truly needed).
+  - Must feel frictionless and streak-friendly.
+  - Actionable and specific.
+- Weekly Task (Momentum): 1 per week
+  - 3–5 hours total (estimated_minutes 180–300 typical; allow 240–360 if needed).
+  - Should ship a real portfolio artifact: feature, mini-demo, case study, README, blog, deploy, etc.
+  - Should clearly tie to Dream Plan phases and/or selected projects.
+
+INPUTS:
+- path_type: {path_type}  # "job" or "startup"
+- target_lpa: {target_lpa}  # "12" | "24" | "48" (difficulty alignment)
+- month_cycle: {month_cycle}
+- dream_plan (may be empty, but if present contains phases + resources + selected projects):
+{dream_plan_json}
+
+PROJECT CONTEXT:
+- dream_plan may contain selected projects and milestones.
+- If projects exist:
+  - Each week should include:
+    - at least 2 daily tasks that advance the project (category "projects")
+    - the weekly task should be a meaningful weekly deliverable for that project
+  - DO NOT invent new projects or IDs.
+  - Use project_label/milestone_* fields when relevant.
+
+DIFFICULTY / LPA ALIGNMENT:
+- target_lpa = "12":
+  - keep weekly deliverables simpler, reduce scope, prioritize consistency and basic portfolio quality.
+- target_lpa = "24":
+  - moderate scope; add one quality step (tests, deployment, metrics, better README).
+- target_lpa = "48":
+  - higher bar; weekly deliverables should look recruiter-grade; include deploy + proof + write-up.
+
+OUTPUT REQUIREMENTS:
+- Exactly 4 weeks in "weeks": week_number 1..4.
+- Each week:
+  - week_note: short note for that week
+  - daily_tasks: exactly 7 items with day=1..7
+    - estimated_minutes: 5–20 (prefer 8–15)
+    - category: one of ["skills","projects","career_capital","planning","mindset","wellbeing"]
+    - include difficulty: one of ["easy","medium","hard"] (daily tasks rarely "hard")
+  - weekly_task: 1 item
+    - estimated_minutes: 180–360 typical (90–480 allowed by schema)
+    - category should usually be "projects" or "career_capital"
+    - milestone_badge: short badge name like "Week 1 Master"
+    - deliverable: a concrete output string (e.g. "Deployed MVP + README + screenshots")
+
+COACHING NOTE:
+- "ai_note" should explain the month strategy briefly:
+  - how daily maintenance supports streak
+  - how weekly momentum builds portfolio
+  - what to do if they fall behind
+
+JSON Schema:
+{json_schema}
+
+Return JSON only.
+"""
+
+def generate_dualtrack_month_plan(
+    *,
+    path_type: str,
+    target_lpa: str = "12",
+    dream_plan: Optional[Dict[str, Any]] = None,
+    month_cycle: str,
+    return_source: bool = False,
+) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
+    """
+    Generate a full 4-week dual-track month plan in ONE call.
+
+    Output (validated):
+      {
+        "month_cycle": "...",
+        "ai_note": "...",
+        "weeks": [
+          {
+            "week_number": 1,
+            "week_note": "...",
+            "daily_tasks": [ {day 1..7 ...}, ... ],
+            "weekly_task": { ... }
+          },
+          ... week 4 ...
+        ],
+        "meta": {...}
+      }
+
+    Routes should create:
+      - 4 DailyCoachSession rows (day_index = week_number)
+      - 7 daily tasks per week (day_number = (week-1)*7 + day)
+      - 1 weekly task per week
+    """
+    from openai import OpenAI
+
+    used_live_ai = False
+
+    pt = (path_type or "job").strip().lower()
+    if pt not in ("job", "startup"):
+        pt = "job"
+
+    tlpa = str(target_lpa or "12").strip()
+    if tlpa not in ("12", "24", "48"):
+        tlpa = "12"
+
+    dp = dream_plan or {}
+    if not isinstance(dp, dict):
+        dp = {}
+
+    month_cycle = str(month_cycle or "").strip()[:64]
+    if not month_cycle:
+        # still allow generation; validator will keep it but routes should pass proper id
+        month_cycle = "month_cycle_unknown"
+
+    prompt = DUALTRACK_MONTH_PROMPT.format(
+        freshness=FRESHNESS_NOTE,
+        path_type=pt,
+        target_lpa=tlpa,
+        month_cycle=month_cycle,
+        dream_plan_json=json.dumps(dp, ensure_ascii=False, indent=2)[:18000],
+        json_schema=DUALTRACK_MONTH_JSON_SCHEMA,
+    )
+
+    try:
+        client = OpenAI()
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL_DEEP,
+            messages=[
+                {"role": "system", "content": "You output ONLY valid JSON matching the schema."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.45,
+            max_tokens=2600,
+            response_format={"type": "json_object"},
+        )
+
+        raw = (resp.choices[0].message.content or "").strip()
+        data = json.loads(raw) if raw else {}
+
+        meta = data.get("meta") or {}
+        if not isinstance(meta, dict):
+            meta = {}
+        meta.setdefault("generated_at_utc", _utc_now_iso())
+        meta.setdefault(
+            "inputs_digest",
+            _inputs_digest(
+                {
+                    "path_type": pt,
+                    "target_lpa": tlpa,
+                    "month_cycle": month_cycle,
+                    "has_dream_plan": bool(dp),
+                }
+            ),
+        )
+        meta.setdefault("path_type", pt)
+        meta.setdefault("target_lpa", tlpa)
+        meta.setdefault("career_ai_version", CAREER_AI_VERSION)
+        data["meta"] = meta
+
+        # Ensure month_cycle is carried
+        if not data.get("month_cycle"):
+            data["month_cycle"] = month_cycle
+
+        clean = _light_validate_dualtrack_month(data)
+        used_live_ai = True
+        return (clean, used_live_ai) if return_source else clean
+
+    except Exception as e:
+        # Very defensive fallback: 4 weeks, simple but valid
+        fallback_weeks = []
+        for wn in range(1, 5):
+            daily_tasks = []
+            for day in range(1, 8):
+                daily_tasks.append(
+                    {
+                        "day": day,
+                        "title": f"Day {day}: 10-minute progress touch",
+                        "detail": "Do a tiny step: read 1 page of notes, fix 1 bug, or write 3 lines in README. Keep the streak alive.",
+                        "category": "planning" if day == 1 else "skills",
+                        "estimated_minutes": 10,
+                        "difficulty": "easy",
+                        "tags": ["streak"],
+                        "phase_label": "",
+                        "week_index": wn,
+                        "project_label": "",
+                        "milestone_title": "",
+                        "milestone_step": "",
+                    }
+                )
+
+            weekly_task = {
+                "title": f"Week {wn}: Ship a small deliverable",
+                "detail": "Pick one project/skill focus and ship something tangible: a feature, a demo, a README update with screenshots, or a short write-up.",
+                "category": "projects",
+                "estimated_minutes": 240,
+                "milestone_badge": f"Week {wn} Master",
+                "phase_label": "",
+                "week_index": wn,
+                "project_label": "",
+                "milestone_title": "",
+                "milestone_step": "",
+                "deliverable": "Small shipped artifact + README proof",
+            }
+
+            fallback_weeks.append(
+                {
+                    "week_number": wn,
+                    "week_note": f"Week {wn}: keep momentum and ship proof.",
+                    "daily_tasks": daily_tasks,
+                    "weekly_task": weekly_task,
+                }
+            )
+
+        fallback = {
+            "month_cycle": month_cycle,
+            "ai_note": (
+                "We couldn’t generate a personalized month plan right now. "
+                "Use this fallback plan: keep a daily 10-minute streak and ship one concrete deliverable each week."
+            ),
+            "weeks": fallback_weeks,
+            "meta": {
+                "generated_at_utc": _utc_now_iso(),
+                "inputs_digest": _inputs_digest(
+                    {"error": str(e), "path_type": pt, "target_lpa": tlpa, "month_cycle": month_cycle}
+                ),
+                "path_type": pt,
+                "target_lpa": tlpa,
+                "career_ai_version": CAREER_AI_VERSION,
+            },
+        }
+
+        clean = _light_validate_dualtrack_month(fallback)
+        used_live_ai = False
+        return (clean, used_live_ai) if return_source else clean
 
 
 def generate_daily_coach_plan(

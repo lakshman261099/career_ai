@@ -7,6 +7,11 @@
 {% set week_label = week_label|default('Week 1', true) %}
 {% set session_scope_label = session_scope_label|default('This week', true) %}
 
+{# ✅ Upgrade: ensure session_id is always available #}
+{% if session and session.id %}
+  {% set session_id = session.id %}
+{% endif %}
+
 <section class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-6 text-white">
 
   <!-- HEADER -->
@@ -53,7 +58,8 @@
           <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/20">
             <i data-lucide="flame" class="w-3.5 h-3.5"></i>
             <span>Streak:</span>
-            <span class="font-semibold">{{ streak_count }} week{{ '' if streak_count == 1 else 's' }}</span>
+            {# ✅ Upgrade: streak_count is day-based in your backend #}
+            <span class="font-semibold">{{ streak_count }} day{{ '' if streak_count == 1 else 's' }}</span>
           </div>
         {% endif %}
         {% if session_date %}
@@ -409,7 +415,7 @@
           </span>
         </div>
         <p class="text-white/55">
-          Finish this week, then come back to Weekly Coach to unlock your next focus pack.
+          Click a task to toggle it complete. Progress updates instantly.
         </p>
       </div>
 
@@ -426,108 +432,118 @@
         </div>
       </div>
 
-      <form method="POST" action="{{ url_for('coach.update_session', session_id=session_id) }}">
-        <input type="hidden" name="session_id" value="{{ session_id }}">
+      <ul class="mt-4 space-y-3">
+        {% for t in tasks %}
+          {# ✅ Upgrade: dual-track tasks use estimated_time_minutes; fallback to estimated_minutes #}
+          {% set est = (t.estimated_time_minutes if t.estimated_time_minutes is not none else (t.estimated_minutes if t.estimated_minutes is not none else None)) %}
+          <li class="flex items-start gap-3 text-sm sm:text-base">
+            <div class="w-full">
+              <form method="POST" action="{{ url_for('coach.complete_task', task_id=t.id) }}">
+                <div class="flex items-start gap-3">
+                  <button
+                    type="submit"
+                    class="mt-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-all
+                           {% if t.is_done %}
+                           bg-emerald-500 border-emerald-500
+                           {% else %}
+                           border-white/30 hover:border-white/50
+                           {% endif %}"
+                    aria-label="Toggle task complete"
+                  >
+                    {% if t.is_done %}
+                      <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
+                    {% endif %}
+                  </button>
 
-        <ul class="mt-4 space-y-3">
-          {% for t in tasks %}
-            {% set est = t.suggested_minutes if t.suggested_minutes is not none else None %}
-            <li class="flex items-start gap-3 text-sm sm:text-base">
-              <label class="flex items-start gap-3 w-full cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="task_{{ t.id }}"
-                  value="done"
-                  class="mt-1 w-4 h-4 rounded border-white/30 bg-black/40"
-                  {% if t.is_done %}checked{% endif %}
-                >
-                <div class="flex-1 space-y-1.5">
-                  <div class="flex items-center justify-between gap-2">
-                    <p class="leading-snug {% if t.is_done %}line-through text-white/60{% else %}text-white/90{% endif %}">
-                      {{ t.title }}
-                    </p>
-                    <div class="flex items-center gap-1 flex-wrap justify-end">
-                      {% if est %}
-                        <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 border border-emerald-300/60 text-emerald-100 inline-flex items-center gap-1">
-                          <i data-lucide="clock-3" class="w-3 h-3"></i>
-                          <span>{{ est }} min</span>
-                        </span>
-                      {% endif %}
-                      {% if t.category %}
-                        <span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 border border-white/20">
-                          {{ t.category }}
-                        </span>
-                      {% endif %}
+                  <div class="flex-1 space-y-1.5">
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="leading-snug {% if t.is_done %}line-through text-white/60{% else %}text-white/90{% endif %}">
+                        {{ t.title }}
+                        {% if t.task_type %}
+                          <span class="ml-2 text-[10px] uppercase tracking-[0.16em] text-white/50">
+                            · {{ t.task_type }}
+                          </span>
+                        {% endif %}
+                      </p>
+                      <div class="flex items-center gap-1 flex-wrap justify-end">
+                        {% if est %}
+                          <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 border border-emerald-300/60 text-emerald-100 inline-flex items-center gap-1">
+                            <i data-lucide="clock-3" class="w-3 h-3"></i>
+                            <span>{{ est }} min</span>
+                          </span>
+                        {% endif %}
+                        {% if t.category %}
+                          <span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 border border-white/20">
+                            {{ t.category }}
+                          </span>
+                        {% endif %}
+                        {% if t.target_lpa_level %}
+                          <span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 border border-white/20">
+                            {{ t.target_lpa_level }} LPA
+                          </span>
+                        {% endif %}
+                      </div>
                     </div>
+
+                    {% if t.detail %}
+                      <p class="text-[11px] sm:text-xs text-white/70 leading-snug">
+                        {{ t.detail }}
+                      </p>
+                    {% endif %}
+
+                    {% if t.milestone_title or t.milestone_step %}
+                      <p class="mt-1 text-[11px] sm:text-xs text-emerald-200/85 flex items-center gap-1.5">
+                        <i data-lucide="flag" class="w-3.5 h-3.5"></i>
+                        <span>
+                          {% if t.milestone_title %}
+                            <span class="font-semibold">{{ t.milestone_title }}</span>
+                          {% endif %}
+                          {% if t.milestone_step %}
+                            {% if t.milestone_title %} · {% endif %}
+                            <span>{{ t.milestone_step }}</span>
+                          {% endif %}
+                        </span>
+                      </p>
+                    {% endif %}
+
+                    {% if t.guide %}
+                      <div class="mt-1 p-2 rounded-lg bg-white/5 border border-white/10 text-[11px] sm:text-xs text-white/70">
+                        {{ t.guide }}
+                      </div>
+                    {% endif %}
+
+                    {% if t.tags %}
+                      <div class="mt-1 flex flex-wrap gap-1.5">
+                        {% for tag in t.tags %}
+                          <span class="px-2 py-0.5 rounded-full bg-black/40 border border-white/15 text-[10px] text-white/75">
+                            {{ tag }}
+                          </span>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
                   </div>
-
-                  {% if t.detail %}
-                    <p class="text-[11px] sm:text-xs text-white/70 leading-snug">
-                      {{ t.detail }}
-                    </p>
-                  {% endif %}
-
-                  {% if t.milestone_title or t.milestone_step %}
-                    <p class="mt-1 text-[11px] sm:text-xs text-emerald-200/85 flex items-center gap-1.5">
-                      <i data-lucide="flag" class="w-3.5 h-3.5"></i>
-                      <span>
-                        {% if t.milestone_title %}
-                          <span class="font-semibold">{{ t.milestone_title }}</span>
-                        {% endif %}
-                        {% if t.milestone_step %}
-                          {% if t.milestone_title %} · {% endif %}
-                          <span>{{ t.milestone_step }}</span>
-                        {% endif %}
-                      </span>
-                    </p>
-                  {% endif %}
-
-                  {% if t.guide %}
-                    <div class="mt-1 p-2 rounded-lg bg-white/5 border border-white/10 text-[11px] sm:text-xs text-white/70">
-                      {{ t.guide }}
-                    </div>
-                  {% endif %}
-
-                  {% if t.tags %}
-                    <div class="mt-1 flex flex-wrap gap-1.5">
-                      {% for tag in t.tags %}
-                        <span class="px-2 py-0.5 rounded-full bg-black/40 border border-white/15 text-[10px] text-white/75">
-                          {{ tag }}
-                        </span>
-                      {% endfor %}
-                    </div>
-                  {% endif %}
                 </div>
-              </label>
-            </li>
-          {% endfor %}
-        </ul>
+              </form>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
 
-        <div class="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <p class="text-white/65">
-            Check off what you actually completed this week. Even if you only move 2–3 tasks forward,
-            you’ve moved your whole roadmap forward — that’s what matters.
-          </p>
-          <div class="flex flex-wrap gap-2 justify-end">
-            <button
-              type="submit"
-              class="inline-flex items-center justify-center gap-1 px-4 py-2 rounded-full border border-white/25 bg-white/5 hover:bg-white/10"
-            >
-              <i data-lucide="save" class="w-4 h-4"></i>
-              <span>Save progress</span>
-            </button>
-            <button
-              type="submit"
-              name="mark_done"
-              value="1"
-              class="btn-primary inline-flex items-center justify-center gap-1 px-4 py-2"
-            >
-              <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-              <span>Save & mark week done</span>
-            </button>
-          </div>
+      <div class="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <p class="text-white/65">
+          Check off what you actually completed this week. Even if you only move 2–3 tasks forward,
+          you’ve moved your whole roadmap forward — that’s what matters.
+        </p>
+        <div class="flex flex-wrap gap-2 justify-end">
+          <a
+            href="{{ url_for('coach.index', path_type=path_type) }}"
+            class="inline-flex items-center justify-center gap-1 px-4 py-2 rounded-full border border-white/25 bg-white/5 hover:bg-white/10"
+          >
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            <span>Back to Coach</span>
+          </a>
         </div>
-      </form>
+      </div>
     </section>
 
     <!-- FOCUS TIMER -->
@@ -642,30 +658,30 @@
         <span>Quick reflection</span>
       </h2>
       <p class="text-xs text-white/70">
-        Spend 1–2 minutes writing what went well and what felt hard. This helps the coach adapt
-        future weeks and helps <span class="font-semibold">you</span> notice your own patterns.
+        Spend 1–2 minutes writing what went well and what felt hard. This helps you notice patterns.
+        (Saved locally in your browser for now.)
       </p>
 
-      <form method="POST" action="{{ url_for('coach.reflect', session_id=session_id) }}">
-        <input type="hidden" name="session_id" value="{{ session_id }}">
+      <div>
         <textarea
-          name="reflection"
+          id="coachReflection"
           rows="3"
           class="w-full mt-2 rounded-xl bg-black/40 border border-white/20 text-xs p-3 focus:outline-none focus:ring-1 focus:ring-emerald-400"
           placeholder="Example: Finished SQL tasks, but interview questions felt hard. Need more time for mock interviews."
         >{{ reflection or '' }}</textarea>
 
         <div class="mt-3 flex items-center justify-between gap-3 text-[11px] text-white/60">
-          <span>Reflections will help future versions of Weekly Coach adapt your tasks and suggestions.</span>
+          <span>Your note stays on this device unless you clear site data.</span>
           <button
-            type="submit"
+            id="saveReflectionBtn"
+            type="button"
             class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/25 bg-white/5 hover:bg-white/10"
           >
             <i data-lucide="pen" class="w-3.5 h-3.5"></i>
             <span>Save note</span>
           </button>
         </div>
-      </form>
+      </div>
     </section>
 
     <!-- NAV + NEXT WEEK CTA -->
@@ -679,7 +695,7 @@
           <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
           <span>Dream Planner</span>
         </a>
-        {% if feature_paths is defined and feature_paths.skillmapper %}
+        {% if feature_paths is defined and feature_paths and feature_paths.skillmapper %}
           <a href="{{ feature_paths.skillmapper }}" class="inline-flex items-center gap-1 underline hover:text-white">
             <i data-lucide="route" class="w-3.5 h-3.5"></i>
             <span>Skill Mapper</span>
@@ -834,6 +850,34 @@
     focusMinutesInput.addEventListener('change', () => {
       if (!isRunning) initFromInputs();
     });
+
+    // ✅ Upgrade: Reflection saved locally (no missing backend route)
+    const reflectionEl = document.getElementById('coachReflection');
+    const saveBtn = document.getElementById('saveReflectionBtn');
+    const key = "coach_reflection_session_{{ session_id or 0 }}";
+
+    if (reflectionEl) {
+      try {
+        const existing = localStorage.getItem(key);
+        if (existing && (!reflectionEl.value || reflectionEl.value.trim() === "")) {
+          reflectionEl.value = existing;
+        }
+      } catch (e) {}
+    }
+
+    if (saveBtn && reflectionEl) {
+      saveBtn.addEventListener('click', () => {
+        try {
+          localStorage.setItem(key, reflectionEl.value || "");
+          saveBtn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i><span>Saved</span>';
+          if (window.lucide) window.lucide.createIcons();
+          setTimeout(() => {
+            saveBtn.innerHTML = '<i data-lucide="pen" class="w-3.5 h-3.5"></i><span>Save note</span>';
+            if (window.lucide) window.lucide.createIcons();
+          }, 1200);
+        } catch (e) {}
+      });
+    }
   });
 </script>
 {% endblock %}

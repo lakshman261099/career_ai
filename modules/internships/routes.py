@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import uuid
 
 from flask import (
     Blueprint,
@@ -18,7 +19,7 @@ from modules.common.ai import generate_internship_analysis  # AI-only
 from modules.auth.guards import require_verified_email
 
 # Phase 4: central credits engine
-from modules.credits.engine import can_afford, deduct_free, deduct_pro
+from modules.credits.engine import can_afford, deduct_free, deduct_pro, refund
 
 # DB + models
 from models import db, InternshipRecord
@@ -59,15 +60,18 @@ def analyse():
     """
     Run Internship Analyzer (Free or Pro).
 
+    CREDIT FLOW (FIXED):
+    1. Check credits BEFORE AI
+    2. Deduct credits BEFORE AI (reserve them)
+    3. Run AI
+    4. On failure → refund credits
+    5. On success → keep credits (already deducted)
+
     Free mode:
-      - Uses Silver 🪙 via central credits engine:
-        - can_afford(current_user, FEATURE_KEY, "silver")
-        - deduct_free(...) AFTER successful AI call.
+      - Uses Silver 🪙 via central credits engine
     Pro mode:
-      - Requires active Pro ⭐ plan.
-      - Uses Gold ⭐ per run:
-        - can_afford(current_user, FEATURE_KEY, "gold")
-        - deduct_pro(...) AFTER successful AI call.
+      - Requires active Pro ⭐ plan
+      - Uses Gold ⭐ per run
     """
     text = (request.form.get("text") or "").strip()
     mode = (request.form.get("mode") or "free").lower()
@@ -81,6 +85,9 @@ def analyse():
     used_live_ai = False
     data = None
 
+    # Generate unique run ID for credit tracking
+    run_id = f"intern_{current_user.id}_{uuid.uuid4().hex[:8]}"
+
     try:
         if is_pro_run:
             # ------------------ Pro mode: Pro plan + Gold ⭐ credits ------------------
@@ -91,7 +98,7 @@ def analyse():
                 )
                 return redirect(url_for("billing.index"))
 
-            # Gold credit check BEFORE AI
+            # ✅ STEP 1: Check Gold credits BEFORE AI
             if not can_afford(current_user, FEATURE_KEY, currency="gold"):
                 flash(
                     "Not enough Gold ⭐ credits. Add more in the Coins Shop or "
@@ -100,50 +107,69 @@ def analyse():
                 )
                 return redirect(url_for("billing.index"))
 
-            # Try to pull Profile Portal into the prompt (best-effort)
-            profile_dict = {}
+            # ✅ STEP 2: Deduct Gold ⭐ BEFORE AI call (reserve credits)
             try:
-                profile = getattr(current_user, "profile", None)
-                if profile and hasattr(profile, "to_dict"):
-                    profile_dict = profile.to_dict()
+                if not deduct_pro(current_user, FEATURE_KEY, run_id=run_id):
+                    flash(
+                        "We couldn't deduct your Gold ⭐ credits right now. Please try again.",
+                        "danger",
+                    )
+                    return redirect(url_for("internships.index"))
             except Exception as e:
-                current_app.logger.warning(
-                    "Internship Analyzer: profile.to_dict() failed: %s", e
+                current_app.logger.exception("Internship Pro: deduct_pro failed before AI: %s", e)
+                flash(
+                    "We couldn't process your credits right now. Please try again.",
+                    "danger",
                 )
-                profile_dict = {}
+                return redirect(url_for("internships.index"))
 
-            data, used_live_ai = generate_internship_analysis(
-                pro_mode=True,
-                internship_text=text,
-                profile_json=profile_dict,
-                return_source=True,
-            )
-
-            # Deduct Gold ⭐ AFTER successful AI call
+            # ✅ STEP 3: Run AI (credits already deducted)
             try:
-                if not deduct_pro(current_user, FEATURE_KEY, run_id=None):
+                # Try to pull Profile Portal into the prompt (best-effort)
+                profile_dict = {}
+                try:
+                    profile = getattr(current_user, "profile", None)
+                    if profile and hasattr(profile, "to_dict"):
+                        profile_dict = profile.to_dict()
+                except Exception as e:
                     current_app.logger.warning(
-                        "Internship Analyzer Pro: deduct_pro failed after analysis "
-                        "for user %s",
-                        current_user.id,
+                        "Internship Analyzer: profile.to_dict() failed: %s", e
+                    )
+                    profile_dict = {}
+
+                data, used_live_ai = generate_internship_analysis(
+                    pro_mode=True,
+                    internship_text=text,
+                    profile_json=profile_dict,
+                    return_source=True,
+                )
+            except Exception as ai_error:
+                # ✅ STEP 4: AI failed → refund credits
+                current_app.logger.exception("Internship Pro: AI call failed: %s", ai_error)
+                try:
+                    refund(
+                        current_user,
+                        feature=FEATURE_KEY,
+                        currency="gold",
+                        amount=None,  # Will use feature cost from config
+                        run_id=run_id,
+                        commit=True,
                     )
                     flash(
-                        "Your Pro analysis completed, but your Gold ⭐ credits could not "
-                        "be updated correctly. Please contact support if this keeps happening.",
-                        "warning",
+                        "Analysis failed. Your Gold ⭐ credits were refunded. Please try again.",
+                        "danger",
                     )
-            except Exception as e:
-                current_app.logger.exception(
-                    "Internship Analyzer Pro credit deduction error: %s", e
-                )
-                flash(
-                    "Your Pro analysis completed, but we had trouble updating your "
-                    "Gold ⭐ credits. Please contact support if this keeps happening.",
-                    "warning",
-                )
+                except Exception as refund_error:
+                    current_app.logger.exception("Internship Pro: refund failed: %s", refund_error)
+                    flash(
+                        "Analysis failed. Please contact support if credits were deducted.",
+                        "danger",
+                    )
+                return redirect(url_for("internships.index"))
 
         else:
             # ------------------ Free mode: Silver 🪙 credits ------------------
+            # ✅ STEP 1: Check Silver credits BEFORE AI
             if not can_afford(current_user, FEATURE_KEY, currency="silver"):
                 flash(
                     "Not enough Silver 🪙 credits. Upgrade to Pro ⭐ for deeper, "
@@ -152,26 +178,54 @@ def analyse():
                 )
                 return redirect(url_for("billing.index"))
 
-            data, used_live_ai = generate_internship_analysis(
-                pro_mode=False,
-                internship_text=text,
-                return_source=True,
-            )
-
-            # Deduct Silver 🪙 only AFTER successful AI call
+            # ✅ STEP 2: Deduct Silver 🪙 BEFORE AI call (reserve credits)
             try:
-                if not deduct_free(current_user, FEATURE_KEY, run_id=None):
-                    current_app.logger.warning(
-                        "Internship Analyzer: deduct_free failed after analysis "
-                        "for user %s",
-                        current_user.id,
+                if not deduct_free(current_user, FEATURE_KEY, run_id=run_id):
+                    flash(
+                        "We couldn't deduct your Silver 🪙 credits right now. Please try again.",
+                        "danger",
                     )
+                    return redirect(url_for("internships.index"))
             except Exception as e:
-                current_app.logger.exception(
-                    "Internship Analyzer credit deduction error: %s", e
+                current_app.logger.exception("Internship Free: deduct_free failed before AI: %s", e)
+                flash(
+                    "We couldn't process your credits right now. Please try again.",
+                    "danger",
                 )
-                # User still gets result; credits may not have updated.
+                return redirect(url_for("internships.index"))
 
+            # ✅ STEP 3: Run AI (credits already deducted)
+            try:
+                data, used_live_ai = generate_internship_analysis(
+                    pro_mode=False,
+                    internship_text=text,
+                    return_source=True,
+                )
+            except Exception as ai_error:
+                # ✅ STEP 4: AI failed → refund credits
+                current_app.logger.exception("Internship Free: AI call failed: %s", ai_error)
+                try:
+                    refund(
+                        current_user,
+                        feature=FEATURE_KEY,
+                        currency="silver",
+                        amount=None,  # Will use feature cost from config
+                        run_id=run_id,
+                        commit=True,
+                    )
+                    flash(
+                        "Analysis failed. Your Silver 🪙 credits were refunded. Please try again.",
+                        "danger",
+                    )
+                except Exception as refund_error:
+                    current_app.logger.exception("Internship Free: refund failed: %s", refund_error)
+                    flash(
+                        "Analysis failed. Please contact support if credits were deducted.",
+                        "danger",
+                    )
+                return redirect(url_for("internships.index"))
+
+        # ✅ STEP 5: Success! Credits already deducted, just show results
         # AI data should follow INTERNSHIP_ANALYZER_JSON_SCHEMA, but we guard for safety
         if not isinstance(data, dict):
             data = {}
@@ -218,15 +272,31 @@ def analyse():
         )
 
     except Exception as e:
-        current_app.logger.exception("Internship analysis error: %s", e)
+        # ⚠️ Unexpected error → refund if we deducted
+        current_app.logger.exception("Internship analysis unexpected error: %s", e)
+        
+        # Try to refund (best effort)
+        try:
+            refund(
+                current_user,
+                feature=FEATURE_KEY,
+                currency="gold" if is_pro_run else "silver",
+                amount=None,
+                run_id=run_id,
+                commit=True,
+            )
+        except Exception:
+            pass
+        
         try:
             db.session.rollback()
         except Exception:
             pass
+        
         # Schema-friendly error payload for template stability
         err_payload = {
             "mode": "pro" if is_pro_run else "free",
-            "summary": "We couldn’t analyze that input. Try a simpler internship description.",
+            "summary": "We couldn't analyze that input. Try a simpler internship description.",
             "skill_growth": [],
             "skill_enhancement": [],
             "career_impact": "",
@@ -234,6 +304,12 @@ def analyse():
             "resume_boost": [],
             "meta": {"generated_at_utc": "", "inputs_digest": "sha256:error"},
         }
+        
+        flash(
+            "Analysis failed. If credits were deducted, they have been refunded. Please try again.",
+            "danger"
+        )
+        
         return render_template(
             "internships/index.html",
             result=err_payload,

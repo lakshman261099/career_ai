@@ -31,6 +31,15 @@ class University(db.Model):
         passive_deletes=True,
     )
 
+    # NEW: One-to-one with UniversityWallet
+    wallet = db.relationship(
+        "UniversityWallet",
+        backref="university",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     # Admin / B2B relationships
     deals = db.relationship(
         "UniversityDeal",
@@ -52,6 +61,161 @@ class University(db.Model):
 
 
 # ---------------------------------------------------------------------
+# NEW: University Wallet (One per University)
+# ---------------------------------------------------------------------
+class UniversityWallet(db.Model):
+    """
+    Centralized credit wallet for each university.
+    All students under a university consume from this shared pool.
+
+    Features:
+    - Annual credit cap (resets yearly)
+    - Separate Silver (free features) and Gold (pro features) balances
+    - Tracks renewal date for automatic yearly top-ups
+    """
+    __tablename__ = "university_wallet"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # One-to-one with University
+    university_id = db.Column(
+        db.Integer,
+        db.ForeignKey("university.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    # Current balances
+    silver_balance = db.Column(db.Integer, default=0, nullable=False)
+    gold_balance = db.Column(db.Integer, default=0, nullable=False)
+
+    # Annual caps (for yearly renewal model)
+    silver_annual_cap = db.Column(db.Integer, nullable=True)
+    gold_annual_cap = db.Column(db.Integer, nullable=True)
+
+    # Renewal tracking
+    renewal_date = db.Column(db.Date, nullable=True)
+    last_renewed_at = db.Column(db.DateTime, nullable=True)
+
+    # Metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    def __repr__(self):
+        return f"<UniversityWallet uni={self.university_id} silver={self.silver_balance} gold={self.gold_balance}>"
+
+    @property
+    def is_renewable(self) -> bool:
+        """Check if wallet is due for renewal"""
+        if not self.renewal_date:
+            return False
+        return date.today() >= self.renewal_date
+
+    def renew_if_due(self) -> bool:
+        """
+        Renew credits if renewal_date has passed.
+        Returns True if renewal happened.
+        """
+        if not self.is_renewable:
+            return False
+
+        # Reset to annual caps
+        if self.silver_annual_cap is not None:
+            self.silver_balance = self.silver_annual_cap
+        if self.gold_annual_cap is not None:
+            self.gold_balance = self.gold_annual_cap
+
+        # Update renewal tracking
+        from dateutil.relativedelta import relativedelta
+        self.last_renewed_at = datetime.utcnow()
+        self.renewal_date = date.today() + relativedelta(years=1)
+
+        return True
+
+
+# ---------------------------------------------------------------------
+# NEW: Credit Transaction (Audit Trail)
+# ---------------------------------------------------------------------
+class CreditTransaction(db.Model):
+    """
+    Immutable ledger for all credit movements.
+    Tracks every debit, refund, top-up, and bonus.
+
+    Supports both:
+    - Personal wallets (user.coins_free / user.coins_pro)
+    - University wallets (UniversityWallet)
+    """
+    __tablename__ = "credit_transaction"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Who triggered this transaction
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Optional: university context (if university-managed user)
+    university_id = db.Column(
+        db.Integer,
+        db.ForeignKey("university.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Transaction details
+    feature = db.Column(db.String(64), nullable=False, index=True)
+    currency = db.Column(db.String(16), nullable=False)  # "silver" or "gold"
+    amount = db.Column(db.Integer, nullable=False)  # Always positive
+
+    # Type of transaction
+    tx_type = db.Column(
+        db.String(32), nullable=False, index=True
+    )  # "debit", "credit", "refund", "bonus", "renewal"
+
+    # Wallet type (for routing logic)
+    wallet_type = db.Column(
+        db.String(32), nullable=False, default="personal"
+    )  # "personal" or "university"
+
+    # Balance tracking (snapshot at time of transaction)
+    before_balance = db.Column(db.Integer, nullable=False, default=0)
+    after_balance = db.Column(db.Integer, nullable=False, default=0)
+
+    # Context
+    run_id = db.Column(db.String(128), nullable=True, index=True)
+    status = db.Column(
+        db.String(32), default="completed", nullable=False
+    )  # "completed", "pending", "failed"
+
+    # Flexible metadata (JSON)
+    meta_json = db.Column(db.JSON, nullable=True, default=dict)
+
+    # Timestamp
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    # Relationships
+    user = db.relationship(
+        "User",
+        backref=db.backref("credit_transactions", lazy=True, cascade="all, delete-orphan"),
+    )
+
+    def __repr__(self):
+        return (
+            f"<CreditTransaction {self.id} user={self.user_id} "
+            f"{self.tx_type} {self.currency}={self.amount}>"
+        )
+
+
+# ---------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------
 class User(UserMixin, db.Model):
@@ -63,7 +227,15 @@ class User(UserMixin, db.Model):
 
     # Auth
     password_hash = db.Column(db.String(255), nullable=False)
+
+    # ✅ Keep legacy field
     verified = db.Column(db.Boolean, default=False, nullable=False)
+
+    # ✅ NEW: email_verified (used by coach/routes.py helper, backward compatible)
+    email_verified = db.Column(db.Boolean, default=False, nullable=False)
+
+    # ✅ NEW: timezone (used by coach/routes.py _app_day)
+    timezone = db.Column(db.String(64), nullable=True)
 
     # Role / permissions
     # "student" | "university_admin" | "super_admin" | "ultra_admin"
@@ -78,9 +250,24 @@ class User(UserMixin, db.Model):
     pro_since = db.Column(db.DateTime, nullable=True)
     pro_cancel_at = db.Column(db.DateTime, nullable=True)
 
-    # Credits
+    # Credits (Personal wallet for B2C users)
     coins_free = db.Column(db.Integer, default=10, nullable=False)  # Silver 🪙
     coins_pro = db.Column(db.Integer, default=0, nullable=False)  # Gold ⭐
+
+    # ✅ NEW: Streak tracking
+    current_streak = db.Column(db.Integer, default=0, nullable=False)
+    longest_streak = db.Column(db.Integer, default=0, nullable=False)
+    last_daily_task_date = db.Column(db.Date, nullable=True)
+
+    # ✅ NEW: Streak freeze system (1 per week)
+    streak_freezes_remaining = db.Column(db.Integer, default=1, nullable=False)
+    last_freeze_reset_date = db.Column(db.Date, nullable=True)
+
+    # ✅ NEW: Ready Score (for university admin dashboard)
+    ready_score = db.Column(db.Integer, default=0, nullable=False)
+
+    # ✅ NEW: Weekly milestones completed
+    weekly_milestones_completed = db.Column(db.Integer, default=0, nullable=False)
 
     # Tenancy
     university_id = db.Column(
@@ -126,6 +313,14 @@ class User(UserMixin, db.Model):
     def is_admin(self) -> bool:
         # Includes ultra_admin via is_super_admin
         return self.is_super_admin or self.is_university_admin
+
+    @property
+    def is_university_managed(self) -> bool:
+        """
+        NEW: Check if this user belongs to a university.
+        If True, credits will be deducted from UniversityWallet instead of personal wallet.
+        """
+        return self.university_id is not None
 
     def __repr__(self):
         return f"<User {self.id} {self.email}>"
@@ -555,6 +750,7 @@ class DreamPlanSnapshot(db.Model):
             f"{self.path_type} created={self.created_at}>"
         )
 
+
 # ---------------------------------------------------------------------
 # Daily Action Coach — sessions & tasks (upgraded for P3 project system)
 # ---------------------------------------------------------------------
@@ -568,6 +764,33 @@ class DailyCoachSession(db.Model):
         db.ForeignKey("user.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
+    )
+
+    # ✅ NEW: Monthly cycle tracking
+    month_cycle_id = db.Column(
+        db.String(50),
+        nullable=True,
+        index=True,
+        comment="Format: 'user_{user_id}_path_{path_type}_month_{YYYY_MM}'"
+    )
+
+    # ✅ NEW: LPA target for this session
+    target_lpa = db.Column(
+        db.String(20),
+        nullable=True,
+        comment="Target salary from Dream Planner (12, 24, 48 LPA)"
+    )
+
+    # ✅ NEW: Weekly completion tracking
+    daily_tasks_completed = db.Column(db.Integer, default=0, nullable=False)
+    weekly_task_completed = db.Column(db.Boolean, default=False, nullable=False)
+
+    # ✅ NEW: Progress percentage for UI
+    progress_percent = db.Column(
+        db.Integer,
+        default=0,
+        nullable=False,
+        comment="0-100, calculated from daily + weekly completion"
     )
 
     # "job" or "startup"
@@ -600,6 +823,27 @@ class DailyCoachSession(db.Model):
         "User",
         backref=db.backref(
             "daily_coach_sessions", lazy=True, cascade="all, delete-orphan"
+        ),
+    )
+
+    # ✅ Upgrade-only: constraints/indexes (safe)
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "month_cycle_id",
+            "day_index",
+            name="uq_daily_coach_session_user_month_week",
+        ),
+        Index(
+            "ix_daily_coach_session_user_month",
+            "user_id",
+            "month_cycle_id",
+        ),
+        Index(
+            "ix_daily_coach_session_user_path_date",
+            "user_id",
+            "path_type",
+            "session_date",
         ),
     )
 
@@ -659,6 +903,52 @@ class DailyCoachTask(db.Model):
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
 
+    # ✅ NEW: Dual-track fields
+    task_type = db.Column(
+        db.String(20),
+        default='daily',
+        nullable=False,
+        index=True,
+        comment="'daily' (maintenance) or 'weekly' (momentum)"
+    )
+
+    week_number = db.Column(
+        db.Integer,
+        nullable=True,
+        comment="1-4 for the current month cycle"
+    )
+
+    day_number = db.Column(
+        db.Integer,
+        nullable=True,
+        comment="1-28 for daily tasks, NULL for weekly tasks"
+    )
+
+    # ✅ NEW: Time estimation (for UI/UX)
+    estimated_time_minutes = db.Column(
+        db.Integer,
+        default=10,
+        nullable=False,
+        comment="5-15 for daily, 180-300 for weekly"
+    )
+
+    # ✅ NEW: LPA alignment
+    target_lpa_level = db.Column(
+        db.String(20),
+        nullable=True,
+        comment="'12', '24', '48' - aligns task difficulty with target salary"
+    )
+
+    # ✅ NEW: Completion timestamp (for streak calculation)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    # ✅ NEW: Badge/milestone for weekly tasks
+    milestone_badge = db.Column(
+        db.String(100),
+        nullable=True,
+        comment="Badge name for completing weekly task (e.g. 'Backend Basics')"
+    )
+
     session = db.relationship(
         "DailyCoachSession",
         backref=db.backref(
@@ -669,6 +959,13 @@ class DailyCoachTask(db.Model):
         ),
     )
 
+    # ✅ Upgrade-only: indexes to match your coach/routes queries
+    __table_args__ = (
+        Index("ix_daily_coach_task_session_type", "session_id", "task_type"),
+        Index("ix_daily_coach_task_session_type_day", "session_id", "task_type", "day_number"),
+        Index("ix_daily_coach_task_session_week", "session_id", "week_number"),
+    )
+
     def __repr__(self):
         return f"<DailyCoachTask {self.id} s={self.session_id} done={self.is_done}>"
 
@@ -676,7 +973,6 @@ class DailyCoachTask(db.Model):
 # ---------------------------------------------------------------------
 # NEW: P3 Project System (Normalised, used by Dream Plan + Weekly Coach)
 # ---------------------------------------------------------------------
-
 class ProjectTemplate(db.Model):
     __tablename__ = "project_templates"
 
@@ -833,62 +1129,6 @@ class SessionProjectLink(db.Model):
 
     def __repr__(self):
         return f"<SessionProjectLink s={self.session_id} p={self.dream_plan_project_id}>"
-
-
-# ---------------------------------------------------------------------
-# Credit Transactions (Phase 4 — logging & transparency)
-# ---------------------------------------------------------------------
-class CreditTransaction(db.Model):
-    __tablename__ = "credit_transaction"
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    user_id = db.Column(
-        db.Integer,
-        db.ForeignKey("user.id", ondelete="CASCADE"),
-        index=True,
-        nullable=False,
-    )
-    university_id = db.Column(
-        db.Integer,
-        db.ForeignKey("university.id", ondelete="SET NULL"),
-        index=True,
-        nullable=True,
-    )
-
-    # e.g. "jobpack_free", "skill_mapper_pro", "admin_add", "pro_initial_minimum"
-    feature = db.Column(db.String(64), nullable=False)
-
-    # positive integer amount
-    amount = db.Column(db.Integer, nullable=False)
-
-    # "silver" | "gold"
-    currency = db.Column(db.String(16), nullable=False)
-
-    # "debit" | "credit" | "refund"
-    tx_type = db.Column(db.String(16), nullable=False)
-
-    # optional link back to a run/report id (stored as text for flexibility)
-    run_id = db.Column(db.String(64), nullable=True)
-
-    before_balance = db.Column(db.Integer, nullable=False)
-    after_balance = db.Column(db.Integer, nullable=False)
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-
-    user = db.relationship(
-        "User",
-        backref=db.backref(
-            "credit_transactions", lazy=True, cascade="all, delete-orphan"
-        ),
-    )
-    university = db.relationship("University")
-
-    def __repr__(self):
-        return (
-            f"<CreditTransaction {self.id} u={self.user_id} "
-            f"{self.currency} {self.tx_type} {self.amount}>"
-        )
 
 
 # ---------------------------------------------------------------------

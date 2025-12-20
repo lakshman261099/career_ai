@@ -20,7 +20,7 @@ from models import PortfolioPage, Project, UserProfile, PortfolioIdeaRun, db
 from modules.common.ai import generate_project_suggestions  # AI entrypoint
 
 # Phase 4: central credits engine
-from modules.credits.engine import can_afford, deduct_free, deduct_pro
+from modules.credits.engine import can_afford, deduct_free, deduct_pro, refund  # ✅ add refund
 
 portfolio_bp = Blueprint(
     "portfolio", __name__, template_folder="../../templates/portfolio"
@@ -433,22 +433,39 @@ def wizard():
                 )
                 return redirect(url_for("billing.index"))
 
-            skills_list = (prof.skills if prof else []) or []
-            ideas, used_live = generate_project_suggestions(
-                trg, ind, lvl, skills_list, False, return_source=True
-            )
-
-            # Deduct Silver 🪙 AFTER successful AI
+            # ✅ Deduct BEFORE AI (hard gate)
+            run_id = f"pf_idea_free_{current_user.id}_{uuid.uuid4().hex[:8]}"
             try:
-                if not deduct_free(current_user, "portfolio_idea_free", run_id=None):
-                    current_app.logger.warning(
-                        "Portfolio wizard free: deduct_free failed for user %s",
-                        current_user.id,
+                if not deduct_free(current_user, "portfolio_idea_free", run_id=run_id):
+                    flash(
+                        "We couldn’t deduct your Silver 🪙 credits right now. Please try again.",
+                        "danger",
                     )
-            except Exception as e:
-                current_app.logger.exception(
-                    "Portfolio wizard free credit deduction error: %s", e
+                    return render_template("portfolio/wizard.html", **ctx)
+            except Exception:
+                current_app.logger.exception("Portfolio wizard free: deduct_free failed.")
+                flash(
+                    "We couldn’t process your credits right now. Please try again.",
+                    "danger",
                 )
+                return render_template("portfolio/wizard.html", **ctx)
+
+            skills_list = (prof.skills if prof else []) or []
+            try:
+                ideas, used_live = generate_project_suggestions(
+                    trg, ind, lvl, skills_list, False, return_source=True
+                )
+            except Exception:
+                current_app.logger.exception("Portfolio wizard free: AI generation failed.")
+                try:
+                    refund(current_user, "portfolio_idea_free", currency="silver", run_id=run_id)
+                except Exception:
+                    current_app.logger.exception("Portfolio wizard free: refund failed after AI error.")
+                flash(
+                    "We couldn’t generate suggestions right now. Your Silver 🪙 credits were refunded.",
+                    "danger",
+                )
+                return render_template("portfolio/wizard.html", **ctx)
 
             # Store run in history
             try:
@@ -473,6 +490,8 @@ def wizard():
                     db.session.rollback()
                 except Exception:
                     pass
+                # ✅ If you consider history persistence required, refund here.
+                # Keeping behavior same: do not block user if history fails.
 
             ctx.update(
                 {
@@ -512,6 +531,23 @@ def wizard():
                     "warning",
                 )
                 return redirect(url_for("billing.index"))
+
+            # ✅ Deduct BEFORE AI (hard gate)
+            run_id = f"pf_idea_pro_{current_user.id}_{uuid.uuid4().hex[:8]}"
+            try:
+                if not deduct_pro(current_user, "portfolio_idea_pro", run_id=run_id):
+                    flash(
+                        "We couldn’t deduct your Gold ⭐ credits right now. Please try again.",
+                        "danger",
+                    )
+                    return render_template("portfolio/wizard.html", **ctx)
+            except Exception:
+                current_app.logger.exception("Portfolio wizard pro: deduct_pro failed.")
+                flash(
+                    "We couldn’t process your credits right now. Please try again.",
+                    "danger",
+                )
+                return render_template("portfolio/wizard.html", **ctx)
 
             # Focus (with 'Other') + time budget + preferred stack
             focus_area = request.form.getlist("focus_area")
@@ -554,27 +590,27 @@ def wizard():
                     },
                 }
 
-            ideas, used_live = generate_project_suggestions(
-                trg,
-                ind,
-                lvl,
-                skills_list,
-                True,
-                return_source=True,
-                profile_json=profile_payload,
-            )
-
-            # Deduct Gold ⭐ AFTER successful AI
             try:
-                if not deduct_pro(current_user, "portfolio_idea_pro", run_id=None):
-                    current_app.logger.warning(
-                        "Portfolio wizard pro: deduct_pro failed for user %s",
-                        current_user.id,
-                    )
-            except Exception as e:
-                current_app.logger.exception(
-                    "Portfolio wizard pro credit deduction error: %s", e
+                ideas, used_live = generate_project_suggestions(
+                    trg,
+                    ind,
+                    lvl,
+                    skills_list,
+                    True,
+                    return_source=True,
+                    profile_json=profile_payload,
                 )
+            except Exception:
+                current_app.logger.exception("Portfolio wizard pro: AI generation failed.")
+                try:
+                    refund(current_user, "portfolio_idea_pro", currency="gold", run_id=run_id)
+                except Exception:
+                    current_app.logger.exception("Portfolio wizard pro: refund failed after AI error.")
+                flash(
+                    "We couldn’t generate Pro suggestions right now. Your Gold ⭐ credits were refunded.",
+                    "danger",
+                )
+                return render_template("portfolio/wizard.html", **ctx)
 
             # Store run in history
             try:
@@ -643,13 +679,39 @@ def publish():
         )
         return redirect(url_for("billing.index"))
 
+    # ✅ Deduct BEFORE doing work (hard gate)
+    run_id = f"pf_publish_{current_user.id}_{uuid.uuid4().hex[:8]}"
+    try:
+        if not deduct_pro(current_user, "portfolio_publish", run_id=run_id):
+            flash(
+                "We couldn’t deduct your Gold ⭐ credits right now. Please try again.",
+                "danger",
+            )
+            return redirect(url_for("portfolio.index"))
+    except Exception:
+        current_app.logger.exception("Portfolio publish: deduct_pro failed.")
+        flash(
+            "We couldn’t process your credits right now. Please try again.",
+            "danger",
+        )
+        return redirect(url_for("portfolio.index"))
+
     prof = _get_profile_safe()
     schema_msg = _preflight_portfolio_schema()
     if schema_msg:
+        # ✅ Refund because we already deducted
+        try:
+            refund(current_user, "portfolio_publish", currency="gold", run_id=run_id)
+        except Exception:
+            current_app.logger.exception("Portfolio publish: refund failed after schema error.")
         flash(schema_msg, "error")
         return redirect(url_for("portfolio.index"))
 
     if not prof:
+        try:
+            refund(current_user, "portfolio_publish", currency="gold", run_id=run_id)
+        except Exception:
+            current_app.logger.exception("Portfolio publish: refund failed after missing profile.")
         flash("Your Profile Portal is empty. Please add your details first.", "warning")
         return redirect(url_for("settings.profile"))
 
@@ -659,6 +721,10 @@ def publish():
     if not (prof.headline or "").strip():
         missing.append("headline")
     if missing:
+        try:
+            refund(current_user, "portfolio_publish", currency="gold", run_id=run_id)
+        except Exception:
+            current_app.logger.exception("Portfolio publish: refund failed after missing fields.")
         flash(
             f"Please complete your Profile Portal before publishing: {', '.join(missing)}.",
             "warning",
@@ -684,6 +750,11 @@ def publish():
         current_app.logger.exception(
             "Render portfolio markdown failed [%s]: %s", err_id, re
         )
+        # ✅ Refund because we already deducted
+        try:
+            refund(current_user, "portfolio_publish", currency="gold", run_id=run_id)
+        except Exception:
+            current_app.logger.exception("Portfolio publish: refund failed after render error.")
         flash(
             f"Publish failed (render-{err_id}). Please check your Profile Portal.",
             "error",
@@ -715,22 +786,7 @@ def publish():
         db.session.flush()
         db.session.commit()
 
-        # Deduct Gold ⭐ AFTER successfully creating the page
-        try:
-            if not deduct_pro(
-                current_user,
-                "portfolio_publish",
-                run_id=page.id if page is not None else None,
-            ):
-                current_app.logger.warning(
-                    "Portfolio publish: deduct_pro failed for user %s", current_user.id
-                )
-        except Exception as e:
-            current_app.logger.exception(
-                "Portfolio publish credit deduction error: %s", e
-            )
-            # Page is already created; user keeps it. Credits may not have updated.
-
+        # ✅ Success: nothing else needed (we already deducted before work)
         flash(
             "Portfolio page published! Share your link from the list below.", "success"
         )
@@ -741,6 +797,13 @@ def publish():
             db.session.rollback()
         except Exception:
             pass
+
+        # ✅ Refund because DB insert failed after deduction
+        try:
+            refund(current_user, "portfolio_publish", currency="gold", run_id=run_id)
+        except Exception:
+            current_app.logger.exception("Portfolio publish: refund failed after DB error.")
+
         db_msg = getattr(getattr(e, "orig", None), "args", None)
         db_msg = db_msg[0] if (isinstance(db_msg, (list, tuple)) and db_msg) else str(e)
         current_app.logger.exception("Publish failed [%s]: %s", err_id, e)
