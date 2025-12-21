@@ -4,6 +4,17 @@
 {% block content %}
 {% set path_type = (path_type or 'job') %}
 
+<style>
+  @keyframes coachStreakPop {
+    0%   { transform: scale(0.95); opacity: 0; }
+    25%  { transform: scale(1.05); opacity: 1; }
+    100% { transform: scale(1.0); opacity: 0; }
+  }
+  .coach-streak-pop {
+    animation: coachStreakPop 0.9s ease-out forwards;
+  }
+</style>
+
 <section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-8 text-white">
 
   <!-- HEADER / HERO -->
@@ -48,7 +59,10 @@
           <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/20">
             <i data-lucide="flame" class="w-3.5 h-3.5"></i>
             <span>Streak:</span>
-            <span class="font-semibold">{{ streak_count }} day{{ '' if streak_count == 1 else 's' }}</span>
+            <span class="font-semibold">
+              <span id="coach-streak-value" data-streak="{{ streak_count }}">{{ streak_count }}</span>
+              day{{ '' if streak_count == 1 else 's' }}
+            </span>
           </div>
         {% endif %}
         <p class="text-[11px] text-white/65">
@@ -92,7 +106,9 @@
             <i data-lucide="flame" class="w-7 h-7 text-orange-400"></i>
           </div>
           <div>
-            <div class="text-2xl font-bold">{{ user_streak }}</div>
+            <div class="text-2xl font-bold" id="coach-streak-main-value" data-streak-main="{{ user_streak }}">
+              {{ user_streak }}
+            </div>
             <div class="text-xs text-white/60">Day Streak 🔥</div>
             <div class="text-[10px] text-white/50">
               Longest: {{ current_user.longest_streak|default(0) }}
@@ -138,124 +154,258 @@
       </div>
     </div>
 
-    <!-- TODAY'S CAREER BITE (Daily Task) -->
-    {% if today_daily_task %}
-    <div class="glass-card rounded-2xl p-6 border border-white/10">
-      <div class="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <h3 class="text-lg font-semibold flex items-center gap-2">
-            <i data-lucide="coffee" class="w-5 h-5 text-amber-400"></i>
-            Today's Career Bite
-          </h3>
-          <p class="text-xs text-white/60 mt-1">5-15 minutes · Builds your streak</p>
-        </div>
-        <div class="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-xs text-amber-300">
-          Daily
-        </div>
-      </div>
+    <!-- BENTO: TODAY'S PAIR + BIG ROCK -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-      <form method="POST" action="{{ url_for('coach.complete_task', task_id=today_daily_task.id) }}" class="space-y-3">
-        <div class="flex items-start gap-3">
-          <button type="submit"
-                  class="mt-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-all
-                         {% if today_daily_task.is_done %}
-                         bg-emerald-500 border-emerald-500
-                         {% else %}
-                         border-white/30 hover:border-white/50
-                         {% endif %}">
-            {% if today_daily_task.is_done %}
-            <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
-            {% endif %}
-          </button>
-          <div class="flex-1">
-            <h4 class="font-medium {% if today_daily_task.is_done %}line-through text-white/50{% endif %}">
-              {{ today_daily_task.title }}
-            </h4>
-            {% if today_daily_task.detail %}
-            <p class="text-sm text-white/70 mt-1">{{ today_daily_task.detail }}</p>
-            {% endif %}
-            <div class="flex items-center gap-3 mt-2 text-xs text-white/50">
-              <span>⏱️ {{ today_daily_task.estimated_time_minutes or 10 }} min</span>
-              {% if today_daily_task.category %}
-              <span>·</span>
-              <span class="capitalize">{{ today_daily_task.category }}</span>
-              {% endif %}
+      {% set daily_tasks = today_daily_tasks if today_daily_tasks is defined and today_daily_tasks else [] %}
+      {% set daily_total = daily_total if daily_total is defined else (daily_tasks | length) %}
+      {% set daily_completed = daily_completed if daily_completed is defined else (daily_tasks | selectattr('is_done') | list | length) %}
+
+      <!-- LEFT / TOP: TODAY'S PAIR (Daily Career Maintenance) -->
+      {% if daily_total > 0 %}
+        <div class="lg:col-span-2">
+          <div class="glass-card rounded-2xl p-6 border border-white/10 h-full flex flex-col">
+            <div class="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h3 class="text-lg font-semibold flex items-center gap-2">
+                  <i data-lucide="coffee" class="w-5 h-5 text-amber-400"></i>
+                  <span>Today’s Pair</span>
+                </h3>
+                <p class="text-xs text-white/60 mt-1">
+                  Up to 2 micro-tasks · 5–15 minutes each · Keeps your streak alive.
+                </p>
+                <p class="text-[11px] text-emerald-200 mt-1">
+                  +1 Ready Score ⭐ per daily task completed.
+                </p>
+              </div>
+
+              <div class="flex flex-col items-end gap-2">
+                <!-- Progress Ring -->
+                <div
+                  id="today-progress-ring"
+                  class="relative w-20 h-20 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/25"
+                  data-total="{{ daily_total or 1 }}"
+                  data-completed="{{ daily_completed or 0 }}"
+                >
+                  <div class="absolute inset-[3px] rounded-full bg-slate-950 flex items-center justify-center border border-white/10">
+                    <div class="text-center leading-tight">
+                      <div class="text-xs font-semibold">
+                        {{ daily_completed }}/{{ daily_total }}
+                      </div>
+                      <div class="text-[10px] text-white/60">
+                        Today
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-xs text-amber-300">
+                  Daily
+                </div>
+              </div>
             </div>
+
+            <div class="space-y-3 mt-auto">
+              {% for task in daily_tasks %}
+                <form
+                  method="POST"
+                  action="{{ url_for('coach.complete_task', task_id=task.id) }}"
+                  class="space-y-2"
+                  data-coach-task-form
+                  data-task-type="daily"
+                  data-is-done="{{ 1 if task.is_done else 0 }}"
+                >
+                  <div class="flex items-start gap-3">
+                    <button
+                      type="submit"
+                      data-coach-task-toggle
+                      class="mt-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-all
+                             {% if task.is_done %}
+                             bg-emerald-500 border-emerald-400 shadow-glow
+                             {% else %}
+                             border-white/40 hover:border-emerald-300
+                             {% endif %}"
+                    >
+                      {% if task.is_done %}
+                      <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
+                      {% endif %}
+                    </button>
+                    <div class="flex-1">
+                      <h4
+                        class="font-medium {% if task.is_done %}line-through text-emerald-200/70{% else %}text-white{% endif %}"
+                        data-coach-task-title
+                      >
+                        {{ task.title }}
+                      </h4>
+                      {% if task.detail %}
+                      <p class="text-sm text-white/70 mt-1">{{ task.detail }}</p>
+                      {% endif %}
+                      <div class="flex items-center flex-wrap gap-2 mt-2 text-[11px] text-white/60">
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/40 border border-white/20">
+                          <i data-lucide="clock-3" class="w-3 h-3"></i>
+                          <span>{{ task.estimated_time_minutes or task.estimated_minutes or 10 }} min</span>
+                        </span>
+                        {% if task.category %}
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 border border-white/20">
+                            <span class="capitalize">{{ task.category }}</span>
+                          </span>
+                        {% endif %}
+                        {% if task.target_lpa_level %}
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 border border-white/20">
+                            {{ task.target_lpa_level }} LPA
+                          </span>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              {% endfor %}
+            </div>
+
+            <p class="mt-3 text-[11px] text-white/55">
+              Tip: If you finish these quickly, open your weekly “Big Rock” and move it forward by at least 10–15 minutes.
+            </p>
           </div>
         </div>
-      </form>
-    </div>
-    {% endif %}
+      {% else %}
+        <!-- Placeholder when no daily task -->
+        <div class="lg:col-span-2">
+          <div class="glass-card rounded-2xl p-6 border border-white/10 h-full flex flex-col justify-center">
+            <h3 class="text-lg font-semibold flex items-center gap-2 mb-2">
+              <i data-lucide="coffee" class="w-5 h-5 text-amber-400"></i>
+              <span>Today’s Pair</span>
+            </h3>
+            <p class="text-sm text-white/65">
+              No specific daily micro-tasks for today. You can still keep momentum by nudging your weekly Big Rock forward.
+            </p>
+          </div>
+        </div>
+      {% endif %}
 
-    <!-- THIS WEEK'S BIG GOAL (Weekly Task) -->
-    {% if current_weekly_task %}
-    <div class="glass-card rounded-2xl p-6 border border-white/10">
-      <div class="flex items-start justify-between gap-4 mb-4">
+      <!-- RIGHT / BOTTOM: THE BIG ROCK (Weekly Professional Momentum) -->
+      {% if current_weekly_task %}
         <div>
-          <h3 class="text-lg font-semibold flex items-center gap-2">
-            <i data-lucide="target" class="w-5 h-5 text-indigo-400"></i>
-            This Week's Big Goal
-          </h3>
-          <p class="text-xs text-white/60 mt-1">3-5 hours · Builds your portfolio</p>
-        </div>
-        <div class="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-xs text-indigo-300">
-          Weekly
-        </div>
-      </div>
+          <div class="glass-card rounded-2xl p-6 border border-white/10 h-full flex flex-col">
+            <div class="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h3 class="text-lg font-semibold flex items-center gap-2">
+                  <i data-lucide="target" class="w-5 h-5 text-indigo-400"></i>
+                  <span>The Big Rock</span>
+                </h3>
+                <p class="text-xs text-white/60 mt-1">
+                  3–5 hours this week · Builds portfolio & confidence.
+                </p>
+                <p class="text-[11px] text-indigo-200 mt-1">
+                  +14 Ready Score ⭐ when completed (+10 task +4 badge).
+                </p>
+              </div>
+              <div class="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-xs text-indigo-300">
+                Weekly
+              </div>
+            </div>
 
-      <form method="POST" action="{{ url_for('coach.complete_task', task_id=current_weekly_task.id) }}" class="space-y-3">
-        <div class="flex items-start gap-3">
-          <button type="submit"
+            <form
+              method="POST"
+              action="{{ url_for('coach.complete_task', task_id=current_weekly_task.id) }}"
+              class="space-y-3"
+              data-coach-task-form
+              data-task-type="weekly"
+            >
+              <div class="flex items-start gap-3">
+                <button
+                  type="submit"
+                  data-coach-task-toggle
                   class="mt-1 w-6 h-6 rounded border-2 flex items-center justify-center transition-all
                          {% if current_weekly_task.is_done %}
-                         bg-indigo-500 border-indigo-500
+                         bg-indigo-500 border-indigo-400 shadow-glow
                          {% else %}
-                         border-white/30 hover:border-white/50
-                         {% endif %}">
-            {% if current_weekly_task.is_done %}
-            <i data-lucide="check" class="w-4 h-4 text-white"></i>
-            {% endif %}
-          </button>
-          <div class="flex-1">
-            <h4 class="font-semibold text-lg {% if current_weekly_task.is_done %}line-through text-white/50{% endif %}">
-              {{ current_weekly_task.title }}
-            </h4>
-            {% if current_weekly_task.detail %}
-            <p class="text-sm text-white/70 mt-2">{{ current_weekly_task.detail }}</p>
-            {% endif %}
-            <div class="flex items-center gap-4 mt-3">
-              <div class="flex-1">
-                <div class="h-2 bg-white/10 rounded-full overflow-hidden">
-                  <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all"
-                       style="width: {% if current_weekly_task.is_done %}100{% elif current_week_session %}{{ current_week_session.progress_percent }}{% else %}0{% endif %}%"></div>
-                </div>
-                <div class="flex justify-between text-xs text-white/50 mt-1">
-                  <span>Progress</span>
-                  <span>{% if current_week_session %}{{ current_week_session.progress_percent }}%{% else %}0%{% endif %}</span>
+                         border-white/40 hover:border-indigo-300
+                         {% endif %}"
+                >
+                  {% if current_weekly_task.is_done %}
+                  <i data-lucide="check" class="w-4 h-4 text-white"></i>
+                  {% endif %}
+                </button>
+                <div class="flex-1">
+                  <h4
+                    class="font-semibold text-sm sm:text-base {% if current_weekly_task.is_done %}line-through text-emerald-200/75{% else %}text-white{% endif %}"
+                    data-coach-task-title
+                  >
+                    {{ current_weekly_task.title }}
+                  </h4>
+                  {% if current_weekly_task.detail %}
+                  <p class="text-xs sm:text-sm text-white/70 mt-2">{{ current_weekly_task.detail }}</p>
+                  {% endif %}
+                  <div class="flex items-center gap-4 mt-3">
+                    <div class="flex-1">
+                      <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          id="big-rock-progress-bar"
+                          class="h-full bg-gradient-to-r {% if current_weekly_task.is_done %}from-emerald-400 to-emerald-500{% else %}from-indigo-500 to-purple-500{% endif %} transition-all"
+                          style="width: {% if current_weekly_task.is_done %}100{% elif current_week_session %}{{ current_week_session.progress_percent }}{% else %}0{% endif %}%"
+                        ></div>
+                      </div>
+                      <div class="flex justify-between text-[11px] text-white/50 mt-1">
+                        <span>Progress</span>
+                        <span id="big-rock-progress-label">
+                          {% if current_week_session %}{{ current_week_session.progress_percent }}%{% else %}0%{% endif %}
+                        </span>
+                      </div>
+                    </div>
+                    {% if current_weekly_task.milestone_badge and current_weekly_task.is_done %}
+                    <div class="px-3 py-1 rounded-full bg-yellow-500/20 border border-yellow-500/30 text-[11px] text-yellow-200">
+                      🏆 {{ current_weekly_task.milestone_badge }}
+                    </div>
+                    {% endif %}
+                  </div>
+                  <div class="flex items-center flex-wrap gap-2 mt-2 text-[11px] text-white/60">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/40 border border-white/20">
+                      <i data-lucide="clock-3" class="w-3 h-3"></i>
+                      <span>{{ (current_weekly_task.estimated_time_minutes or 240) // 60 }} hours</span>
+                    </span>
+                    {% if current_weekly_task.category %}
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 border border-white/20">
+                        <span class="capitalize">{{ current_weekly_task.category }}</span>
+                      </span>
+                    {% endif %}
+                    {% if current_weekly_task.target_lpa_level %}
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 border border-white/20">
+                        {{ current_weekly_task.target_lpa_level }} LPA track
+                      </span>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
-              {% if current_weekly_task.milestone_badge and current_weekly_task.is_done %}
-              <div class="px-3 py-1 rounded-full bg-yellow-500/20 border border-yellow-500/30 text-xs text-yellow-300">
-                🏆 {{ current_weekly_task.milestone_badge }}
-              </div>
-              {% endif %}
-            </div>
-            <div class="flex items-center gap-3 mt-2 text-xs text-white/50">
-              <span>⏱️ {{ (current_weekly_task.estimated_time_minutes or 240) // 60 }} hours</span>
-              {% if current_weekly_task.category %}
-              <span>·</span>
-              <span class="capitalize">{{ current_weekly_task.category }}</span>
-              {% endif %}
-              {% if current_weekly_task.target_lpa_level %}
-              <span>·</span>
-              <span>{{ current_weekly_task.target_lpa_level }} LPA track</span>
-              {% endif %}
-            </div>
+            </form>
+
+            {% if current_week_session %}
+              <a href="{{ url_for('coach.session', session_id=current_week_session.id) }}"
+                 class="mt-4 inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-full border border-emerald-300/70 bg-emerald-500/15 hover:bg-emerald-500/25 text-[11px] sm:text-xs text-emerald-100">
+                <i data-lucide="timer" class="w-3.5 h-3.5"></i>
+                <span>Open Deep Work Timer</span>
+              </a>
+            {% endif %}
+
+            <p class="mt-3 text-[11px] text-white/55">
+              Aim to touch this at least twice this week. Progress, not perfection, is what builds your career story.
+            </p>
           </div>
         </div>
-      </form>
+      {% else %}
+        <!-- Placeholder when no weekly task -->
+        <div>
+          <div class="glass-card rounded-2xl p-6 border border-white/10 h-full flex flex-col justify-center">
+            <h3 class="text-lg font-semibold flex items-center gap-2 mb-2">
+              <i data-lucide="target" class="w-5 h-5 text-indigo-400"></i>
+              <span>The Big Rock</span>
+            </h3>
+            <p class="text-sm text-white/65">
+              Your weekly milestone will appear here once a plan is generated. This is where you’ll see your main project or deep-work goal.
+            </p>
+          </div>
+        </div>
+      {% endif %}
     </div>
-    {% endif %}
 
     <!-- WEEK VIEW (All 4 Weeks) -->
     <div class="glass-card rounded-2xl p-6 border border-white/10">
@@ -287,7 +437,7 @@
           </div>
 
           <div class="text-xs text-white/60 space-y-1">
-            <div>{{ session.daily_tasks_completed or 0 }}/7 daily</div>
+            <div>{{ session.daily_tasks_completed or 0 }} daily tasks done</div>
             <div>{% if session.weekly_task_completed %}✓{% else %}○{% endif %} Weekly goal</div>
           </div>
 
@@ -316,8 +466,8 @@
 
       <p class="text-white/70 max-w-lg mx-auto">
         Get a personalized dual-track plan:
-        <span class="font-semibold">7 daily tasks</span> (5-15 min each) +
-        <span class="font-semibold">1 weekly goal</span> (3-5 hours) for 4 weeks.
+        <span class="font-semibold">2 daily micro-tasks</span> (5–15 min each) +
+        <span class="font-semibold">1 weekly goal</span> (3–5 hours) for 4 weeks.
       </p>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto text-left text-sm">
@@ -974,6 +1124,180 @@
     if (window.lucide) {
       window.lucide.createIcons();
     }
+
+    // ----- Daily progress ring -----
+    function updateDailyRing() {
+      const ring = document.getElementById('today-progress-ring');
+      if (!ring) return;
+      const total = parseInt(ring.getAttribute('data-total') || '1', 10) || 1;
+      const completed = parseInt(ring.getAttribute('data-completed') || '0', 10) || 0;
+      const pct = Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+
+      ring.style.backgroundImage =
+        'conic-gradient(rgba(16,185,129,0.95) ' + pct + '%, rgba(15,23,42,0.9) ' + pct + '%)';
+    }
+    updateDailyRing();
+
+    // ----- Streak + celebration -----
+    const headerStreakEl = document.getElementById('coach-streak-value');
+    const mainStreakEl   = document.getElementById('coach-streak-main-value');
+    let currentStreak = 0;
+    if (headerStreakEl) {
+      currentStreak = parseInt(headerStreakEl.dataset.streak || headerStreakEl.textContent || '0', 10) || 0;
+    } else if (mainStreakEl) {
+      currentStreak = parseInt(mainStreakEl.dataset.streakMain || mainStreakEl.textContent || '0', 10) || 0;
+    }
+
+    function triggerStreakCelebration(taskType) {
+      const container = document.createElement('div');
+      container.className = 'fixed inset-0 flex items-start justify-center pointer-events-none z-[80]';
+      const message = taskType === 'weekly'
+        ? 'Weekly milestone locked in — nice.'
+        : 'Another day in your streak. Keep it going.';
+      container.innerHTML = `
+        <div class="mt-20 px-4 py-2 rounded-full bg-emerald-500/20 border border-emerald-300/80 shadow-lg text-xs sm:text-sm text-emerald-50 coach-streak-pop">
+          <span class="inline-flex items-center gap-1">
+            <span>🔥 Streak up!</span>
+            <span class="hidden sm:inline">${message}</span>
+          </span>
+        </div>
+      `;
+      document.body.appendChild(container);
+      setTimeout(() => {
+        container.classList.add('opacity-0');
+      }, 650);
+      setTimeout(() => {
+        container.remove();
+      }, 1100);
+    }
+
+    function applyStreakUpdate(newStreak, taskType) {
+      if (typeof newStreak !== 'number') return;
+      if (newStreak > currentStreak) {
+        triggerStreakCelebration(taskType);
+      }
+      currentStreak = newStreak;
+      if (headerStreakEl) {
+        headerStreakEl.dataset.streak = String(newStreak);
+        headerStreakEl.textContent = String(newStreak);
+      }
+      if (mainStreakEl) {
+        mainStreakEl.dataset.streakMain = String(newStreak);
+        mainStreakEl.textContent = String(newStreak);
+      }
+    }
+
+    // ----- AJAX toggle for daily + weekly tasks -----
+    const taskForms = document.querySelectorAll('form[data-coach-task-form]');
+    taskForms.forEach((form) => {
+      form.addEventListener('submit', function (e) {
+        if (form.dataset.noAjax === '1') return; // fallback case
+        e.preventDefault();
+
+        const taskType  = form.dataset.taskType || 'daily';
+        const toggleBtn = form.querySelector('[data-coach-task-toggle]');
+        const titleEl   = form.querySelector('[data-coach-task-title]');
+        const isDailyTask = taskType === 'daily';
+        const prevDoneAttr = form.dataset.isDone;
+        const prevDone = prevDoneAttr === '1';
+
+        fetch(form.action, {
+          method: form.method || 'POST',
+          body: new FormData(form),
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then((res) => {
+          if (!res.ok) throw new Error('Network error');
+          return res.json();
+        })
+        .then((data) => {
+          if (!data || !data.ok) throw new Error('Bad response');
+
+          const isDone = !!data.is_done;
+
+          // Button visual
+          if (toggleBtn) {
+            if (taskType === 'weekly') {
+              if (isDone) {
+                toggleBtn.classList.add('bg-indigo-500', 'border-indigo-400', 'shadow-glow');
+                toggleBtn.classList.remove('border-white/40', 'hover:border-indigo-300');
+                toggleBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4 text-white"></i>';
+              } else {
+                toggleBtn.classList.remove('bg-indigo-500', 'border-indigo-400', 'shadow-glow');
+                toggleBtn.classList.add('border-white/40');
+                toggleBtn.innerHTML = '';
+              }
+            } else { // daily
+              if (isDone) {
+                toggleBtn.classList.add('bg-emerald-500', 'border-emerald-400', 'shadow-glow');
+                toggleBtn.classList.remove('border-white/40', 'hover:border-emerald-300');
+                toggleBtn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>';
+              } else {
+                toggleBtn.classList.remove('bg-emerald-500', 'border-emerald-400', 'shadow-glow');
+                toggleBtn.classList.add('border-white/40');
+                toggleBtn.innerHTML = '';
+              }
+            }
+            if (window.lucide) window.lucide.createIcons();
+          }
+
+          // Title styling
+          if (titleEl) {
+            if (isDone) {
+              titleEl.classList.add('line-through');
+              titleEl.classList.add(taskType === 'weekly' ? 'text-emerald-200/75' : 'text-emerald-200/70');
+            } else {
+              titleEl.classList.remove('line-through');
+              titleEl.classList.remove('text-emerald-200/75', 'text-emerald-200/70');
+              titleEl.classList.add('text-white');
+            }
+          }
+
+          // Daily ring update (for pair of micro-tasks)
+          if (isDailyTask) {
+            const ring = document.getElementById('today-progress-ring');
+            if (ring) {
+              const total = parseInt(ring.getAttribute('data-total') || '1', 10) || 1;
+              let completed = parseInt(ring.getAttribute('data-completed') || '0', 10) || 0;
+
+              if (isDone && !prevDone) {
+                completed += 1;
+              } else if (!isDone && prevDone && completed > 0) {
+                completed -= 1;
+              }
+
+              if (completed < 0) completed = 0;
+              if (completed > total) completed = total;
+
+              ring.setAttribute('data-completed', String(completed));
+              updateDailyRing();
+            }
+            form.dataset.isDone = isDone ? '1' : '0';
+          }
+
+          // Big Rock progress bar simple update
+          if (taskType === 'weekly') {
+            const bar   = document.getElementById('big-rock-progress-bar');
+            const label = document.getElementById('big-rock-progress-label');
+            if (bar && label) {
+              const pct = isDone ? 100 : 0;
+              bar.style.width = pct + '%';
+              label.textContent = pct + '%';
+            }
+          }
+
+          // Streak update
+          if (typeof data.user_streak === 'number') {
+            applyStreakUpdate(data.user_streak || 0, taskType);
+          }
+        })
+        .catch(() => {
+          // Fallback: let the normal POST handle it
+          form.dataset.noAjax = '1';
+          form.submit();
+        });
+      });
+    });
   });
 </script>
 {% endblock %}

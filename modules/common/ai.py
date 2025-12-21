@@ -1374,6 +1374,10 @@ def _light_validate_dualtrack_month(data: Any) -> Dict[str, Any]:
             difficulty = _clean_difficulty(t.get("difficulty"), default="easy")
             tags = _clean_tags(t.get("tags"))
 
+            week_index_val = t.get("week_index")
+            if not isinstance(week_index_val, int):
+                week_index_val = wn
+
             daily_tasks.append(
                 {
                     "day": day,
@@ -1384,7 +1388,7 @@ def _light_validate_dualtrack_month(data: Any) -> Dict[str, Any]:
                     "difficulty": difficulty,
                     "tags": tags,
                     "phase_label": str(t.get("phase_label") or "").strip()[:160],
-                    "week_index": t.get("week_index") if isinstance(t.get("week_index"), int) else None,
+                    "week_index": week_index_val,
                     "project_label": str(t.get("project_label") or "").strip()[:255],
                     "milestone_title": str(t.get("milestone_title") or "").strip()[:255],
                     "milestone_step": str(t.get("milestone_step") or "").strip()[:255],
@@ -1405,6 +1409,10 @@ def _light_validate_dualtrack_month(data: Any) -> Dict[str, Any]:
         if not deliverable:
             deliverable = "Shipped weekly artifact + README proof"
 
+        weekly_week_index = weekly_raw.get("week_index")
+        if not isinstance(weekly_week_index, int):
+            weekly_week_index = wn
+
         weekly_task = {
             "title": weekly_title,
             "detail": weekly_detail,
@@ -1412,7 +1420,7 @@ def _light_validate_dualtrack_month(data: Any) -> Dict[str, Any]:
             "estimated_minutes": weekly_est,
             "milestone_badge": badge,
             "phase_label": str(weekly_raw.get("phase_label") or "").strip()[:160],
-            "week_index": weekly_raw.get("week_index") if isinstance(weekly_raw.get("week_index"), int) else None,
+            "week_index": weekly_week_index,
             "project_label": str(weekly_raw.get("project_label") or "").strip()[:255],
             "milestone_title": str(weekly_raw.get("milestone_title") or "").strip()[:255],
             "milestone_step": str(weekly_raw.get("milestone_step") or "").strip()[:255],
@@ -1441,6 +1449,7 @@ def _light_validate_dualtrack_month(data: Any) -> Dict[str, Any]:
         "weeks": clean_weeks,
         "meta": meta,
     }
+
 
 
 def _extract_coach_roadmap(path_type: str, dream_plan: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1928,9 +1937,9 @@ Return JSON only.
 def generate_dualtrack_month_plan(
     *,
     path_type: str,
+    month_cycle: str,
     target_lpa: str = "12",
     dream_plan: Optional[Dict[str, Any]] = None,
-    month_cycle: str,
     return_source: bool = False,
 ) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
     """
@@ -2098,6 +2107,7 @@ def generate_dualtrack_month_plan(
         clean = _light_validate_dualtrack_month(fallback)
         used_live_ai = False
         return (clean, used_live_ai) if return_source else clean
+
 
 
 def generate_daily_coach_plan(

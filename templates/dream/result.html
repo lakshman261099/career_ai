@@ -7,6 +7,9 @@
 {% set path_type = (plan.mode or meta.path_type or 'job')|lower %}
 {% set input = plan.input or {} %}
 {% set timeline_months = (input.timeline_months or 3)|int %}
+{% set is_sprint = (timeline_months == 1) %}
+{% set horizon_label = '28-Day' if is_sprint else timeline_months ~ '-Month' %}
+{% set horizon_sentence = '28 days' if is_sprint else timeline_months ~ ' months' %}
 
 <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-8 text-white">
 
@@ -34,9 +37,9 @@
 
         <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight">
           {% if path_type == 'startup' %}
-            Your {{ timeline_months }}-Month Founder Roadmap
+            Your {{ horizon_label }} Founder Roadmap
           {% else %}
-            Your {{ timeline_months }}-Month Career Roadmap
+            Your {{ horizon_label }} Career Roadmap
           {% endif %}
         </h1>
         
@@ -46,7 +49,7 @@
             "{{ input.target_role or 'Your Dream Role / Idea' }}"
           </span>.
           This plan is tuned to your chosen horizon of
-          <span class="font-semibold">{{ timeline_months }} month{{ '' if timeline_months == 1 else 's' }}</span>
+          <span class="font-semibold">{{ horizon_sentence }}</span>
           and the gaps between your current profile and market expectations.
         </p>
       </div>
@@ -365,7 +368,7 @@
             </div>
           </div>
           <p class="text-[10px] text-white/45 italic mt-1 leading-tight">
-            *Rough estimates for your chosen {{ timeline_months }}-month horizon, based on current market demand and your visible gaps.
+            *Rough estimates for your chosen {{ '28-day' if is_sprint else timeline_months ~ '-month' }} horizon, based on current market demand and your visible gaps.
           </p>
         </div>
 
@@ -389,82 +392,69 @@
         </div>
       </div>
 
-      {# Timeline labels based on timeline_months #}
-      {% set tmonths = timeline_months %}
-      {% if tmonths <= 3 %}
-        {% set label_30 = "Days 1–30" %}
-        {% set label_60 = "Days 31–60" %}
-        {% set label_90 = "Days 61–90" %}
-      {% elif tmonths <= 6 %}
-        {% set label_30 = "Months 1–2" %}
-        {% set label_60 = "Months 3–4" %}
-        {% set label_90 = "Months 5–6" %}
-      {% elif tmonths <= 12 %}
-        {% set label_30 = "Months 1–4" %}
-        {% set label_60 = "Months 5–8" %}
-        {% set label_90 = "Months 9–12" %}
-      {% else %}
-        {% set label_30 = "Phase 1" %}
-        {% set label_60 = "Phase 2" %}
-        {% set label_90 = "Phase 3" %}
-      {% endif %}
+      {% set phases = plan.phases or [] %}
 
       <div class="space-y-6">
         <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
           <h3 class="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
             <i data-lucide="map" class="w-6 h-6 text-blue-400"></i>
-            <span>Your {{ tmonths }}-Month Execution Plan</span>
+            <span>Your {{ horizon_label }} Execution Plan</span>
           </h3>
           <p class="text-xs text-white/60">
-            Split into <span class="font-semibold">3 clear phases</span> so you always know what this month is about.
+            Split into <span class="font-semibold">3 clear phases</span> so you always know what each phase is about.
           </p>
         </div>
         
         <div class="grid md:grid-cols-3 gap-6">
-          <div class="glass-card rounded-2xl p-6 border border-white/10 relative overflow-hidden group">
-            <div class="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
-            <h4 class="text-lg sm:text-xl font-bold text-white mb-1">{{ label_30 }}</h4>
-            <p class="text-[11px] text-blue-300 font-medium uppercase tracking-wide mb-4">Foundation & Gaps</p>
-            <p class="text-sm sm:text-base text-white/75 italic mb-4 min-h-[40px]">{{ plan.plan_core.focus_30 }}</p>
-            <ul class="space-y-3">
-              {% for item in plan.plan_core.weeks_30 or [] %}
-                <li class="flex items-start gap-3 text-sm sm:text-base text-white/85">
-                  <div class="w-5 h-5 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center shrink-0 text-xs font-bold">{{ loop.index }}</div>
-                  <span>{{ item }}</span>
-                </li>
-              {% endfor %}
-            </ul>
-          </div>
-
-          <div class="glass-card rounded-2xl p-6 border border-white/10 relative overflow-hidden group">
-            <div class="absolute top-0 left-0 w-full h-1 bg-purple-500"></div>
-            <h4 class="text-lg sm:text-xl font-bold text-white mb-1">{{ label_60 }}</h4>
-            <p class="text-[11px] text-purple-300 font-medium uppercase tracking-wide mb-4">Projects & Depth</p>
-            <p class="text-sm sm:text-base text-white/75 italic mb-4 min-h-[40px]">{{ plan.plan_core.focus_60 }}</p>
-            <ul class="space-y-3">
-              {% for item in plan.plan_core.weeks_60 or [] %}
-                <li class="flex items-start gap-3 text-sm sm:text-base text-white/85">
-                  <div class="w-5 h-5 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 text-xs font-bold">{{ loop.index }}</div>
-                  <span>{{ item }}</span>
-                </li>
-              {% endfor %}
-            </ul>
-          </div>
-
-          <div class="glass-card rounded-2xl p-6 border border-white/10 relative overflow-hidden group">
-            <div class="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
-            <h4 class="text-lg sm:text-xl font-bold text-white mb-1">{{ label_90 }}</h4>
-            <p class="text-[11px] text-emerald-300 font-medium uppercase tracking-wide mb-4">Showcase & Apply</p>
-            <p class="text-sm sm:text-base text-white/75 italic mb-4 min-h-[40px]">{{ plan.plan_core.focus_90 }}</p>
-            <ul class="space-y-3">
-              {% for item in plan.plan_core.weeks_90 or [] %}
-                <li class="flex items-start gap-3 text-sm sm:text-base text-white/85">
-                  <div class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0 text-xs font-bold">{{ loop.index }}</div>
-                  <span>{{ item }}</span>
-                </li>
-              {% endfor %}
-            </ul>
-          </div>
+          {% for phase in phases[:3] %}
+            {% set has_items = 'items' in phase %}
+            {% set phase_items = phase['items'] if has_items else [] %}
+            <div class="glass-card rounded-2xl p-6 border border-white/10 relative overflow-hidden group">
+              {% if loop.index == 1 %}
+                <div class="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
+              {% elif loop.index == 2 %}
+                <div class="absolute top-0 left-0 w-full h-1 bg-purple-500"></div>
+              {% else %}
+                <div class="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
+              {% endif %}
+              <h4 class="text-lg sm:text-xl font-bold text-white mb-1">{{ phase.label }}</h4>
+              <p class="text-[11px]
+                        {% if loop.index == 1 %}text-blue-300
+                        {% elif loop.index == 2 %}text-purple-300
+                        {% else %}text-emerald-300{% endif %}
+                        font-medium uppercase tracking-wide mb-4">
+                {% if loop.index == 1 %}
+                  Foundation & Gaps
+                {% elif loop.index == 2 %}
+                  Projects & Depth
+                {% else %}
+                  Showcase & Apply
+                {% endif %}
+              </p>
+              <ul class="space-y-3">
+                {% for item in phase_items %}
+                  <li class="flex items-start gap-3 text-sm sm:text-base text-white/85">
+                    <div class="w-5 h-5 rounded-full
+                               {% if loop.parentloop.index == 1 %}bg-blue-500/20 text-blue-300
+                               {% elif loop.parentloop.index == 2 %}bg-purple-500/20 text-purple-300
+                               {% else %}bg-emerald-500/20 text-emerald-300{% endif %}
+                               flex items-center justify-center shrink-0 text-xs font-bold">
+                      {{ loop.index }}
+                    </div>
+                    <span>{{ item }}</span>
+                  </li>
+                {% else %}
+                  <li class="text-xs text-white/55">
+                    Focus items for this phase will appear here once the engine has full context.
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% else %}
+            <div class="md:col-span-3 text-xs text-white/60">
+              Phase details were not available. Try regenerating the plan if this keeps showing up.
+            </div>
+          {% endfor %}
         </div>
       </div>
 
@@ -484,7 +474,7 @@
           {% if mini_projects %}
             {% if is_pro_user and snapshot_id %}
               <p class="text-[11px] text-white/65 mb-3">
-                Based on your <span class="font-semibold">{{ timeline_months }}-month</span> plan,
+                Based on your <span class="font-semibold">{{ '28-day' if is_sprint else timeline_months ~ '-month' }}</span> plan,
                 you should focus on
                 <span class="font-semibold">{{ max_projects }}</span>
                 mini project{{ 's' if max_projects > 1 else '' }}.
@@ -504,7 +494,7 @@
                     <label class="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-400/50 cursor-pointer transition-colors">
                       <input
                         type="checkbox"
-                        name="project_index"
+                        name="selected_projects"
                         value="{{ loop.index0 }}"
                         class="mt-1 w-4 h-4 rounded border-white/40 bg-black/40 checked:bg-emerald-500"
                       >

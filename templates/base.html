@@ -385,7 +385,8 @@
           // Never intercept clicks in the fixed header/nav
           if (anchor.closest("header")) return;
 
-          // Only care when that anchor is inside a form
+          /
+          / Only care when that anchor is inside a form
           const form = anchor.closest("form");
           if (!form) return;
 

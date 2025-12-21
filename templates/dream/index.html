@@ -27,7 +27,8 @@
         <p class="text-sm sm:text-base text-white/85 mt-1 max-w-xl">
           Use your <span class="font-semibold">Profile Portal</span>, resume and preferences to generate a
           <span class="font-semibold">personal Dream Job plan</span> or a
-          <span class="font-semibold">Dream Startup plan</span> with timelines, realistic probabilities, and a clear 3-phase roadmap.
+          <span class="font-semibold">Dream Startup plan</span> with realistic probabilities and a clear
+          <span class="font-semibold">3-phase roadmap for the next 28 days or 3 months</span>.
         </p>
 
         {% if profile_snapshot %}
@@ -57,7 +58,7 @@
           </p>
           <p class="text-[11px] text-white/70">
             Each run reads your Profile Portal + resume to estimate
-            <span class="font-semibold">LPA probabilities, skill gaps, and a 3-phase plan sized to your timeline</span>
+            <span class="font-semibold">LPA probabilities, skill gaps, and a 3-phase plan sized to either 28 days or 3 months</span>
             (for Dream Job) or <span class="font-semibold">founder role, MVP, GTM and budget</span> (for Dream Startup).
           </p>
         </div>
@@ -86,8 +87,9 @@
                 <span class="text-[11px] uppercase tracking-[0.14em] text-emerald-300">Dream Job</span>
               </div>
               <p class="text-white/80 text-[11px]">
-                Plan your path to a <span class="font-semibold">specific target role &amp; salary</span> with
-                estimated LPA bands and a <span class="font-semibold">3-phase execution roadmap</span> across your chosen months.
+                Plan your path to a <span class="font-semibold">specific target role &amp; salary band</span> with
+                estimated <span class="font-semibold">12 / 24 / 48 LPA probabilities</span> and a
+                <span class="font-semibold">3-phase execution roadmap</span> for the next 28 days or 3 months.
               </p>
               <p class="text-[10px] text-white/60">
                 Good if your goal is <span class="font-semibold">placements / full-time offers</span>.
@@ -112,7 +114,8 @@
               </div>
               <p class="text-white/80 text-[11px]">
                 Plan your path as a <span class="font-semibold">founder</span>: what role you can play, who you need as cofounders,
-                MVP plan, budget, GTM, and first 10 customers — again in a <span class="font-semibold">3-phase timeline</span>.
+                MVP plan, budget, GTM, and first 10 customers — again in a
+                <span class="font-semibold">3-phase timeline over 28 days or 3 months</span>.
               </p>
               <p class="text-[10px] text-white/60">
                 Good if you want to <span class="font-semibold">build a startup instead of only chasing jobs</span>.
@@ -175,47 +178,44 @@
               {% endif %}
             </label>
             <select name="timeline_months" class="w-full select rounded-xl px-3 py-2 text-sm bg-black/40 border border-white/20">
-              <option value="">6–12 months (default)</option>
-              <option value="3">3 months · aggressive</option>
-              <option value="6">6 months · focused</option>
-              <option value="12">12 months · deep build</option>
-              <option value="18">18+ months · long-term</option>
+              {# 1 month here = 28-day sprint in practice #}
+              <option value="1">28 days · Focus sprint</option>
+              <option value="3" selected>3 months · Standard plan</option>
             </select>
             <p class="text-[10px] text-white/55 mt-1">
-              The engine will stretch or compress each phase (1–3) across this horizon and adjust the realism of your probabilities.
+              Choose between a <span class="font-semibold">28-day sprint</span> and a full
+              <span class="font-semibold">3-month roadmap</span>. All 3 phases and tasks will be sized to this horizon.
             </p>
           </div>
+
           <div>
-            <label class="block text-sm font-semibold mb-1">
-              Hours per day you can realistically invest
-            </label>
-            <select name="hours_per_day" class="w-full select rounded-xl px-3 py-2 text-sm bg-black/40 border border-white/20">
-              <option value="">2–3 hours / day</option>
-              <option value="1">1–2 hours / day</option>
-              <option value="3">3–4 hours / day</option>
-              <option value="5">5+ hours / day (break / holidays)</option>
-            </select>
-            <p class="text-[10px] text-white/55 mt-1">
-              Be honest. Unrealistic hours + aggressive goals = the engine will warn you and lower the probabilities.
-            </p>
+            {% if active_path == 'startup' %}
+              <label class="block text-sm font-semibold mb-1">
+                Founder income is secondary here
+              </label>
+              <p class="text-[11px] text-white/60 mb-1">
+                For founders, we focus on <span class="font-semibold">MVP + first users + revenue experiments</span>.
+                Salary / LPA is not the main metric at this stage — the plan will talk about time to MVP and first rupee.
+              </p>
+              <p class="text-[10px] text-white/55">
+                You can refine specific revenue targets later once you’ve validated the idea.
+              </p>
+            {% else %}
+              <label class="block text-sm font-semibold mb-1">
+                Target CTC / LPA band (optional)
+              </label>
+              <select name="target_lpa" class="w-full select rounded-xl px-3 py-2 text-sm bg-black/40 border border-white/20">
+                <option value="">Not sure / open (default)</option>
+                <option value="12">Around 8–15 LPA · solid first job</option>
+                <option value="24">Around 15–30 LPA · aggressive</option>
+                <option value="48">48 LPA+ / global remote tier</option>
+              </select>
+              <p class="text-[10px] text-white/55 mt-1">
+                We translate this into <span class="font-semibold">12 / 24 / 48 LPA bands</span> when estimating your probabilities and designing phase intensity.
+              </p>
+            {% endif %}
           </div>
         </div>
-
-        {% if active_path == 'job' %}
-          <div>
-            <label class="block text-sm font-semibold mb-1">
-              Target CTC / LPA (optional)
-            </label>
-            <p class="text-[11px] text-white/60 mb-1">
-              Example: “9 LPA”, “12 LPA+”, “International remote role equivalent”.
-            </p>
-            <input
-              type="text"
-              name="target_lpa"
-              class="w-full input rounded-xl"
-              placeholder="Example: 12 LPA">
-          </div>
-        {% endif %}
 
         <div>
           <label class="block text-sm font-semibold mb-1">
@@ -259,8 +259,9 @@
               <span class="font-semibold">dream_planner</span> feature cost configured in your account.
             </p>
             <p class="text-[11px] text-white/65">
-              After generating your Dream Plan, you can later plug it into a <span class="font-semibold">Daily Action Coach</span>
-              mode to track and adjust progress from day to day.
+              After generating your Dream Plan, you can later plug it into
+              a <span class="font-semibold">Weekly Coach</span> mode to turn phases into
+              small, realistic weekly checklists and track your streak.
             </p>
           {% else %}
             <p class="text-xs text-white/75 flex items-center gap-1.5">
@@ -304,7 +305,8 @@
     </p>
     <p>
       Skill Mapper helps you choose a path (Job, Startup or Freelance). Dream Planner then builds a
-      <span class="font-semibold">personal plan for ONE Dream Job or Dream Startup</span>, with realistic timelines and phase-wise actions.
+      <span class="font-semibold">personal plan for ONE Dream Job or Dream Startup</span>, with realistic timelines and phase-wise actions
+      for either a 28-day sprint or a 3-month roadmap.
     </p>
     <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
       <span class="px-2 py-1 rounded-full bg-white/5 border border-white/15">

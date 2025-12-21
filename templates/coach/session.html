@@ -11,6 +11,18 @@
   {% set session_id = session.id %}
 {% endif %}
 
+{# Small local styles for streak celebration pop #}
+<style>
+  @keyframes coachStreakPop {
+    0%   { transform: scale(0.95); opacity: 0; }
+    25%  { transform: scale(1.05); opacity: 1; }
+    100% { transform: scale(1.0); opacity: 0; }
+  }
+  .coach-streak-pop {
+    animation: coachStreakPop 0.9s ease-out forwards;
+  }
+</style>
+
 <section class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-6 text-white">
 
   <!-- HEADER -->
@@ -56,7 +68,10 @@
           <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/20">
             <i data-lucide="flame" class="w-3.5 h-3.5"></i>
             <span>Streak:</span>
-            <span class="font-semibold">{{ streak_count }} day{{ '' if streak_count == 1 else 's' }}</span>
+            <span class="font-semibold">
+              <span id="coach-streak-value" data-streak="{{ streak_count }}">{{ streak_count }}</span>
+              day{{ '' if streak_count == 1 else 's' }}
+            </span>
           </div>
         {% endif %}
         {% if session_date %}
@@ -349,8 +364,8 @@
       </div>
 
       <p class="text-[11px] text-white/55 mt-1">
-        The roadmap above is a visual guide. Actual unlocking of new weeks still happens on the main Weekly Coach page
-        when you start the next focus pack.
+        The roadmap above is a visual guide. New weeks unlock on the main Weekly Coach page
+        as you close sessions and open the next week in your 28-day plan.
       </p>
     </section>
 
@@ -378,7 +393,8 @@
             <span>This week’s checklist</span>
           </h2>
           <p class="text-[11px] text-white/60 mt-1 max-w-md">
-            These are <span class="font-semibold">weekly-sized</span> tasks. It’s okay if you don’t finish all of them —
+            These are <span class="font-semibold">weekly-sized</span> tasks. Daily micro-tasks are short (5–15 min),
+            while weekly “Big Rock” tasks take a few hours. It’s okay if you don’t finish all of them —
             aim for honest, visible progress.
           </p>
         </div>
@@ -419,22 +435,34 @@
       <div class="space-y-1 mt-3">
         <div class="flex items-center justify-between text-[11px] text-white/65">
           <span>Weekly progress</span>
-          <span>{{ done }}/{{ total }} tasks · {{ pct }}%</span>
+          <span id="coach-week-progress-label">{{ done }}/{{ total }} tasks · {{ pct }}%</span>
         </div>
         <div class="w-full h-2 rounded-full bg-black/40 overflow-hidden">
-          <div class="h-2 rounded-full bg-emerald-400" style="width: {{ pct }}%;"></div>
+          <div id="coach-week-progress-bar" class="h-2 rounded-full bg-emerald-400" style="width: {{ pct }}%;"></div>
         </div>
       </div>
 
       <ul class="mt-4 space-y-3">
         {% for t in tasks %}
           {% set est = (t.estimated_time_minutes if t.estimated_time_minutes is not none else (t.estimated_minutes if t.estimated_minutes is not none else None)) %}
-          <li class="flex items-start gap-3 text-sm sm:text-base">
+          <li
+            class="flex items-start gap-3 text-sm sm:text-base"
+            data-coach-task-item
+            data-task-id="{{ t.id }}"
+            data-task-type="{{ t.task_type }}"
+            data-task-done="{{ 1 if t.is_done else 0 }}"
+          >
             <div class="w-full">
-              <form method="POST" action="{{ url_for('coach.complete_task', task_id=t.id) }}">
+              <form
+                method="POST"
+                action="{{ url_for('coach.complete_task', task_id=t.id) }}"
+                data-coach-task-form
+                data-task-type="{{ t.task_type }}"
+              >
                 <div class="flex items-start gap-3">
                   <button
                     type="submit"
+                    data-coach-task-toggle
                     class="mt-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-all
                            {% if t.is_done %}
                            bg-emerald-500 border-emerald-500
@@ -450,7 +478,10 @@
 
                   <div class="flex-1 space-y-1.5">
                     <div class="flex items-center justify-between gap-2">
-                      <p class="leading-snug {% if t.is_done %}line-through text-white/60{% else %}text-white/90{% endif %}">
+                      <p
+                        data-coach-task-title
+                        class="leading-snug {% if t.is_done %}line-through text-white/60{% else %}text-white/90{% endif %}"
+                      >
                         {{ t.title }}
                         {% if t.task_type %}
                           <span class="ml-2 text-[10px] uppercase tracking-[0.16em] text-white/50">
@@ -677,7 +708,7 @@
       </div>
     </section>
 
-    <!-- NAV + NEXT WEEK CTA -->
+    <!-- NAV + NEXT WEEK HINT -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-white/70">
       <div class="flex flex-wrap items-center gap-3">
         <a href="{{ url_for('coach.index', path_type=path_type) }}" class="inline-flex items-center gap-1 underline hover:text-white">
@@ -697,15 +728,12 @@
       </div>
 
       {% if session_is_closed %}
-        <form method="POST" action="{{ url_for('coach.start') }}" class="flex-shrink-0">
-          <input type="hidden" name="path_type" value="{{ path_type }}">
-          <button
-            class="btn-primary inline-flex items-center gap-1 px-4 py-2"
-          >
-            <i data-lucide="fast-forward" class="w-3.5 h-3.5"></i>
-            <span>Start next week’s focus pack</span>
-          </button>
-        </form>
+        <p class="flex-shrink-0 text-right text-white/70">
+          This week is closed. To continue, open the next week from the
+          <a href="{{ url_for('coach.index', path_type=path_type) }}" class="underline hover:text-white">
+            Weekly Coach overview
+          </a>.
+        </p>
       {% endif %}
     </div>
 
@@ -737,7 +765,7 @@
     if (!focusHoursInput || !focusMinutesInput || !breakMinutesInput ||
         !timerDisplay || !timerPhase || !timerMessage ||
         !btnStart || !btnPause || !btnReset) {
-      return;
+      // Timer can't init, but we still want streak logic below, so don't return.
     }
 
     let timerId          = null;
@@ -773,6 +801,7 @@
 
     function setPhase(newPhase) {
       phase = newPhase;
+      if (!timerPhase || !timerMessage) return;
       if (phase === 'focus') {
         timerPhase.textContent   = 'FOCUS PHASE';
         timerMessage.textContent = pickRandom(focusMessages);
@@ -783,6 +812,7 @@
     }
 
     function initFromInputs() {
+      if (!focusHoursInput || !focusMinutesInput || !timerDisplay) return;
       const h = parseInt(focusHoursInput.value || '0', 10);
       const m = parseInt(focusMinutesInput.value || '0', 10);
       const total = (isNaN(h) ? 0 : h) * 3600 + (isNaN(m) ? 0 : m) * 60;
@@ -792,6 +822,7 @@
     }
 
     function startTimer() {
+      if (!timerDisplay || !breakMinutesInput) return;
       if (isRunning) return;
       if (!remainingSeconds) {
         initFromInputs();
@@ -831,19 +862,22 @@
       initFromInputs();
     }
 
-    initFromInputs();
+    if (btnStart && btnPause && btnReset && focusHoursInput && focusMinutesInput && breakMinutesInput && timerDisplay && timerPhase && timerMessage) {
+      initFromInputs();
 
-    btnStart.addEventListener('click', startTimer);
-    btnPause.addEventListener('click', pauseTimer);
-    btnReset.addEventListener('click', resetTimer);
+      btnStart.addEventListener('click', startTimer);
+      btnPause.addEventListener('click', pauseTimer);
+      btnReset.addEventListener('click', resetTimer);
 
-    focusHoursInput.addEventListener('change', () => {
-      if (!isRunning) initFromInputs();
-    });
-    focusMinutesInput.addEventListener('change', () => {
-      if (!isRunning) initFromInputs();
-    });
+      focusHoursInput.addEventListener('change', () => {
+        if (!isRunning) initFromInputs();
+      });
+      focusMinutesInput.addEventListener('change', () => {
+        if (!isRunning) initFromInputs();
+      });
+    }
 
+    // Local reflection save
     const reflectionEl = document.getElementById('coachReflection');
     const saveBtn = document.getElementById('saveReflectionBtn');
     const key = "coach_reflection_session_{{ session_id or 0 }}";
@@ -870,6 +904,130 @@
         } catch (e) {}
       });
     }
+
+    // ===== Streak celebration + live progress update =====
+    const streakValueEl = document.getElementById('coach-streak-value');
+    let currentStreak = 0;
+    if (streakValueEl) {
+      const raw = streakValueEl.dataset.streak || streakValueEl.textContent || '0';
+      currentStreak = parseInt(raw, 10) || 0;
+    }
+
+    const progressLabelEl = document.getElementById('coach-week-progress-label');
+    const progressBarEl   = document.getElementById('coach-week-progress-bar');
+
+    function recalcProgress() {
+      if (!progressLabelEl || !progressBarEl) return;
+      const items = document.querySelectorAll('[data-coach-task-item]');
+      const total = items.length;
+      let done = 0;
+      items.forEach((el) => {
+        if (el.getAttribute('data-task-done') === '1') {
+          done += 1;
+        }
+      });
+      const pct = total > 0 ? Math.round((done * 100) / total) : 0;
+      progressLabelEl.textContent = `${done}/${total} tasks · ${pct}%`;
+      progressBarEl.style.width = `${pct}%`;
+    }
+
+    function triggerStreakCelebration(taskType) {
+      const container = document.createElement('div');
+      container.className = 'fixed inset-0 flex items-start justify-center pointer-events-none z-[80]';
+      const message = taskType === 'weekly'
+        ? 'Weekly milestone locked in — nice.'
+        : 'Another day in your streak. Keep it going.';
+      container.innerHTML = `
+        <div class="mt-20 px-4 py-2 rounded-full bg-emerald-500/20 border border-emerald-300/80 shadow-lg text-xs sm:text-sm text-emerald-50 coach-streak-pop">
+          <span class="inline-flex items-center gap-1">
+            <span>🔥 Streak up!</span>
+            <span class="hidden sm:inline">${message}</span>
+          </span>
+        </div>
+      `;
+      document.body.appendChild(container);
+      setTimeout(() => {
+        container.classList.add('opacity-0');
+      }, 650);
+      setTimeout(() => {
+        container.remove();
+      }, 1100);
+    }
+
+    const taskForms = document.querySelectorAll('form[data-coach-task-form]');
+    taskForms.forEach((form) => {
+      form.addEventListener('submit', function (e) {
+        if (form.dataset.noAjax === '1') return;  // fallback guard
+        e.preventDefault();
+
+        const toggleBtn = form.querySelector('[data-coach-task-toggle]');
+        const taskItem  = form.closest('[data-coach-task-item]');
+        const taskType  = form.dataset.taskType || (taskItem ? taskItem.getAttribute('data-task-type') : 'daily');
+
+        fetch(form.action, {
+          method: form.method || 'POST',
+          body: new FormData(form),
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then((res) => {
+          if (!res.ok) throw new Error('Network error');
+          return res.json();
+        })
+        .then((data) => {
+          if (!data || !data.ok) throw new Error('Bad response');
+
+          const isDone = !!data.is_done;
+
+          // Toggle button visuals
+          if (toggleBtn) {
+            if (isDone) {
+              toggleBtn.classList.add('bg-emerald-500', 'border-emerald-500');
+              toggleBtn.classList.remove('border-white/30', 'hover:border-white/50');
+              toggleBtn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>';
+            } else {
+              toggleBtn.classList.remove('bg-emerald-500', 'border-emerald-500');
+              toggleBtn.classList.add('border-white/30');
+              toggleBtn.innerHTML = '';
+            }
+            if (window.lucide) window.lucide.createIcons();
+          }
+
+          // Mark task item done / not done + title style
+          if (taskItem) {
+            taskItem.setAttribute('data-task-done', isDone ? '1' : '0');
+            const titleEl = taskItem.querySelector('[data-coach-task-title]');
+            if (titleEl) {
+              if (isDone) {
+                titleEl.classList.add('line-through', 'text-white/60');
+              } else {
+                titleEl.classList.remove('line-through', 'text-white/60');
+              }
+            }
+          }
+
+          // Recalc weekly progress bar
+          recalcProgress();
+
+          // Update streak + celebration
+          if (typeof data.user_streak === 'number' && streakValueEl) {
+            const newStreak = data.user_streak || 0;
+            if (newStreak > currentStreak) {
+              triggerStreakCelebration(taskType);
+            }
+            currentStreak = newStreak;
+            streakValueEl.dataset.streak = String(newStreak);
+            streakValueEl.textContent = String(newStreak);
+          }
+        })
+        .catch(() => {
+          // Fallback: if AJAX fails, do a real POST once
+          form.dataset.noAjax = '1';
+          form.submit();
+        });
+      });
+    });
+
+    recalcProgress();
   });
 </script>
 {% endblock %}

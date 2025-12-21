@@ -4,7 +4,7 @@ Weekly Coach with Dual-Track System:
 - Daily Tasks (Maintenance): 5-15 min, build streak, +1 point each
 - Weekly Tasks (Momentum): 3-5 hours, build portfolio, +10 points + 4 badge
 - LPA-aligned difficulty (12/24/48 LPA)
-- Project-specific tasks from Dream Planner
+- Project-specific tasks from Dream Planner (fallback if AI plan not available)
 """
 
 from __future__ import annotations
@@ -30,13 +30,19 @@ from models import (
     DailyCoachSession,
     DailyCoachTask,
     DreamPlanSnapshot,
+    DreamPlanProject,
+    ProjectMilestone,
+    ProjectSubtask,
     User,
     db,
 )
 from modules.common.profile_loader import load_profile_snapshot
 
-# ✅ Dual-track month plan generator (one call)
-from modules.common.ai import generate_dualtrack_month_plan
+# ✅ Dual-track month plan generator (one call) – optional
+try:  # make this safe if module/function is missing
+    from modules.common.ai import generate_dualtrack_month_plan  # type: ignore
+except Exception:  # pragma: no cover
+    generate_dualtrack_month_plan = None  # type: ignore
 
 # ✅ Credits (tuple-safe can_afford + correct refund amount)
 from modules.credits.engine import can_afford, deduct_pro, refund
@@ -56,7 +62,7 @@ coach_bp = Blueprint(
 
 
 # ===================================
-# HELPERS
+# BASIC HELPERS
 # ===================================
 
 def _current_is_pro_user() -> bool:
@@ -191,7 +197,13 @@ def _pick_best_lpa_from_probabilities(probs: dict) -> str:
 def _get_dream_plan_context(user_id: int, path_type: str) -> dict:
     """
     Load latest Dream Plan for LPA + selected projects.
-    Returns dict with: target_lpa, selected_projects, timeline_months, dream_plan
+    Returns dict with:
+      - target_lpa
+      - selected_projects
+      - timeline_months
+      - dream_plan (full JSON)
+      - plan_title
+      - snapshot (DreamPlanSnapshot or None)
     """
     latest_snapshot = (
         DreamPlanSnapshot.query.filter_by(user_id=user_id, path_type=path_type)
@@ -205,6 +217,8 @@ def _get_dream_plan_context(user_id: int, path_type: str) -> dict:
             "selected_projects": [],
             "timeline_months": 6,
             "dream_plan": None,
+            "plan_title": None,
+            "snapshot": None,
         }
 
     try:
@@ -214,7 +228,7 @@ def _get_dream_plan_context(user_id: int, path_type: str) -> dict:
 
     input_block = plan_json.get("input", {}) if isinstance(plan_json.get("input", {}), dict) else {}
 
-    # ✅ Prefer Dream Planner input key (your DreamPlanner prompt uses target_salary_lpa)
+    # ✅ Prefer Dream Planner input key
     target_lpa = None
     if "target_salary_lpa" in input_block:
         target_lpa = str(input_block.get("target_salary_lpa") or "").strip()
@@ -231,7 +245,6 @@ def _get_dream_plan_context(user_id: int, path_type: str) -> dict:
     if target_lpa not in ("12", "24", "48"):
         target_lpa = "12"
 
-    # Selected projects: prefer explicit selection; fallback to resources.mini_projects
     selected_projects = plan_json.get("selected_projects", [])
     if not isinstance(selected_projects, list):
         selected_projects = []
@@ -254,6 +267,8 @@ def _get_dream_plan_context(user_id: int, path_type: str) -> dict:
         "selected_projects": selected_projects,
         "timeline_months": timeline_months,
         "dream_plan": plan_json,
+        "plan_title": latest_snapshot.plan_title,
+        "snapshot": latest_snapshot,
     }
 
 
@@ -388,6 +403,387 @@ def _feature_cost_amount_safe(feature: str, currency: str) -> int:
         return 0
 
 
+def _build_month_cycle_id(user_id: int, path_type: str, today: date) -> str:
+    """Stable ID per user + path + calendar month."""
+    return f"user_{user_id}_path_{path_type}_month_{today.year}_{today.month:02d}"
+
+
+def _pick_project_and_milestone_for_week(
+    user_id: int,
+    path_type: str,
+    week_index: int,
+) -> tuple[DreamPlanProject | None, ProjectMilestone | None]:
+    """
+    Pick a DreamPlanProject + ProjectMilestone that should anchor this week.
+    Uses week_start/week_end window if present; fallback to first project.
+    """
+    projects = (
+        DreamPlanProject.query
+        .filter_by(user_id=user_id, path_type=path_type)
+        .all()
+    )
+    if not projects:
+        return None, None
+
+    def project_matches_week(p: DreamPlanProject) -> bool:
+        if p.week_start is not None and week_index < p.week_start:
+            return False
+        if p.week_end is not None and week_index > p.week_end:
+            return False
+        return True
+
+    matching = [p for p in projects if project_matches_week(p)]
+    if not matching:
+        matching = projects
+
+    project = sorted(
+        matching,
+        key=lambda p: (p.week_start or 9999, p.id),
+    )[0]
+
+    milestones: list[ProjectMilestone] = []
+    if project.project_template_id:
+        milestones = (
+            ProjectMilestone.query
+            .filter_by(project_template_id=project.project_template_id)
+            .order_by(ProjectMilestone.order.asc())
+            .all()
+        )
+
+    milestone: ProjectMilestone | None = None
+    if milestones:
+        if (
+            project.week_start is not None
+            and project.week_end is not None
+            and project.week_end >= project.week_start
+        ):
+            span = project.week_end - project.week_start + 1
+            offset = max(0, min(span - 1, week_index - project.week_start))
+        else:
+            offset = week_index - 1
+        idx = max(0, min(len(milestones) - 1, offset))
+        milestone = milestones[idx]
+
+    return project, milestone
+
+
+def _generate_tasks_for_session_from_projects(
+    session: DailyCoachSession,
+    user: User,
+    week_index: int,
+    target_lpa: str | None,
+) -> None:
+    """
+    Fallback generator using DreamPlanProject + ProjectMilestone/Subtask.
+
+    Creates:
+      - 1 weekly "Big Rock" (task_type='weekly')
+      - 14 daily micro-tasks (2 per day, task_type='daily', day_number=1..7)
+      - 2 support tasks (task_type='support')
+    """
+    project, milestone = _pick_project_and_milestone_for_week(
+        user_id=user.id,
+        path_type=session.path_type,
+        week_index=week_index,
+    )
+
+    proj_name = (
+        project.custom_title
+        or (project.project_template.title if project and project.project_template else None)
+    )
+
+    # ---- Weekly Big Rock ----
+    big_title = f"Week {week_index} · Move your main project forward"
+    if proj_name:
+        big_title = f"Week {week_index} · Progress on “{proj_name}”"
+
+    big_detail_parts = ["Block 3–5 hours this week for deep work."]
+    if milestone and milestone.title:
+        big_detail_parts.append(f"Focus milestone: {milestone.title}.")
+    big_detail = " ".join(big_detail_parts)
+
+    big_rock = DailyCoachTask(
+        session_id=session.id,
+        title=big_title,
+        detail=big_detail,
+        category="Project",
+        sort_order=0,
+        is_done=False,
+        project_id=project.id if project else None,
+        milestone_id=milestone.id if milestone else None,
+        milestone_title=milestone.title if milestone else None,
+        milestone_step="Ship visible progress this week.",
+        estimated_time_minutes=240,
+        estimated_minutes=240,
+        target_lpa_level=target_lpa,
+        task_type="weekly",
+        week_number=week_index,
+        day_number=None,
+        milestone_badge=(
+            f"{proj_name} · {milestone.title}"
+            if proj_name and milestone and milestone.title
+            else None
+        ),
+    )
+    db.session.add(big_rock)
+
+    # ---- Daily micro-tasks (2 per day, 7 days → up to 14 tasks) ----
+    subtasks: list[ProjectSubtask] = []
+    if milestone:
+        subtasks = (
+            ProjectSubtask.query
+            .filter_by(milestone_id=milestone.id)
+            .order_by(ProjectSubtask.order.asc())
+            .all()
+        )
+
+    daily_sort = 1
+    PER_DAY = 2
+
+    for day_num in range(1, 8):
+        for slot in range(PER_DAY):
+            # Try to map subtasks sequentially: 0,1 → day1; 2,3 → day2; ...
+            st_idx = (day_num - 1) * PER_DAY + slot
+            st: ProjectSubtask | None = subtasks[st_idx] if st_idx < len(subtasks) else None
+
+            if st:
+                title = st.title
+                detail = st.description or "Push this subtask forward."
+                minutes = st.minutes or 10
+                tags = st.tags
+                subtask_id = st.id
+            else:
+                # Fallback generic micro-step if not enough subtasks
+                title = f"Day {day_num}: 10-minute progress on your main project"
+                detail = (
+                    "Open your project and do one tiny, concrete improvement "
+                    "(fix one bug, refactor one function, or write one test)."
+                )
+                minutes = 10
+                tags = []
+                subtask_id = None
+
+            task = DailyCoachTask(
+                session_id=session.id,
+                title=title,
+                detail=detail,
+                category="Daily",
+                sort_order=daily_sort,
+                is_done=False,
+                project_id=project.id if project else None,
+                milestone_id=milestone.id if milestone else None,
+                subtask_id=subtask_id,
+                milestone_title=milestone.title if milestone else None,
+                milestone_step=f"Day {day_num} micro-step",
+                estimated_time_minutes=minutes,
+                estimated_minutes=minutes,
+                target_lpa_level=target_lpa,
+                difficulty=None,
+                tags=tags,
+                task_type="daily",
+                week_number=week_index,
+                day_number=day_num,
+            )
+            daily_sort += 1
+            db.session.add(task)
+
+    # ---- Optional support / checklist tasks ----
+    support_templates = [
+        "Review yesterday's changes & clean up anything messy.",
+        "Write or update README / documentation for your project.",
+    ]
+    for i, text in enumerate(support_templates, start=1):
+        support = DailyCoachTask(
+            session_id=session.id,
+            title=f"Support task {i} · Week {week_index}",
+            detail=text,
+            category="Support",
+            sort_order=daily_sort + i,
+            is_done=False,
+            project_id=project.id if project else None,
+            milestone_id=milestone.id if milestone else None,
+            milestone_title=milestone.title if milestone else None,
+            estimated_time_minutes=30,
+            estimated_minutes=30,
+            target_lpa_level=target_lpa,
+            task_type="support",
+            week_number=week_index,
+            day_number=None,
+        )
+        db.session.add(support)
+
+
+def _pick_active_session(
+    sessions: list[DailyCoachSession],
+    today: date,
+) -> DailyCoachSession | None:
+    """
+    Heuristic: pick the most recent non-closed session whose session_date <= today.
+    Fallback: last session by date.
+    """
+    if not sessions:
+        return None
+
+    best = None
+    for s in sessions:
+        if s.session_date and s.session_date <= today and not s.is_closed:
+            if best is None or s.session_date > best.session_date:
+                best = s
+
+    if best:
+        return best
+    return sessions[-1]
+
+
+def _get_today_daily_tasks_for_session(
+    session: DailyCoachSession,
+    today: date,
+    limit: int = 2,
+) -> list[DailyCoachTask]:
+    """
+    Return up to `limit` daily micro-tasks for 'Today’s Pair'.
+
+    Logic:
+    - Compute day_number 1–7 based on session.session_date.
+    - Prefer tasks with that day_number.
+    - If fewer than `limit`, fill from other NOT-DONE daily tasks.
+    - If still fewer, fill from remaining daily tasks (even if done) so UI still has content.
+    """
+    if limit <= 0:
+        return []
+
+    # Get all daily tasks, ordered
+    all_daily = list(
+        DailyCoachTask.query
+        .filter_by(session_id=session.id, task_type="daily")
+        .order_by(DailyCoachTask.day_number.asc(), DailyCoachTask.sort_order.asc())
+        .all()
+    )
+    if not all_daily:
+        return []
+
+    # If session_date is missing, just return first N not-done tasks
+    if not session.session_date:
+        not_done = [t for t in all_daily if not t.is_done]
+        if len(not_done) >= limit:
+            return not_done[:limit]
+        # mix with done to reach limit if needed
+        result = list(not_done)
+        for t in all_daily:
+            if t not in result:
+                result.append(t)
+                if len(result) >= limit:
+                    break
+        return result[:limit]
+
+    # Compute 1–7 day index within this session
+    delta_days = (today - session.session_date).days
+    if delta_days < 0:
+        day_number = 1
+    else:
+        day_number = delta_days + 1
+    if day_number > 7:
+        day_number = 7
+
+    result: list[DailyCoachTask] = []
+
+    # 1) Prefer tasks for today's day_number
+    today_candidates = [t for t in all_daily if (t.day_number or 0) == day_number]
+    for t in today_candidates:
+        if len(result) >= limit:
+            break
+        result.append(t)
+
+    # 2) Fill with NOT-DONE tasks from other days
+    if len(result) < limit:
+        for t in all_daily:
+            if t in result:
+                continue
+            if not t.is_done:
+                result.append(t)
+                if len(result) >= limit:
+                    break
+
+    # 3) If still short, fill with remaining tasks (even if done)
+    if len(result) < limit:
+        for t in all_daily:
+            if t in result:
+                continue
+            result.append(t)
+            if len(result) >= limit:
+                break
+
+    return result[:limit]
+
+
+def _get_today_daily_task_for_session(
+    session: DailyCoachSession,
+    today: date,
+) -> DailyCoachTask | None:
+    """
+    Backward-compatible helper: return a single 'today' daily task.
+
+    Internally uses _get_today_daily_tasks_for_session(limit=1).
+    """
+    tasks = _get_today_daily_tasks_for_session(session, today, limit=1)
+    return tasks[0] if tasks else None
+
+
+def _generate_month_cycle_from_projects(
+    user: User,
+    path_type: str,
+    month_cycle_id: str,
+    base_date: date,
+    target_lpa: str | None,
+    snapshot: DreamPlanSnapshot | None,
+    plan_title: str | None,
+) -> list[DailyCoachSession]:
+    """
+    Fallback 4-week (28-day) generator using the P3 project system.
+    """
+    sessions: list[DailyCoachSession] = []
+
+    if not plan_title:
+        plan_title = f"{path_type.capitalize()} path · {target_lpa or '12'} LPA"
+
+    for week in range(1, 5):
+        session_date = base_date + timedelta(days=(week - 1) * 7)
+
+        ai_note = (
+            f"This week is part of your {path_type} roadmap. "
+            f"Focus on moving one project milestone forward and touching it on at least 3 days."
+        )
+
+        sess = DailyCoachSession(
+            user_id=user.id,
+            path_type=path_type,
+            session_date=session_date,
+            day_index=week,
+            month_cycle_id=month_cycle_id,
+            target_lpa=target_lpa,
+            is_closed=False,
+            ai_note=ai_note,
+            daily_tasks_completed=0,
+            weekly_task_completed=False,
+            progress_percent=0,
+            plan_title=plan_title,
+            plan_digest=snapshot.inputs_digest if snapshot else None,
+        )
+        db.session.add(sess)
+        db.session.flush()
+
+        _generate_tasks_for_session_from_projects(
+            session=sess,
+            user=user,
+            week_index=week,
+            target_lpa=target_lpa,
+        )
+
+        sessions.append(sess)
+
+    return sessions
+
+
 # ===================================
 # ROUTES
 # ===================================
@@ -414,60 +810,59 @@ def index():
     user_streak = _get_user_int(current_user, "current_streak", 0)
     user_ready_score = _get_user_int(current_user, "ready_score", 0)
 
-    month_cycle_id = f"user_{current_user.id}_path_{path_type}_month_{today.year}_{today.month:02d}"
-
-    cycle_sessions = (
-        DailyCoachSession.query.filter_by(user_id=current_user.id, month_cycle_id=month_cycle_id)
-        .order_by(DailyCoachSession.day_index)
+    # All sessions for this path (for roadmap + today/last session)
+    all_sessions = (
+        DailyCoachSession.query.filter_by(user_id=current_user.id, path_type=path_type)
+        .order_by(DailyCoachSession.session_date.asc(), DailyCoachSession.day_index.asc())
         .all()
     )
 
-    today_daily_task = None
-    current_week_session = None
-    current_weekly_task = None
+    last_session = all_sessions[-1] if all_sessions else None
+    today_session = _pick_active_session(all_sessions, today) if all_sessions else None
 
-    if cycle_sessions:
-        current_week_session = next((s for s in cycle_sessions if not s.is_closed), None) or cycle_sessions[-1]
-
-        day_of_week = today.weekday() + 1  # 1-7
-        day_number_in_month = (current_week_session.day_index - 1) * 7 + day_of_week
-
-        today_daily_task = (
-            DailyCoachTask.query.filter_by(
-                session_id=current_week_session.id,
-                task_type="daily",
-                day_number=day_number_in_month,
-            ).first()
+    # Current month cycle (4-week / 28-day roadmap)
+    month_cycle_id = _build_month_cycle_id(current_user.id, path_type, today)
+    cycle_sessions = (
+        DailyCoachSession.query.filter_by(
+            user_id=current_user.id,
+            path_type=path_type,
+            month_cycle_id=month_cycle_id,
         )
+        .order_by(DailyCoachSession.day_index.asc())
+        .all()
+    )
 
+    # Today’s daily micro-tasks (pair)
+    today_daily_tasks: list[DailyCoachTask] = []
+    today_daily_task: DailyCoachTask | None = None
+    daily_total = 0
+    daily_completed = 0
+
+    if today_session:
+        today_daily_tasks = _get_today_daily_tasks_for_session(today_session, today, limit=2)
+        today_daily_task = today_daily_tasks[0] if today_daily_tasks else None
+        daily_total = len(today_daily_tasks)
+        daily_completed = sum(1 for t in today_daily_tasks if t.is_done)
+
+    current_week_session = today_session
+    current_weekly_task = None
+    if current_week_session:
         current_weekly_task = (
             DailyCoachTask.query.filter_by(
                 session_id=current_week_session.id,
                 task_type="weekly",
-            ).first()
+            )
+            .order_by(DailyCoachTask.sort_order.asc())
+            .first()
         )
 
+    # Recent sessions for history + multi-phase roadmap (max 12)
     recent_sessions = (
         DailyCoachSession.query.filter_by(user_id=current_user.id, path_type=path_type)
-        .order_by(DailyCoachSession.created_at.desc())
-        .limit(5)
+        .order_by(DailyCoachSession.session_date.desc(), DailyCoachSession.day_index.desc())
+        .limit(12)
         .all()
     )
-
-    # ✅ Backward compat variables used by your longer index.html sections
-    today_session = None
-    last_session = None
-    if cycle_sessions:
-        today_session = current_week_session
-        last_session = cycle_sessions[-1] if cycle_sessions else None
-        try:
-            last_session = (
-                DailyCoachSession.query.filter_by(user_id=current_user.id, path_type=path_type)
-                .order_by(DailyCoachSession.session_date.desc())
-                .first()
-            )
-        except Exception:
-            pass
 
     return render_template(
         "coach/index.html",
@@ -479,15 +874,19 @@ def index():
         user_streak=user_streak,
         streak_count=user_streak,
         user_ready_score=user_ready_score,
-        cycle_sessions=cycle_sessions,
-        today_daily_task=today_daily_task,
+        cycle_sessions=cycle_sessions if cycle_sessions else None,
+        # New: pair data
+        today_daily_tasks=today_daily_tasks,
+        today_daily_task=today_daily_task,  # legacy single-task usage
+        daily_total=daily_total,
+        daily_completed=daily_completed,
         current_week_session=current_week_session,
         current_weekly_task=current_weekly_task,
-        recent_sessions=recent_sessions,
+        recent_sessions=recent_sessions if recent_sessions else None,
         month_cycle_id=month_cycle_id,
         today_session=today_session,
         last_session=last_session,
-        # ❌ DO NOT override feature_paths here; the context_processor already injects it
+        # feature_paths comes from context_processor
     )
 
 
@@ -499,7 +898,7 @@ def start():
 
     Creates:
     - 4 DailyCoachSession (one per week)
-    - 28 daily tasks (7 per week, task_type='daily')
+    - Daily/support tasks per session (task_type='daily'/'support')
     - 4 weekly tasks (1 per week, task_type='weekly')
     """
     path_type = _normalize_path_type(request.form.get("path_type") or request.args.get("path_type"))
@@ -525,17 +924,19 @@ def start():
         return redirect(url_for("coach.index", path_type=path_type))
 
     today = _today_date()
-    month_cycle_id = f"user_{current_user.id}_path_{path_type}_month_{today.year}_{today.month:02d}"
+    month_cycle_id = _build_month_cycle_id(current_user.id, path_type, today)
 
     existing_cycle = DailyCoachSession.query.filter_by(
         user_id=current_user.id,
         month_cycle_id=month_cycle_id,
+        path_type=path_type,
     ).first()
 
     if existing_cycle:
         flash("You already have a plan for this month!", "info")
         return redirect(url_for("coach.index", path_type=path_type))
 
+    # Charge credits up-front for this month cycle
     run_id = f"coach_{current_user.id}_{path_type}_{today.isoformat()}"
     try:
         ok = deduct_pro(current_user, "dream_planner", run_id=run_id)
@@ -550,102 +951,132 @@ def start():
     dream_context = _get_dream_plan_context(current_user.id, path_type)
     target_lpa = dream_context["target_lpa"]
     dream_plan = dream_context["dream_plan"] or {}
+    plan_title = dream_context.get("plan_title") or None
+    snapshot = dream_context.get("snapshot")
 
-    try:
-        plan, used_live_ai = generate_dualtrack_month_plan(
-            path_type=path_type,
-            target_lpa=target_lpa,
-            dream_plan=dream_plan,
-            month_cycle=month_cycle_id,
-            return_source=True,
-        )
+    sessions_created: list[DailyCoachSession] = []
 
-        weeks = plan.get("weeks") or []
-        month_ai_note = plan.get("ai_note") or ""
-
-        for week_obj in weeks[:4]:
-            week_num = int(week_obj.get("week_number") or 1)
-            week_note = (week_obj.get("week_note") or f"Week {week_num} focus.").strip()
-
-            session = DailyCoachSession(
-                user_id=current_user.id,
+    # ---- Primary path: AI month planner, if available ----
+    used_ai = False
+    if callable(generate_dualtrack_month_plan):  # type: ignore[truthy-function]
+        try:
+            plan, used_live_ai = generate_dualtrack_month_plan(  # type: ignore[assignment]
                 path_type=path_type,
-                session_date=today + timedelta(weeks=week_num - 1),
-                day_index=week_num,
-                month_cycle_id=month_cycle_id,
                 target_lpa=target_lpa,
-                is_closed=False,
-                ai_note=(week_note or month_ai_note),
-                daily_tasks_completed=0,
-                weekly_task_completed=False,
-                progress_percent=0,
+                dream_plan=dream_plan,
+                month_cycle=month_cycle_id,
+                return_source=True,
             )
-            db.session.add(session)
-            db.session.flush()
+            used_ai = bool(used_live_ai)
 
-            daily_tasks = week_obj.get("daily_tasks") or []
-            for dt in daily_tasks[:7]:
-                day = int(dt.get("day") or 1)
-                day_number_in_month = (week_num - 1) * 7 + day
+            weeks = plan.get("weeks") or []
+            month_ai_note = plan.get("ai_note") or ""
 
-                est = dt.get("estimated_minutes")
-                est_int = _safe_int(est, 10)
+            for week_obj in weeks[:4]:
+                week_num = int(week_obj.get("week_number") or 1)
+                week_note = (week_obj.get("week_note") or f"Week {week_num} focus.").strip()
 
-                tags = dt.get("tags") if isinstance(dt.get("tags"), list) else None
-
-                task = DailyCoachTask(
-                    session_id=session.id,
-                    task_type="daily",
-                    week_number=week_num,
-                    day_number=day_number_in_month,
-                    title=(dt.get("title") or f"Day {day} task")[:255],
-                    detail=(dt.get("detail") or ""),
-                    category=(dt.get("category") or "skills")[:64],
-                    sort_order=day,
-                    is_done=False,
-                    estimated_time_minutes=est_int,
-                    estimated_minutes=est_int,
-                    target_lpa_level=target_lpa,
-                    tags=tags,
-                    milestone_title=(dt.get("milestone_title") or "")[:255] if dt.get("milestone_title") else None,
-                    milestone_step=(dt.get("milestone_step") or "")[:255] if dt.get("milestone_step") else None,
+                session = DailyCoachSession(
+                    user_id=current_user.id,
+                    path_type=path_type,
+                    session_date=today + timedelta(days=(week_num - 1) * 7),
+                    day_index=week_num,
+                    month_cycle_id=month_cycle_id,
+                    target_lpa=target_lpa,
+                    is_closed=False,
+                    ai_note=(week_note or month_ai_note),
+                    daily_tasks_completed=0,
+                    weekly_task_completed=False,
+                    progress_percent=0,
+                    plan_title=plan_title,
+                    plan_digest=snapshot.inputs_digest if snapshot else None,
                 )
-                db.session.add(task)
+                db.session.add(session)
+                db.session.flush()
 
-            wt = week_obj.get("weekly_task") or {}
-            w_est_int = _safe_int(wt.get("estimated_minutes"), 240)
+                # Daily tasks – store with day_number 1–7 within the week
+                daily_tasks = week_obj.get("daily_tasks") or []
+                for dt in daily_tasks:
+                    day = int(dt.get("day") or 1)
+                    if day < 1:
+                        day = 1
+                    if day > 7:
+                        day = 7
 
-            weekly_task = DailyCoachTask(
-                session_id=session.id,
-                task_type="weekly",
-                week_number=week_num,
-                day_number=None,
-                title=(wt.get("title") or f"Week {week_num} milestone")[:255],
-                detail=(wt.get("detail") or ""),
-                category=(wt.get("category") or "projects")[:64],
-                sort_order=999,
-                is_done=False,
-                estimated_time_minutes=w_est_int,
-                estimated_minutes=w_est_int,
-                target_lpa_level=target_lpa,
-                milestone_badge=(wt.get("milestone_badge") or f"Week {week_num} Master")[:100],
-                milestone_title=(wt.get("milestone_title") or "")[:255] if wt.get("milestone_title") else None,
-                milestone_step=(wt.get("milestone_step") or "")[:255] if wt.get("milestone_step") else None,
-                tags=wt.get("tags") if isinstance(wt.get("tags"), list) else None,
+                    est = dt.get("estimated_minutes")
+                    est_int = _safe_int(est, 10)
+
+                    tags = dt.get("tags") if isinstance(dt.get("tags"), list) else None
+
+                    task = DailyCoachTask(
+                        session_id=session.id,
+                        task_type="daily",
+                        week_number=week_num,
+                        day_number=day,
+                        title=(dt.get("title") or f"Day {day} task")[:255],
+                        detail=(dt.get("detail") or ""),
+                        category=(dt.get("category") or "skills")[:64],
+                        sort_order=day,
+                        is_done=False,
+                        estimated_time_minutes=est_int,
+                        estimated_minutes=est_int,
+                        target_lpa_level=target_lpa,
+                        tags=tags,
+                        milestone_title=(dt.get("milestone_title") or "")[:255] if dt.get("milestone_title") else None,
+                        milestone_step=(dt.get("milestone_step") or "")[:255] if dt.get("milestone_step") else None,
+                    )
+                    db.session.add(task)
+
+                # Weekly Big Rock
+                wt = week_obj.get("weekly_task") or {}
+                w_est_int = _safe_int(wt.get("estimated_minutes"), 240)
+
+                weekly_task = DailyCoachTask(
+                    session_id=session.id,
+                    task_type="weekly",
+                    week_number=week_num,
+                    day_number=None,
+                    title=(wt.get("title") or f"Week {week_num} milestone")[:255],
+                    detail=(wt.get("detail") or ""),
+                    category=(wt.get("category") or "projects")[:64],
+                    sort_order=999,
+                    is_done=False,
+                    estimated_time_minutes=w_est_int,
+                    estimated_minutes=w_est_int,
+                    target_lpa_level=target_lpa,
+                    milestone_badge=(wt.get("milestone_badge") or f"Week {week_num} Master")[:100],
+                    milestone_title=(wt.get("milestone_title") or "")[:255] if wt.get("milestone_title") else None,
+                    milestone_step=(wt.get("milestone_step") or "")[:255] if wt.get("milestone_step") else None,
+                    tags=wt.get("tags") if isinstance(wt.get("tags"), list) else None,
+                )
+                db.session.add(weekly_task)
+
+                sessions_created.append(session)
+
+        except Exception:
+            current_app.logger.exception("Coach: AI month plan generation failed – will fallback to project-based.")
+            db.session.rollback()
+            sessions_created = []
+
+    # ---- Fallback path: P3 project-based generator ----
+    if not sessions_created:
+        try:
+            sessions_created = _generate_month_cycle_from_projects(
+                user=current_user,
+                path_type=path_type,
+                month_cycle_id=month_cycle_id,
+                base_date=today,
+                target_lpa=target_lpa,
+                snapshot=snapshot,
+                plan_title=plan_title,
             )
-            db.session.add(weekly_task)
+        except Exception:
+            current_app.logger.exception("Coach: project-based fallback generation failed.")
+            db.session.rollback()
+            sessions_created = []
 
-        if not _safe_commit("start_plan"):
-            # If commit failed, refund like failure path.
-            raise RuntimeError("DB commit failed while saving plan")
-
-        flash(f"✅ 28-day plan created! {target_lpa} LPA track", "success")
-        return redirect(url_for("coach.index", path_type=path_type))
-
-    except Exception:
-        current_app.logger.exception("Coach: generation failed")
-        db.session.rollback()
-
+    # If both AI and fallback failed → refund
+    if not sessions_created:
         try:
             amt = _feature_cost_amount_safe("dream_planner", "gold")
             if amt > 0:
@@ -664,41 +1095,70 @@ def start():
                     run_id=run_id,
                 )
         except Exception:
-            current_app.logger.exception("Coach: refund failed")
+            current_app.logger.exception("Coach: refund failed after generation failure.")
 
         flash("Coach had an error generating your plan. Credits were refunded.", "danger")
         return redirect(url_for("coach.index", path_type=path_type))
+
+    if not _safe_commit("start_plan"):
+        # If commit itself fails, refund as well
+        try:
+            amt = _feature_cost_amount_safe("dream_planner", "gold")
+            if amt > 0:
+                refund(
+                    current_user,
+                    "dream_planner",
+                    currency="gold",
+                    amount=amt,
+                    run_id=run_id,
+                )
+            else:
+                refund(
+                    current_user,
+                    "dream_planner",
+                    currency="gold",
+                    run_id=run_id,
+                )
+        except Exception:
+            current_app.logger.exception("Coach: refund failed after commit error.")
+        return redirect(url_for("coach.index", path_type=path_type))
+
+    flash(f"✅ 28-day plan created! {target_lpa} LPA track", "success")
+    return redirect(url_for("coach.index", path_type=path_type))
 
 
 @coach_bp.route("/task/<int:task_id>/complete", methods=["POST"], endpoint="complete_task")
 @login_required
 def complete_task(task_id):
-    """Mark a task as complete and update streak/ready score."""
+    """Toggle a task as complete/incomplete and update streak/ready score."""
     task = DailyCoachTask.query.get_or_404(task_id)
     session = DailyCoachSession.query.get_or_404(task.session_id)
 
     if session.user_id != current_user.id:
         abort(403)
 
-    task.is_done = not bool(task.is_done)
+    before = bool(task.is_done)
+    task.is_done = not before
     task.completed_at = datetime.utcnow() if task.is_done else None
 
     ready_score = _get_user_int(current_user, "ready_score", 0)
     milestones = _get_user_int(current_user, "weekly_milestones_completed", 0)
     freezes = _get_user_int(current_user, "streak_freezes_remaining", 0)
 
-    if task.is_done:
+    if task.is_done and not before:
         if task.task_type == "daily":
             completed_app_day = _app_day(current_user, now_utc=datetime.utcnow())
             _update_user_streak(current_user, completed_app_day)
             ready_score = ready_score + 1
 
         elif task.task_type == "weekly":
-            ready_score = ready_score + 14  # 10 + 4 badge
+            # +10 for weekly +4 for badge as per your copy
+            ready_score = ready_score + 14
             milestones = milestones + 1
-            freezes = freezes + 1  # earn freeze
+            freezes = freezes + 1  # earn extra freeze when completing weekly
 
-    else:
+    elif (not task.is_done) and before:
+        # Simple "undo" behaviour – small penalty
         if task.task_type == "daily":
             ready_score = max(ready_score - 1, 0)
 
@@ -731,13 +1191,17 @@ def complete_task(task_id):
     return redirect(request.referrer or url_for("coach.index"))
 
 
-@coach_bp.route("/session/<int:session_id>/update", methods=["POST"], endpoint="update_session")
+@coach_bp.route(
+    "/session/<int:session_id>/update",
+    methods=["POST"],
+    endpoint="update_session",
+)
 @login_required
 def update_session(session_id: int):
     """
-    Session checklist save endpoint.
+    Session checklist save endpoint (kept for backward compatibility).
 
-    Your session.html posts checkbox states here:
+    If you ever wire a non-AJAX form from the session page, it can post here:
       - task_<id> = "done" when checked
       - mark_done=1 when user clicks "Save & mark week done"
     """
@@ -810,10 +1274,14 @@ def update_session(session_id: int):
     return redirect(url_for("coach.session", session_id=session.id))
 
 
-@coach_bp.route("/session/<int:session_id>/reflect", methods=["POST"], endpoint="reflect")
+@coach_bp.route(
+    "/session/<int:session_id>/reflect",
+    methods=["POST"],
+    endpoint="reflect",
+)
 @login_required
 def reflect(session_id: int):
-    """Save reflection notes for a session."""
+    """Save reflection notes for a session (if you ever wire a server-side form)."""
     session = DailyCoachSession.query.get_or_404(session_id)
     if session.user_id != current_user.id:
         abort(403)
@@ -856,6 +1324,7 @@ def session(session_id):
     profile_snapshot = load_profile_snapshot(current_user)
 
     streak_count = _get_user_int(current_user, "current_streak", 0)
+    day_index = getattr(session_obj, "day_index", 1) or 1
 
     return render_template(
         "coach/session.html",
@@ -867,15 +1336,17 @@ def session(session_id):
         path_type=path_type,
         is_pro_user=is_pro_user,
         profile_snapshot=profile_snapshot,
-        session_date=session_obj.session_date.isoformat() if session_obj.session_date else None,
+        session_date=session_obj.session_date.strftime("%d %b %Y") if session_obj.session_date else None,
         session_is_closed=bool(session_obj.is_closed),
         plan_title=getattr(session_obj, "plan_title", None),
-        day_index=getattr(session_obj, "day_index", None),
+        day_index=day_index,
         streak_count=streak_count,
-        phase_label=f"Week {getattr(session_obj, 'day_index', 1) or 1}",
-        week_label=f"Week {getattr(session_obj, 'day_index', 1) or 1}",
+        phase_label="Phase 1 · Foundation" if day_index <= 4 else (
+            "Phase 2 · Projects & depth" if day_index <= 8 else "Phase 3 · Showcase & applications"
+        ),
+        week_label=f"Week {day_index}",
         session_scope_label="This week",
         ai_note=getattr(session_obj, "ai_note", None),
         reflection=getattr(session_obj, "reflection", None),
-        # ❌ again, don't pass feature_paths here
+        # feature_paths from context_processor
     )

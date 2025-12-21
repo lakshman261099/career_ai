@@ -43,7 +43,7 @@ dream_bp = Blueprint(
 
 
 # -----------------------------
-# Helpers (unchanged)
+# Helpers
 # -----------------------------
 def _current_is_pro_user() -> bool:
     """Helper: determine if user is Pro based on flags + subscription_status."""
@@ -266,11 +266,12 @@ def index():
         target_role = (request.form.get("target_role") or "").strip()
         target_lpa = (request.form.get("target_lpa") or "").strip()
         timeline_months_raw = (request.form.get("timeline_months") or "").strip()
+        # hours_per_day is no longer an explicit field in UI; default to ~2h/day
         hours_raw = (request.form.get("hours_per_day") or "").strip()
         company_prefs = (request.form.get("company_prefs") or "").strip()
         extra_context = (request.form.get("extra_context") or "").strip()
 
-        # Optional startup-specific fields
+        # Optional startup-specific fields (UI may or may not expose these)
         startup_budget_range = (
             request.form.get("startup_budget_range")
             or request.form.get("startup_budget")
@@ -295,6 +296,7 @@ def index():
         # Shared AI inputs
         ai_inputs = {
             "target_role": target_role,
+            # target_lpa now usually comes from a dropdown band (12/24/48)
             "target_salary_lpa": target_lpa,
             "timeline_months": timeline_months,
             "hours_per_day": hours_per_day,
@@ -354,16 +356,25 @@ def index():
             snapshot_id = snapshot.id
             db.session.commit()
         except Exception as e:
-            current_app.logger.exception("Dream Planner: failed to create snapshot: %s", e)
+            current_app.logger.exception(
+                "Dream Planner: failed to create snapshot: %s", e
+            )
             db.session.rollback()
-            
+
             # Refund credits since we can't proceed
             try:
                 from modules.credits.engine import refund
-                refund(current_user, "dream_planner", currency="gold", run_id=run_id, commit=True)
+
+                refund(
+                    current_user,
+                    "dream_planner",
+                    currency="gold",
+                    run_id=run_id,
+                    commit=True,
+                )
             except Exception:
                 pass
-            
+
             flash(
                 "We couldn't start your Dream Plan right now. Your credits were refunded. Please try again.",
                 "danger",
@@ -388,25 +399,36 @@ def index():
                 f"Dream Planner: enqueued job {job_id} for snapshot {snapshot_id}"
             )
         except Exception as e:
-            current_app.logger.exception("Dream Planner: failed to enqueue job: %s", e)
-            
+            current_app.logger.exception(
+                "Dream Planner: failed to enqueue job: %s", e
+            )
+
             # Mark snapshot as failed
             try:
-                snapshot.plan_json = json.dumps({
-                    "_status": "failed",
-                    "_error": "Failed to enqueue background job"
-                })
+                snapshot.plan_json = json.dumps(
+                    {
+                        "_status": "failed",
+                        "_error": "Failed to enqueue background job",
+                    }
+                )
                 db.session.commit()
             except Exception:
                 db.session.rollback()
-            
+
             # Refund credits
             try:
                 from modules.credits.engine import refund
-                refund(current_user, "dream_planner", currency="gold", run_id=run_id, commit=True)
+
+                refund(
+                    current_user,
+                    "dream_planner",
+                    currency="gold",
+                    run_id=run_id,
+                    commit=True,
+                )
             except Exception:
                 pass
-            
+
             flash(
                 "We couldn't start your Dream Plan right now. Your credits were refunded. Please try again.",
                 "danger",
@@ -427,7 +449,9 @@ def index():
         is_pro_user=is_pro_user,
         profile_snapshot=profile_snapshot,
     )
-# modules/dream/routes.py - PART 2 (append to part 1)
+
+
+# modules/dream/routes.py - PART 2
 
 @dream_bp.route("/processing/<int:snapshot_id>", methods=["GET"], endpoint="processing")
 @login_required
@@ -440,35 +464,37 @@ def processing(snapshot_id):
     snapshot = DreamPlanSnapshot.query.filter_by(
         id=snapshot_id, user_id=current_user.id
     ).first()
-    
+
     if not snapshot:
         flash("Dream Plan not found.", "warning")
         return redirect(url_for("dream.index"))
-    
+
     # Check if already completed
     try:
         plan_data = json.loads(snapshot.plan_json or "{}")
         status = plan_data.get("_status", "queued")
-        
+
         if status == "completed":
             # Already done, redirect to result
             return redirect(url_for("dream.result", snapshot_id=snapshot_id))
-        
+
         if status == "failed":
             flash(
                 "Your Dream Plan generation failed. Your credits were refunded. Please try again.",
-                "danger"
+                "danger",
             )
             return redirect(url_for("dream.index", path_type=snapshot.path_type))
     except Exception:
         pass
-    
+
     # Show processing page
     return render_template(
         "dream/processing.html",
         snapshot_id=snapshot_id,
         path_type=snapshot.path_type,
-        status_url=url_for("dream.api_status", snapshot_id=snapshot_id, _external=False),
+        status_url=url_for(
+            "dream.api_status", snapshot_id=snapshot_id, _external=False
+        ),
         result_url=url_for("dream.result", snapshot_id=snapshot_id, _external=False),
     )
 
@@ -483,30 +509,35 @@ def api_status(snapshot_id):
     snapshot = DreamPlanSnapshot.query.filter_by(
         id=snapshot_id, user_id=current_user.id
     ).first()
-    
+
     if not snapshot:
         return jsonify({"status": "not_found", "error": "Snapshot not found"}), 404
-    
+
     try:
         plan_data = json.loads(snapshot.plan_json or "{}")
         status = plan_data.get("_status", "queued")
-        
+
         response = {
             "status": status,
             "snapshot_id": snapshot_id,
         }
-        
+
         if status == "failed":
-            response["error"] = plan_data.get("error", "Unknown error")
-        
+            # Use _error if present (matches how we set it elsewhere)
+            response["error"] = plan_data.get(
+                "_error", plan_data.get("error", "Unknown error")
+            )
+
         return jsonify(response)
-    
+
     except Exception as e:
         current_app.logger.exception("Dream status API error: %s", e)
-        return jsonify({
-            "status": "error",
-            "error": "Failed to check status"
-        }), 500
+        return jsonify(
+            {
+                "status": "error",
+                "error": "Failed to check status",
+            }
+        ), 500
 
 
 @dream_bp.route("/result/<int:snapshot_id>", methods=["GET"], endpoint="result")
@@ -514,37 +545,51 @@ def api_status(snapshot_id):
 def result(snapshot_id):
     """
     Show completed Dream Plan.
-    This renders the same result.html template as the sync version.
+    Uses normalized phase-based structure, plus legacy plan_core
+    for any older template bits.
     """
     snapshot = DreamPlanSnapshot.query.filter_by(
         id=snapshot_id, user_id=current_user.id
     ).first()
-    
+
     if not snapshot:
         flash("Dream Plan not found.", "warning")
         return redirect(url_for("dream.index"))
-    
+
     try:
         plan_view = json.loads(snapshot.plan_json or "{}")
         status = plan_view.get("_status", "unknown")
-        
+
         if status == "failed":
             flash(
                 "This Dream Plan generation failed. Your credits were refunded. Please try again.",
-                "danger"
+                "danger",
             )
             return redirect(url_for("dream.index", path_type=snapshot.path_type))
-        
+
         if status != "completed":
             # Still processing, redirect back to processing page
             return redirect(url_for("dream.processing", snapshot_id=snapshot_id))
-        
+
+        # Normalize phases for UI (similar to how we normalized coach tasks)
+        raw_phases = plan_view.get("phases")
+        normalized_phases = _ensure_phases(raw_phases)
+        plan_view["phases"] = normalized_phases
+
+        # Backwards-compatible 30/60/90 view if any code still uses plan_core
+        if not plan_view.get("plan_core"):
+            plan_view["plan_core"] = _legacy_plan_core_from_phases(normalized_phases)
+
         # Extract path_type from plan or snapshot
-        path_type = plan_view.get("mode") or plan_view.get("input", {}).get("path_type") or snapshot.path_type
-        
+        path_type = (
+            plan_view.get("mode")
+            or plan_view.get("input", {}).get("path_type")
+            or snapshot.path_type
+        )
+
         is_pro_user = _current_is_pro_user()
         profile_snapshot = load_profile_snapshot(current_user)
-        
+
         return render_template(
             "dream/result.html",
             plan=plan_view,
@@ -553,7 +598,7 @@ def result(snapshot_id):
             profile_snapshot=profile_snapshot,
             snapshot_id=snapshot_id,
         )
-    
+
     except Exception as e:
         current_app.logger.exception("Dream result render error: %s", e)
         flash("Could not load your Dream Plan. Please try again.", "error")
@@ -561,7 +606,7 @@ def result(snapshot_id):
 
 
 # -----------------------------------
-# Project Selection (unchanged)
+# Project Selection
 # -----------------------------------
 
 @dream_bp.route("/projects/select", methods=["POST"], endpoint="select_projects")
@@ -569,7 +614,9 @@ def result(snapshot_id):
 def select_projects():
     """
     Handle project selection from the Dream Plan UI.
-    (Same as sync version - no changes needed)
+
+    The current result.html uses checkboxes named "project_index".
+    For compatibility with older versions, we also accept "selected_projects".
     """
     path_type = _normalize_path_type(request.form.get("path_type"))
     snapshot_id_raw = request.form.get("snapshot_id")
@@ -605,9 +652,11 @@ def select_projects():
     timeline_months = input_block.get("timeline_months", 6)
     max_projects = _max_projects_for_timeline(timeline_months)
 
-    # Get selected project indices from form
-    selected_indices_raw = request.form.getlist("selected_projects")
-    selected_indices = []
+    # Get selected project indices from form (new + old field names)
+    selected_indices_raw = (
+        request.form.getlist("selected_projects") or request.form.getlist("project_index")
+    )
+    selected_indices: list[int] = []
     for idx_str in selected_indices_raw:
         try:
             selected_indices.append(int(idx_str))
@@ -629,17 +678,21 @@ def select_projects():
         if 0 <= idx < len(mini_projects):
             proj = mini_projects[idx]
             if isinstance(proj, dict):
-                selected_projects.append({
-                    "title": proj.get("title", "Project"),
-                    "description": proj.get("description", ""),
-                    "index": idx,
-                })
+                selected_projects.append(
+                    {
+                        "title": proj.get("title", "Project"),
+                        "description": proj.get("description", ""),
+                        "index": idx,
+                    }
+                )
             elif isinstance(proj, str):
-                selected_projects.append({
-                    "title": proj,
-                    "description": "",
-                    "index": idx,
-                })
+                selected_projects.append(
+                    {
+                        "title": proj,
+                        "description": "",
+                        "index": idx,
+                    }
+                )
 
     # Update plan_json with selected_projects
     plan_json["selected_projects"] = selected_projects
@@ -661,7 +714,7 @@ def select_projects():
 
 
 # -----------------------------------
-# History / Plans List (unchanged)
+# History / Plans List
 # -----------------------------------
 
 @dream_bp.route("/plans", methods=["GET"], endpoint="plans")
@@ -669,7 +722,6 @@ def select_projects():
 def plans():
     """
     Show user's Dream Plan history.
-    (Same as sync version - no changes needed)
     """
     try:
         snapshots = (
@@ -689,15 +741,19 @@ def plans():
         try:
             plan_json = json.loads(snap.plan_json or "{}")
             status = plan_json.get("_status", "unknown")
-            plans_data.append({
-                "snapshot": snap,
-                "status": status,
-            })
+            plans_data.append(
+                {
+                    "snapshot": snap,
+                    "status": status,
+                }
+            )
         except Exception:
-            plans_data.append({
-                "snapshot": snap,
-                "status": "error",
-            })
+            plans_data.append(
+                {
+                    "snapshot": snap,
+                    "status": "error",
+                }
+            )
 
     return render_template(
         "dream/plans.html",
