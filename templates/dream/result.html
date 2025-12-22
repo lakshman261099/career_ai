@@ -6,7 +6,20 @@
 {% set meta = plan.meta if plan and plan.meta else {} %}
 {% set path_type = (plan.mode or meta.path_type or 'job')|lower %}
 {% set input = plan.input or {} %}
-{% set timeline_months = (input.timeline_months or 3)|int %}
+
+{# timeline_months: accept either legacy "timeline_months" or new "timeline" radio values #}
+{% set _raw_timeline_months = input.timeline_months if input and input.timeline_months is defined else None %}
+{% set _raw_timeline = input.timeline if input and input.timeline is defined else None %}
+{% if _raw_timeline_months %}
+  {% set timeline_months = (_raw_timeline_months or 3)|int %}
+{% else %}
+  {% if _raw_timeline == '28_days' %}
+    {% set timeline_months = 1 %}
+  {% else %}
+    {% set timeline_months = 3 %}
+  {% endif %}
+{% endif %}
+
 {% set is_sprint = (timeline_months == 1) %}
 {% set horizon_label = '28-Day' if is_sprint else timeline_months ~ '-Month' %}
 {% set horizon_sentence = '28 days' if is_sprint else timeline_months ~ ' months' %}
@@ -42,7 +55,7 @@
             Your {{ horizon_label }} Career Roadmap
           {% endif %}
         </h1>
-        
+
         <p class="text-white/75 text-sm sm:text-base leading-relaxed">
           Based on your goal:
           <span class="text-white font-semibold">
@@ -81,38 +94,92 @@
       </div>
     </div>
 
-    {# --- Coach CTA block --- #}
+    {# --- Coach CTA block (UPDATED: Lock Plan & Coach Section per merge guide) --- #}
     <div class="relative mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-white/10 pt-4">
-      {% if is_pro_user %}
-        <form
-          method="post"
-          action="{{ url_for('coach.start') }}"
-          class="flex flex-col sm:flex-row gap-3"
-        >
-          <input type="hidden" name="path_type" value="{{ path_type }}">
 
-          <button
-            type="submit"
-            class="inline-flex items-center justify-center px-5 py-3 rounded-xl
-                   text-sm sm:text-base font-semibold
-                   bg-emerald-500 hover:bg-emerald-600
-                   text-white shadow-lg shadow-emerald-500/30
-                   transition-all duration-150"
-          >
-            <i data-lucide="target" class="w-4 h-4 mr-2"></i>
-            Start Weekly Coach from Phase 1
-          </button>
-        </form>
-      {% else %}
-        <div class="text-xs sm:text-sm text-white/80">
-          🔒 Weekly Coach is a Pro ⭐ feature.
-          <a
-            href="{{ url_for('billing.index') }}"
-            class="underline underline-offset-4 hover:text-white"
-          >
-            Upgrade to turn this plan into guided weekly execution.
-          </a>
+      {% set lock_snapshot_id = (snapshot_id if snapshot_id is defined and snapshot_id else (snapshot.id if snapshot is defined and snapshot.id else 0)) %}
+      {% set projects = projects if projects is defined and projects else [] %}
+      {% set is_locked = is_locked if is_locked is defined else False %}
+
+      {% if (projects and (not is_locked)) or is_locked %}
+        <!-- ✅ UPDATED: Lock Plan & Coach Section -->
+        <div class="w-full">
+          {% if not is_locked and projects %}
+          <div class="glass-card rounded-2xl p-6 border border-white/10">
+            <h3 class="text-xl font-bold mb-4">Select Your Focus Projects</h3>
+
+            <form method="POST" action="{{ url_for('dream.lock_plan', snapshot_id=lock_snapshot_id) }}" class="space-y-4">
+              {% for project in projects %}
+              <label class="block p-4 rounded-xl border-2 border-white/10 bg-white/5
+                            hover:border-indigo-500/50 hover:bg-indigo-500/5 cursor-pointer transition-all">
+                <input type="checkbox" name="selected_projects" value="{{ loop.index0 }}"
+                       {% if loop.index0 == 0 %}checked{% endif %} class="sr-only peer">
+                <div class="peer-checked:ring-2 peer-checked:ring-indigo-500 peer-checked:bg-indigo-500/10 rounded-lg p-4">
+                  <h4 class="font-bold">{{ project.title }}</h4>
+                  <p class="text-sm text-white/70 mt-2">{{ project.description }}</p>
+                  <div class="flex flex-wrap gap-2 mt-3">
+                    {% for tech in project.tech_stack %}
+                    <span class="px-2 py-1 rounded-md bg-white/10 text-xs">{{ tech }}</span>
+                    {% endfor %}
+                  </div>
+                </div>
+              </label>
+              {% endfor %}
+
+              <button type="submit" class="btn-primary w-full py-4 justify-center">
+                <i data-lucide="lock" class="w-5 h-5"></i>
+                Lock Plan & Start Coach
+              </button>
+            </form>
+          </div>
+
+          {% elif is_locked %}
+          <div class="glass-card rounded-2xl p-6 border border-emerald-500/30 bg-emerald-500/10 text-center">
+            <div class="flex items-center justify-center gap-2 mb-3">
+              <i data-lucide="check-circle" class="w-5 h-5 text-emerald-400"></i>
+              <span class="font-semibold text-emerald-300">Plan Locked!</span>
+            </div>
+            <a href="{{ url_for('coach.index', path_type=path_type) }}" class="btn-primary inline-flex">
+              <i data-lucide="play" class="w-4 h-4"></i>
+              Start Weekly Coach
+            </a>
+          </div>
+          {% endif %}
         </div>
+      {% else %}
+
+        {% if is_pro_user %}
+          <form
+            method="post"
+            action="{{ url_for('coach.start') }}"
+            class="flex flex-col sm:flex-row gap-3"
+          >
+            <input type="hidden" name="path_type" value="{{ path_type }}">
+
+            <button
+              type="submit"
+              class="inline-flex items-center justify-center px-5 py-3 rounded-xl
+                     text-sm sm:text-base font-semibold
+                     bg-emerald-500 hover:bg-emerald-600
+                     text-white shadow-lg shadow-emerald-500/30
+                     transition-all duration-150"
+            >
+              <i data-lucide="target" class="w-4 h-4 mr-2"></i>
+              Start Weekly Coach from Phase 1
+            </button>
+          </form>
+        {% else %}
+          <div class="text-xs sm:text-sm text-white/80">
+            🔒 Weekly Coach is a Pro ⭐ feature.
+            <a
+              href="{{ url_for('billing.index') }}"
+              class="underline underline-offset-4 hover:text-white"
+            >
+              Upgrade to turn this plan into guided weekly execution.
+            </a>
+          </div>
+        {% endif %}
+
       {% endif %}
 
       <p class="text-[11px] sm:text-xs text-white/55 max-w-md">
@@ -121,6 +188,143 @@
       </p>
     </div>
   </header>
+
+  <!-- ✅ NEW: Probability Matrix (per merge guide) -->
+  {% if plan and path_type != 'startup' %}
+    {% set probs_src = plan.probabilities or {} %}
+    {% set projected_src = projected_probabilities if projected_probabilities is defined and projected_probabilities else (plan.projected_probabilities if plan.projected_probabilities is defined and plan.projected_probabilities else {}) %}
+    {% set bold_truth = bold_truth if bold_truth is defined else (plan.bold_truth if plan.bold_truth is defined else None) %}
+
+    {# Build "probabilities" dict safely from common shapes #}
+    {% set probabilities = probabilities if probabilities is defined and probabilities else {
+      '3': (probs_src.get('3') or probs_src.get('lpa_3') or probs_src.get('lpa03') or 0),
+      '6': (probs_src.get('6') or probs_src.get('lpa_6') or probs_src.get('lpa06') or 0),
+      '12': (probs_src.get('12') or probs_src.get('lpa_12') or probs_src.get('lpa12') or 0),
+      '24': (probs_src.get('24') or probs_src.get('lpa_24') or probs_src.get('lpa24') or 0)
+    } %}
+
+    {% set projected_probabilities = projected_src if projected_src is mapping else {} %}
+
+    {% if probabilities or projected_probabilities %}
+    <div class="glass-card rounded-2xl p-6 sm:p-8 border border-white/10 space-y-6">
+      <div class="flex items-start justify-between">
+        <div>
+          <h2 class="text-2xl font-bold flex items-center gap-2">
+            <i data-lucide="trending-up" class="w-6 h-6 text-indigo-400"></i>
+            Career Probability Analysis
+          </h2>
+          <p class="text-sm text-white/60 mt-1">
+            Current skills vs. Projected after completing the plan
+          </p>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        {% for lpa in ['3', '6', '12', '24'] %}
+        {% set current = probabilities.get(lpa, 0)|int %}
+        {% set projected = projected_probabilities.get(lpa, 0)|int %}
+        {% set tier_label = {'3': 'Entry-level', '6': 'Junior', '12': 'Mid-level', '24': 'Senior'}[lpa] %}
+
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <!-- LPA Badge with tier-specific colors -->
+              {% if lpa == '3' %}
+              <div class="w-16 h-16 rounded-xl bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-center">
+                <span class="text-2xl font-bold text-emerald-300">3+</span>
+              </div>
+              {% elif lpa == '6' %}
+              <div class="w-16 h-16 rounded-xl bg-blue-500/10 border-2 border-blue-500/30 flex items-center justify-center">
+                <span class="text-2xl font-bold text-blue-300">6+</span>
+              </div>
+              {% elif lpa == '12' %}
+              <div class="w-16 h-16 rounded-xl bg-purple-500/10 border-2 border-purple-500/30 flex items-center justify-center">
+                <span class="text-2xl font-bold text-purple-300">12+</span>
+              </div>
+              {% else %}
+              <div class="w-16 h-16 rounded-xl bg-pink-500/10 border-2 border-pink-500/30 flex items-center justify-center">
+                <span class="text-2xl font-bold text-pink-300">24+</span>
+              </div>
+              {% endif %}
+              
+              <div>
+                <div class="font-bold text-lg text-white">{{ lpa }}+ LPA</div>
+                <div class="text-xs text-white/60">{{ tier_label }} Roles</div>
+              </div>
+            </div>
+            {% if projected > current %}
+            <div class="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+              <div class="text-xs text-emerald-300 font-semibold uppercase tracking-wider">Growth Potential</div>
+              <div class="text-2xl font-bold text-emerald-400">+{{ projected - current }}%</div>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <!-- CURRENT Bar -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-white/70 uppercase tracking-wider">Current</span>
+                <span class="text-lg font-bold text-gray-300">{{ current }}%</span>
+              </div>
+              <div class="h-4 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                <div class="h-full bg-gradient-to-r from-gray-600 to-gray-400 transition-all duration-1000 flex items-center justify-end pr-2"
+                     style="width: {{ current }}%; min-width: {{ '30px' if current > 0 else '0' }}">
+                  {% if current >= 15 %}
+                  <span class="text-[10px] font-bold text-white drop-shadow">{{ current }}%</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+
+            <!-- PROJECTED Bar -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Projected</span>
+                <span class="text-lg font-bold text-emerald-400">{{ projected }}%</span>
+              </div>
+              <div class="h-4 bg-white/5 rounded-full overflow-hidden border border-emerald-500/20">
+                <div class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000 flex items-center justify-end pr-2"
+                     style="width: {{ projected }}%; min-width: {{ '30px' if projected > 0 else '0' }}">
+                  {% if projected >= 15 %}
+                  <span class="text-[10px] font-bold text-white drop-shadow">{{ projected }}%</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {% if projected > current %}
+          <div class="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/5 px-3 py-2 rounded-lg border border-emerald-500/20">
+            <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
+            <span>After completing this plan, your probability increases by <strong>{{ projected - current }}%</strong></span>
+          </div>
+          {% elif projected == current %}
+          <div class="flex items-center gap-2 text-xs text-blue-400 bg-blue-500/5 px-3 py-2 rounded-lg border border-blue-500/20">
+            <i data-lucide="target" class="w-3.5 h-3.5"></i>
+            <span>Your current skills already position you well for this tier</span>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if bold_truth %}
+      <div class="p-5 rounded-xl bg-amber-500/10 border-2 border-amber-500/30">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+            <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-400"></i>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm font-semibold text-amber-300 mb-1">⚡ Reality Check</div>
+            <p class="text-white/90 leading-relaxed">{{ bold_truth }}</p>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  {% endif %}
 
   {% if not plan %}
     <div class="glass-card rounded-2xl p-8 text-center border border-white/10">
@@ -206,7 +410,7 @@
             {{ plan.mvp_outline or sx.mvp_outline
                or "Short outline of the MVP: core features, user journey, and what 'launched' means for you in this time horizon." }}
           </p>
-          
+
           {% set mvp_steps = sx.mvp_steps or [] %}
           {% if mvp_steps %}
             <div class="space-y-2 mt-auto">
@@ -228,7 +432,7 @@
             <h3 class="text-lg sm:text-xl font-bold text-white">Go-To-Market</h3>
             <p class="text-[11px] text-white/50 mt-1">How you’ll get first users</p>
           </div>
-          
+
           <div class="space-y-4 text-sm sm:text-base text-white/80 flex-grow">
             <div>
               <p class="text-[11px] text-white/55 uppercase tracking-wide mb-1">First 10 Customers</p>
@@ -265,7 +469,7 @@
             <h3 class="text-lg sm:text-xl font-bold text-white">Stack & Budget</h3>
             <p class="text-[11px] text-white/50 mt-1">Tools, costs & constraints</p>
           </div>
-          
+
           <div class="space-y-4">
             <div>
               <p class="text-[11px] text-white/55 uppercase tracking-wide mb-1">Suggested stack</p>
@@ -331,48 +535,11 @@
 
     {% else %}
 
-      {# JOB MODE VIEW #}
+      {# JOB MODE VIEW - OLD PROBABILITY SECTION REMOVED #}
 
       {% set probs = plan.probabilities or {} %}
 
-      <div class="grid lg:grid-cols-3 gap-6 items-start">
-        <div class="lg:col-span-1 space-y-3">
-          <h3 class="text-xs sm:text-sm font-semibold text-white/60 uppercase tracking-wider">Target LPA bands</h3>
-          <div class="space-y-2">
-            <div class="glass-card p-3 rounded-xl border border-white/10 flex items-center justify-between">
-              <span class="text-sm sm:text-base text-white/75">12 LPA</span>
-              <div class="flex items-center gap-2">
-                <div class="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div class="h-full bg-emerald-500" style="width: {{ probs.lpa_12 or 0 }}%;"></div>
-                </div>
-                <span class="text-sm font-bold text-emerald-300">{{ probs.lpa_12 or 0 }}%</span>
-              </div>
-            </div>
-            <div class="glass-card p-3 rounded-xl border border-white/10 flex items-center justify-between">
-              <span class="text-sm sm:text-base text-white/75">24 LPA</span>
-              <div class="flex items-center gap-2">
-                <div class="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div class="h-full bg-yellow-500" style="width: {{ probs.lpa_24 or 0 }}%;"></div>
-                </div>
-                <span class="text-sm font-bold text-yellow-300">{{ probs.lpa_24 or 0 }}%</span>
-              </div>
-            </div>
-            <div class="glass-card p-3 rounded-xl border border-white/10 flex items-center justify-between">
-              <span class="text-sm sm:text-base text-white/75">48 LPA</span>
-              <div class="flex items-center gap-2">
-                <div class="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div class="h-full bg-red-500" style="width: {{ probs.lpa_48 or 0 }}%;"></div>
-                </div>
-                <span class="text-sm font-bold text-red-300">{{ probs.lpa_48 or 0 }}%</span>
-              </div>
-            </div>
-          </div>
-          <p class="text-[10px] text-white/45 italic mt-1 leading-tight">
-            *Rough estimates for your chosen {{ '28-day' if is_sprint else timeline_months ~ '-month' }} horizon, based on current market demand and your visible gaps.
-          </p>
-        </div>
-
-        <div class="lg:col-span-2 glass-card rounded-2xl p-6 border border-white/10">
+      <div class="lg:col-span-3 glass-card rounded-2xl p-6 border border-white/10">
           <h3 class="text-sm sm:text-base font-semibold text-white/70 uppercase tracking-wider mb-4 flex items-center gap-2">
             <i data-lucide="alert-triangle" class="w-4 h-4 text-orange-400"></i> Critical Skill Gaps
           </h3>
@@ -386,7 +553,7 @@
             {% endfor %}
           </div>
           <p class="text-xs sm:text-sm text-white/65 mt-4">
-            Closing these gaps is the fastest way to: 
+            Closing these gaps is the fastest way to:
             <span class="font-semibold">move from 12 → 24 LPA</span>, and make 48 LPA at least possible over a longer horizon.
           </p>
         </div>
@@ -404,9 +571,10 @@
             Split into <span class="font-semibold">3 clear phases</span> so you always know what each phase is about.
           </p>
         </div>
-        
+
         <div class="grid md:grid-cols-3 gap-6">
           {% for phase in phases[:3] %}
+            {% set phase_index = loop.index %}
             {% set has_items = 'items' in phase %}
             {% set phase_items = phase['items'] if has_items else [] %}
             <div class="glass-card rounded-2xl p-6 border border-white/10 relative overflow-hidden group">
@@ -435,8 +603,8 @@
                 {% for item in phase_items %}
                   <li class="flex items-start gap-3 text-sm sm:text-base text-white/85">
                     <div class="w-5 h-5 rounded-full
-                               {% if loop.parentloop.index == 1 %}bg-blue-500/20 text-blue-300
-                               {% elif loop.parentloop.index == 2 %}bg-purple-500/20 text-purple-300
+                               {% if phase_index == 1 %}bg-blue-500/20 text-blue-300
+                               {% elif phase_index == 2 %}bg-purple-500/20 text-purple-300
                                {% else %}bg-emerald-500/20 text-emerald-300{% endif %}
                                flex items-center justify-center shrink-0 text-xs font-bold">
                       {{ loop.index }}

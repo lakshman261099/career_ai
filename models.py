@@ -4,6 +4,9 @@ from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Index, UniqueConstraint
 from werkzeug.security import check_password_hash, generate_password_hash
+from datetime import datetime
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, Date, ForeignKey, JSON
+from sqlalchemy.orm import relationship
 
 db = SQLAlchemy()
 
@@ -948,6 +951,35 @@ class DailyCoachTask(db.Model):
         nullable=True,
         comment="Badge name for completing weekly task (e.g. 'Backend Basics')"
     )
+    
+    # ✅ NEW: Task category for Weekly Tasks
+    task_category = Column(
+        String(20),
+        nullable=True,
+        comment="'Learn', 'Build', 'Document' for weekly tasks"
+    )
+    
+    # ✅ NEW: Tips field (expert advice for execution)
+    tips = Column(
+        Text,
+        nullable=True,
+        comment="Expert tips for completing this task (e.g., 'Use Redux Toolkit, not vanilla Redux')"
+    )
+    
+    # ✅ NEW: Skill tags that will be learned from this task
+    skill_tags = Column(
+        JSON,
+        nullable=True,
+        comment="Array of skills this task teaches (for Profile sync)"
+    )
+    
+    # ✅ NEW: Flag for profile sync eligibility
+    sync_to_profile = Column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="If True, suggest adding skill_tags to profile when completed"
+    )
 
     session = db.relationship(
         "DailyCoachSession",
@@ -1397,3 +1429,284 @@ class AdminActionLog(db.Model):
             f"<AdminActionLog {self.id} type={self.action_type} "
             f"by={self.performed_by_user_id} target={self.target_user_id}>"
         )
+
+
+# ============================================
+# NEW TABLE: LearningLog (DevLog)
+# ============================================
+
+class LearningLog(db.Model):
+    """
+    DevLog entries - Proof of Work when students complete Weekly Tasks.
+    
+    Phase 4 requirement: When user marks Weekly Task as done,
+    they fill out "What I learned/built" → saved here.
+    """
+    __tablename__ = "learning_log"
+    
+    id = Column(Integer, primary_key=True)
+    
+    # Link to task
+    task_id = Column(
+        Integer,
+        ForeignKey("daily_coach_task.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    
+    # Link to user
+    user_id = Column(
+        Integer,
+        ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    
+    # Link to session (week)
+    session_id = Column(
+        Integer,
+        ForeignKey("daily_coach_session.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    
+    # DevLog content
+    what_i_learned = Column(Text, nullable=True, comment="What did you learn?")
+    what_i_built = Column(Text, nullable=True, comment="What did you build?")
+    challenges_faced = Column(Text, nullable=True, comment="What challenges did you face?")
+    next_steps = Column(Text, nullable=True, comment="What's next?")
+    
+    # Proof attachments (URLs or file paths)
+    github_link = Column(String(500), nullable=True)
+    demo_link = Column(String(500), nullable=True)
+    screenshots = Column(JSON, nullable=True, comment="Array of screenshot URLs")
+    
+    # Metadata
+    time_spent_minutes = Column(Integer, nullable=True, comment="How long did it take?")
+    difficulty_rating = Column(Integer, nullable=True, comment="1-5 scale")
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+    
+    # Relationships
+    task = relationship(
+        "DailyCoachTask",
+        backref=db.backref("learning_logs", lazy=True, cascade="all, delete-orphan"),
+    )
+    
+    user = relationship(
+        "User",
+        backref=db.backref("learning_logs", lazy=True, cascade="all, delete-orphan"),
+    )
+    
+    session = relationship(
+        "DailyCoachSession",
+        backref=db.backref("learning_logs", lazy=True, cascade="all, delete-orphan"),
+    )
+    
+    def __repr__(self):
+        return f"<LearningLog {self.id} task={self.task_id} user={self.user_id}>"
+
+
+
+# ============================================
+# NEW TABLE: ProfileSkillSuggestion (Phase 5)
+# ============================================
+
+class ProfileSkillSuggestion(db.Model):
+    """
+    Phase 5: Track skill suggestions from completed projects.
+    When user finishes a project, suggest adding new skills to profile.
+    """
+    __tablename__ = "profile_skill_suggestion"
+    
+    id = Column(Integer, primary_key=True)
+    
+    user_id = Column(
+        Integer,
+        ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    
+    # Source context
+    source_type = Column(
+        String(50),
+        nullable=False,
+        comment="'coach_task', 'dream_project', 'learning_log'"
+    )
+    source_id = Column(Integer, nullable=True)  # ID of source object
+    
+    # Skill details
+    skill_name = Column(String(100), nullable=False)
+    skill_category = Column(String(50), nullable=True)  # "Backend", "Frontend", etc.
+    proficiency_level = Column(String(20), nullable=True)  # "Beginner", "Intermediate", "Advanced"
+    
+    # Suggestion status
+    status = Column(
+        String(20),
+        default='pending',
+        nullable=False,
+        comment="'pending', 'accepted', 'rejected', 'already_has'"
+    )
+    
+    # Context
+    context_note = Column(
+        Text,
+        nullable=True,
+        comment="Why this skill is suggested (e.g., 'From completing E-commerce project')"
+    )
+    
+    # Timestamps
+    suggested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    responded_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    user = relationship(
+        "User",
+        backref=db.backref("skill_suggestions", lazy=True, cascade="all, delete-orphan"),
+    )
+    
+    def __repr__(self):
+        return f"<ProfileSkillSuggestion {self.id} {self.skill_name} status={self.status}>"
+
+
+# ============================================
+# MIGRATION SQL
+# ============================================
+
+MIGRATION_SQL = """
+-- Run these in Flask shell or create a migration file
+
+-- 1. Create learning_log table
+CREATE TABLE IF NOT EXISTS learning_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    session_id INTEGER,
+    what_i_learned TEXT,
+    what_i_built TEXT,
+    challenges_faced TEXT,
+    next_steps TEXT,
+    github_link VARCHAR(500),
+    demo_link VARCHAR(500),
+    screenshots JSON,
+    time_spent_minutes INTEGER,
+    difficulty_rating INTEGER,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (task_id) REFERENCES daily_coach_task(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES daily_coach_session(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_learning_log_task ON learning_log(task_id);
+CREATE INDEX idx_learning_log_user ON learning_log(user_id);
+CREATE INDEX idx_learning_log_session ON learning_log(session_id);
+
+-- 2. Add columns to daily_coach_task
+ALTER TABLE daily_coach_task ADD COLUMN task_category VARCHAR(20);
+ALTER TABLE daily_coach_task ADD COLUMN tips TEXT;
+ALTER TABLE daily_coach_task ADD COLUMN skill_tags JSON;
+ALTER TABLE daily_coach_task ADD COLUMN sync_to_profile BOOLEAN DEFAULT FALSE NOT NULL;
+
+-- 3. Create profile_skill_suggestion table
+CREATE TABLE IF NOT EXISTS profile_skill_suggestion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    source_type VARCHAR(50) NOT NULL,
+    source_id INTEGER,
+    skill_name VARCHAR(100) NOT NULL,
+    skill_category VARCHAR(50),
+    proficiency_level VARCHAR(20),
+    status VARCHAR(20) DEFAULT 'pending' NOT NULL,
+    context_note TEXT,
+    suggested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    responded_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_skill_suggestion_user ON profile_skill_suggestion(user_id);
+CREATE INDEX idx_skill_suggestion_status ON profile_skill_suggestion(status);
+"""
+
+
+# ============================================
+# HELPER: Apply migration in Flask shell
+# ============================================
+
+def apply_sync_upgrade_migration():
+    """
+    Run this in Flask shell to add new tables and columns:
+    
+    >>> from models import db, apply_sync_upgrade_migration
+    >>> apply_sync_upgrade_migration()
+    """
+    from sqlalchemy import text
+    
+    migrations = MIGRATION_SQL.strip().split(';')
+    
+    for sql in migrations:
+        sql = sql.strip()
+        if not sql:
+            continue
+        try:
+            db.session.execute(text(sql))
+            print(f"✓ {sql[:80]}...")
+        except Exception as e:
+            print(f"✗ {sql[:80]}... ERROR: {e}")
+    
+    db.session.commit()
+    print("\n✅ Sync upgrade migration complete!")
+
+
+# ============================================
+# HELPER: Check migration status
+# ============================================
+
+def check_sync_upgrade_status():
+    """
+    Check which tables/columns exist.
+    
+    >>> from models import check_sync_upgrade_status
+    >>> check_sync_upgrade_status()
+    """
+    from sqlalchemy import inspect
+    
+    inspector = inspect(db.engine)
+    
+    # Check tables
+    tables = inspector.get_table_names()
+    
+    print("=== Sync Upgrade Migration Status ===\n")
+    
+    # LearningLog table
+    if 'learning_log' in tables:
+        print("✅ learning_log table exists")
+    else:
+        print("❌ learning_log table MISSING")
+    
+    # ProfileSkillSuggestion table
+    if 'profile_skill_suggestion' in tables:
+        print("✅ profile_skill_suggestion table exists")
+    else:
+        print("❌ profile_skill_suggestion table MISSING")
+    
+    # DailyCoachTask columns
+    if 'daily_coach_task' in tables:
+        task_cols = {col['name'] for col in inspector.get_columns('daily_coach_task')}
+        new_cols = {'task_category', 'tips', 'skill_tags', 'sync_to_profile'}
+        missing = new_cols - task_cols
+        
+        if missing:
+            print(f"❌ daily_coach_task missing: {', '.join(missing)}")
+        else:
+            print("✅ daily_coach_task has all new columns")
+    
+    print("\n" + "="*40)

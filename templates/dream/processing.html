@@ -195,7 +195,11 @@
   let startedAt = Date.now();
   let pollDelayMs = 2500;
 
+  let stageIntervalId = null;
+  let isTerminal = false;
+
   function setChip(label, sub) {
+    if (!liveChip) return;
     if (!sub) {
       liveChip.textContent = label;
       return;
@@ -204,6 +208,8 @@
   }
 
   function advanceStage() {
+    if (isTerminal) return;
+    if (!progressBar || !statusText) return;
     if (stageIndex < stages.length) {
       progressBar.style.width = stages[stageIndex].pct + "%";
       statusText.textContent = stages[stageIndex].text;
@@ -211,21 +217,54 @@
     }
   }
 
-  // rotate fake progress every 3s (premium feeling)
-  setInterval(advanceStage, 3000);
-  advanceStage();
+  function stopStageRotation() {
+    if (stageIntervalId) {
+      clearInterval(stageIntervalId);
+      stageIntervalId = null;
+    }
+  }
 
   function normalizeStatus(s) {
     return (s || "").toLowerCase();
   }
 
+  function safeRedirectToResult() {
+    // Single, safe redirect to result if we can't trust the polling response.
+    if (isTerminal) return;
+    isTerminal = true;
+    stopStageRotation();
+    if (progressBar) progressBar.style.width = "100%";
+    if (statusText) statusText.textContent = "Opening your Dream Plan…";
+    setChip("Opening", "loading result");
+    setTimeout(() => { window.location.href = RESULT_URL; }, 450);
+  }
+
   async function pollStatus() {
+    if (isTerminal) return;
+
     try {
-      const res = await fetch(STATUS_URL, { cache: "no-store" });
+      const res = await fetch(STATUS_URL, {
+        cache: "no-store",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Accept": "application/json"
+        },
+        redirect: "follow"
+      });
+
+      // If we got redirected somewhere unexpected (often login), res.json() will fail.
+      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+
+      if (!contentType.includes("application/json")) {
+        // If the worker is done, processing route itself will 302 to result;
+        // this non-JSON usually means auth redirect / html response. Best UX: attempt result.
+        safeRedirectToResult();
+        return;
+      }
+
       const data = await res.json();
       const st = normalizeStatus(data.status);
 
-      // show live chip status
       if (st && st !== lastKnown) lastKnown = st;
 
       if (st === "queued") setChip("Queued", "waiting for worker slot");
@@ -235,15 +274,19 @@
       else setChip("Working", st || "queued");
 
       if (st === "completed") {
-        progressBar.style.width = "100%";
-        statusText.textContent = "Finalizing your Dream Plan… Redirecting…";
+        isTerminal = true;
+        stopStageRotation();
+        if (progressBar) progressBar.style.width = "100%";
+        if (statusText) statusText.textContent = "Finalizing your Dream Plan… Redirecting…";
         setTimeout(() => { window.location.href = RESULT_URL; }, 650);
         return;
       }
 
       if (st === "failed") {
-        progressBar.style.width = "100%";
-        statusText.textContent = data.error || "Plan generation failed. Please go back and try again.";
+        isTerminal = true;
+        stopStageRotation();
+        if (progressBar) progressBar.style.width = "100%";
+        if (statusText) statusText.textContent = data.error || "Plan generation failed. Please go back and try again.";
         return;
       }
 
@@ -253,11 +296,20 @@
     } catch (e) {
       // gentle backoff on network hiccups
       pollDelayMs = Math.min(pollDelayMs + 750, 7000);
+
+      // If this has been going for a while, attempt result once in case status is blocked by auth/redirect.
+      const elapsed = (Date.now() - startedAt) / 1000;
+      if (elapsed > 20) {
+        // We don't want to be aggressive; try result once after some time.
+        // If result isn't ready, your result route should bounce back to processing anyway.
+        safeRedirectToResult();
+        return;
+      }
     }
 
     // "timeout" message after 2 minutes but keep polling
     const elapsed = (Date.now() - startedAt) / 1000;
-    if (elapsed > 120) {
+    if (elapsed > 120 && statusText && !isTerminal) {
       statusText.textContent = "Still working… Deep analysis can take longer for complex profiles. Please keep this tab open.";
     }
 
@@ -265,6 +317,8 @@
   }
 
   // start immediately
+  advanceStage();
+  stageIntervalId = setInterval(advanceStage, 3000);
   pollStatus();
 </script>
 

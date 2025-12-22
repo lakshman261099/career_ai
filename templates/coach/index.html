@@ -17,6 +17,50 @@
 
 <section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-8 text-white">
 
+  <!-- ✅ NEW: Skill Suggestions -->
+  {% if pending_skills and pending_skills|length > 0 %}
+  <div class="glass-card rounded-2xl p-6 border-2 border-emerald-500/30 bg-emerald-500/10 mb-6">
+    <div class="flex items-start justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+          <i data-lucide="star" class="w-6 h-6 text-emerald-400"></i>
+        </div>
+        <div>
+          <h3 class="text-xl font-bold text-emerald-300">🎉 New Skills Unlocked!</h3>
+          <p class="text-sm text-white/70 mt-1">Add these to your profile</p>
+        </div>
+      </div>
+      <span class="px-3 py-1 rounded-full bg-emerald-500/20 text-xs text-emerald-300">
+        {{ pending_skills|length }} New
+      </span>
+    </div>
+
+    <div class="space-y-3">
+      {% for skill in pending_skills %}
+      <div class="p-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
+        <div>
+          <div class="font-semibold">{{ skill.skill_name }}</div>
+          <div class="text-xs text-white/60 mt-1">{{ skill.context_note }}</div>
+        </div>
+        <div class="flex gap-2">
+          <form method="POST" action="{{ url_for('coach.accept_skill', suggestion_id=skill.id) }}" class="inline">
+            <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/30
+                                         text-sm text-emerald-300 hover:bg-emerald-500/30 transition-all">
+              <i data-lucide="check" class="w-4 h-4 inline"></i> Add
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('coach.reject_skill', suggestion_id=skill.id) }}" class="inline">
+            <button type="submit" class="px-3 py-2 rounded-lg bg-white/5 text-white/50 hover:bg-white/10">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- HEADER / HERO -->
   <header class="glass-card rounded-2xl p-6 sm:p-7 border border-white/10 shadow-xl relative overflow-hidden">
     <!-- Gradient overlay pushed behind content so navbar stays clickable -->
@@ -409,10 +453,19 @@
 
     <!-- WEEK VIEW (All 4 Weeks) -->
     <div class="glass-card rounded-2xl p-6 border border-white/10">
-      <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-        <i data-lucide="calendar" class="w-5 h-5"></i>
-        28-Day Roadmap
-      </h3>
+      <div class="flex items-center justify-between gap-3 mb-4">
+        <h3 class="text-lg font-semibold flex items-center gap-2">
+          <i data-lucide="calendar" class="w-5 h-5"></i>
+          28-Day Roadmap
+        </h3>
+
+        <!-- ✅ NEW: Abort Button -->
+        <button onclick="showAbortModal()"
+                class="px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/30
+                       text-sm text-red-300 hover:bg-red-500/20 transition-all">
+          <i data-lucide="trash-2" class="w-4 h-4 inline"></i> Abort Plan
+        </button>
+      </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {% for session in cycle_sessions %}
@@ -453,6 +506,114 @@
     </div>
 
   </div>
+  {% elif locked_plans and locked_plans|length > 0 %}
+
+  <!-- ✅ NEW: SELECT DREAM PLAN TO START -->
+  <div class="space-y-6">
+    <div class="glass-card rounded-2xl p-6 sm:p-7 border border-white/10 shadow-xl">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-14 h-14 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+          <i data-lucide="target" class="w-7 h-7 text-indigo-400"></i>
+        </div>
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-bold">Start Your Weekly Coach</h2>
+          <p class="text-sm text-white/70">Select a Dream Plan to begin your 28-day journey</p>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        {% for plan in locked_plans %}
+        {% set plan_data = plan.plan_json_parsed or {} %}
+        {% set input_data = plan_data.get('input', {}) %}
+        {% set analysis = plan_data.get('analysis', {}) %}
+        {% set selected_projects = plan_data.get('selected_projects', []) %}
+        {% set target_lpa = input_data.get('target_lpa', '12') %}
+        {% set timeline = input_data.get('timeline', '3_months') %}
+        
+        <div class="p-5 rounded-xl border-2 border-white/10 bg-white/5 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1 space-y-3">
+              <!-- Plan Title -->
+              <div>
+                <h3 class="text-lg font-bold text-white">{{ input_data.get('target_role', plan.plan_title or 'Career Plan') }}</h3>
+                <div class="flex items-center flex-wrap gap-2 mt-1">
+                  <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs">
+                    {{ target_lpa }}+ LPA Target
+                  </span>
+                  <span class="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-xs">
+                    {{ '28 Days' if timeline == '28_days' else '3 Months' }}
+                  </span>
+                  <span class="text-xs text-white/50">
+                    Created {{ plan.created_at.strftime('%b %d, %Y') if plan.created_at else '' }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Selected Projects -->
+              {% if selected_projects %}
+              <div>
+                <div class="text-xs text-white/60 mb-1">Selected Projects:</div>
+                <div class="flex flex-wrap gap-2">
+                  {% for proj in selected_projects[:3] %}
+                  <span class="px-2 py-1 rounded-lg bg-purple-500/20 text-purple-300 text-xs">
+                    {{ proj.get('title', 'Project') }}
+                  </span>
+                  {% endfor %}
+                  {% if selected_projects|length > 3 %}
+                  <span class="px-2 py-1 rounded-lg bg-white/10 text-white/50 text-xs">
+                    +{{ selected_projects|length - 3 }} more
+                  </span>
+                  {% endif %}
+                </div>
+              </div>
+              {% endif %}
+
+              <!-- Probability Preview -->
+              {% if analysis.get('probabilities') %}
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                {% set probs = analysis.get('probabilities', {}) %}
+                <div class="px-2 py-1 rounded bg-white/5">
+                  <span class="text-white/60">Current:</span>
+                  <span class="text-white ml-1">{{ probs.get(target_lpa, 0) }}%</span>
+                </div>
+                <div class="px-2 py-1 rounded bg-emerald-500/10">
+                  <span class="text-white/60">Target:</span>
+                  <span class="text-emerald-300 ml-1">{{ analysis.get('projected_probabilities', {}).get(target_lpa, 0) }}%</span>
+                </div>
+              </div>
+              {% endif %}
+            </div>
+
+            <!-- Start Button -->
+            <form method="POST" action="{{ url_for('coach.start') }}">
+              <input type="hidden" name="path_type" value="{{ plan.path_type }}">
+              <input type="hidden" name="snapshot_id" value="{{ plan.id }}">
+              <button type="submit" 
+                      class="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 
+                             hover:from-indigo-600 hover:to-purple-600 
+                             text-white font-semibold transition-all shadow-lg hover:shadow-xl
+                             flex items-center gap-2 whitespace-nowrap">
+                <i data-lucide="play" class="w-5 h-5"></i>
+                <span>Start Coach</span>
+              </button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Create New Plan Link -->
+      <div class="mt-6 text-center">
+        <a href="{{ url_for('dream.index', path_type=path_type) }}" 
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 
+                  text-sm text-white/70 hover:text-white transition-all border border-white/10">
+          <i data-lucide="plus" class="w-4 h-4"></i>
+          <span>Create New Dream Plan</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
   {% else %}
 
   <!-- NO CYCLE YET - Show Start Button -->
@@ -1114,12 +1275,57 @@
 
   {% endif %}
 
+  <!-- ✅ NEW: Abort Modal -->
+  <div id="abortModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+    <div class="glass-card rounded-2xl max-w-md w-full p-8 border border-red-500/30 bg-gradient-to-br from-red-500/10 to-orange-500/10">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 rounded-2xl bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+          <i data-lucide="alert-triangle" class="w-8 h-8 text-red-400"></i>
+        </div>
+        <h3 class="text-2xl font-bold text-red-300 mb-2">Abort Current Plan?</h3>
+        <p class="text-white/80">
+          This will delete all tasks in your current cycle. You can restart anytime.
+        </p>
+      </div>
+
+      <div class="space-y-3">
+        <form method="POST" action="{{ url_for('coach.abort_plan') }}">
+          <input type="hidden" name="path_type" value="{{ path_type }}">
+          <input type="hidden" name="month_cycle_id" value="{{ month_cycle_id }}">
+          <button type="submit"
+                  class="w-full px-6 py-3 rounded-xl bg-red-500/20 border border-red-500/30
+                         text-red-300 font-semibold hover:bg-red-500/30 transition-all">
+            <i data-lucide="trash-2" class="w-5 h-5 inline"></i> Yes, Abort Plan
+          </button>
+        </form>
+
+        <button onclick="hideAbortModal()"
+                class="w-full px-6 py-3 rounded-xl bg-white/10 border border-white/20
+                       text-white hover:bg-white/20 transition-all">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
 </section>
 {% endblock %}
 
 {% block scripts %}
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
+  function showAbortModal() {
+    const el = document.getElementById('abortModal');
+    if (el) el.classList.remove('hidden');
+  }
+  function hideAbortModal() {
+    const el = document.getElementById('abortModal');
+    if (el) el.classList.add('hidden');
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideAbortModal();
+  });
+
   document.addEventListener('DOMContentLoaded', function () {
     if (window.lucide) {
       window.lucide.createIcons();

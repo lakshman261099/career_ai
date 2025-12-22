@@ -3139,3 +3139,562 @@ def generate_dream_plan(
         }
         clean = _light_validate_dream_plan(fallback, mode_clean)
         return (clean, False) if return_source else clean
+
+
+from openai import OpenAI
+
+
+def generate_sync_plan(
+    *,
+    job_title: str,
+    target_lpa: str,  # "3", "6", "12", or "24"
+    timeline: str,  # "28_days" or "3_months"
+    profile_json: Dict[str, Any],
+    skills_json: Dict[str, Any],
+    resume_text: str,
+    extra_context: str = "",
+    return_source: bool = False,
+) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
+    """
+    Generate unified Dream Plan + Coach Execution Plan.
+    
+    This is the NEW SYNC FUNCTION that powers the Dream→Coach loop.
+    
+    Args:
+        job_title: Target role (e.g., "Full Stack Developer")
+        target_lpa: "3", "6", "12", or "24"
+        timeline: "28_days" or "3_months"
+        profile_json: User's profile data
+        skills_json: User's current skills
+        resume_text: Resume content
+        extra_context: Additional user input
+        return_source: If True, return (plan, used_live_ai)
+    
+    Returns:
+        {
+          "analysis": {
+            "probabilities": {"3": 80, "6": 40, "12": 10, "24": 1},
+            "projected_probabilities": {"3": 95, "6": 70, "12": 35, "24": 5},
+            "bold_truth": "...",
+            "missing_skills": [...]
+          },
+          "projects": [
+            {
+              "title": "E-commerce Backend API",
+              "description": "...",
+              "tech_stack": ["Node.js", "Express", "MongoDB", "JWT"],
+              "estimated_hours": 40,
+              "lpa_tier": "12",
+              "deliverables": [...]
+            }
+          ],
+          "coach_plan": {
+            "total_weeks": 4 or 12,
+            "weeks": [
+              {
+                "week_num": 1,
+                "theme": "Foundation",
+                "daily_tasks": [
+                  {"day": 1, "title": "...", "minutes": 15, "category": "networking"},
+                  {"day": 2, "title": "...", "minutes": 15, "category": "dsa"}
+                ],
+                "weekly_tasks": [
+                  {
+                    "title": "Learn Express.js Fundamentals",
+                    "category": "Learn",
+                    "description": "...",
+                    "estimated_hours": 8,
+                    "tips": "Focus on middleware patterns. Use Express.js official docs.",
+                    "skill_tags": ["Express.js", "Node.js"],
+                    "deliverables": [...]
+                  },
+                  {
+                    "title": "Build Authentication API",
+                    "category": "Build",
+                    "description": "...",
+                    "estimated_hours": 12,
+                    "tips": "Use bcrypt for hashing. Implement JWT refresh tokens.",
+                    "skill_tags": ["JWT", "bcrypt", "Authentication"],
+                    "deliverables": [...]
+                  },
+                  {
+                    "title": "Document API Endpoints",
+                    "category": "Document",
+                    "description": "...",
+                    "estimated_hours": 4,
+                    "tips": "Use Postman for testing, create README with examples.",
+                    "skill_tags": ["API Documentation", "Technical Writing"],
+                    "deliverables": [...]
+                  }
+                ]
+              }
+            ]
+          },
+          "meta": {
+            "generated_at": "...",
+            "model_used": "...",
+            "version": "sync_v1"
+          }
+        }
+    """
+    
+    # Determine if we're in mock mode
+    mock_mode = os.getenv("MOCK", "0") == "1"
+    
+    if mock_mode:
+        return _generate_mock_sync_plan(
+            job_title=job_title,
+            target_lpa=target_lpa,
+            timeline=timeline,
+            return_source=return_source,
+        )
+    
+    # Real AI call
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    
+    # Determine weeks
+    total_weeks = 4 if timeline == "28_days" else 12
+    num_projects = 1 if timeline == "28_days" else 2
+    
+    # Build context from profile + resume
+    current_skills = []
+    if skills_json and isinstance(skills_json, dict):
+        skills_list = skills_json.get("skills", [])
+        if isinstance(skills_list, list):
+            for s in skills_list:
+                if isinstance(s, dict):
+                    current_skills.append(s.get("name", ""))
+                elif isinstance(s, str):
+                    current_skills.append(s)
+    
+    current_skills_text = ", ".join(current_skills) if current_skills else "No skills listed"
+    
+    education_text = "Not specified"
+    if profile_json and isinstance(profile_json, dict):
+        edu = profile_json.get("education", [])
+        if isinstance(edu, list) and len(edu) > 0:
+            first_edu = edu[0]
+            if isinstance(first_edu, dict):
+                degree = first_edu.get("degree", "")
+                institution = first_edu.get("institution", "")
+                education_text = f"{degree} at {institution}" if degree and institution else education_text
+    
+    # Build the unified prompt
+    system_prompt = f"""You are CareerAI's Senior Career Counselor with 15+ years experience placing students in tech roles.
+
+Your mission: Create a BRUTALLY HONEST career plan that maximizes placement probability.
+
+Core principles:
+1. Be realistic about current skill level
+2. Give hard truths (don't sugar-coat)
+3. Propose projects that ACTUALLY match the LPA tier
+4. Create a week-by-week execution plan that's doable
+5. Include expert tips for every major task
+
+You MUST return ONLY valid JSON matching the schema provided. NO markdown, NO preamble, NO code blocks."""
+
+    user_prompt = f"""# STUDENT PROFILE
+
+**Target Role:** {job_title}
+**Target Package:** {target_lpa}+ LPA
+**Timeline:** {timeline.replace('_', ' ').title()} ({total_weeks} weeks)
+**Current Skills:** {current_skills_text}
+**Education:** {education_text}
+
+**Resume Summary:**
+{resume_text[:1000] if resume_text else "No resume provided"}
+
+**Additional Context:**
+{extra_context if extra_context else "None"}
+
+---
+
+# YOUR TASK
+
+Analyze this student's profile and create a comprehensive career acceleration plan.
+
+## PART 1: PROBABILITY ANALYSIS
+
+Calculate placement probability for ALL LPA tiers based on current skills:
+
+- **3+ LPA:** Entry-level roles (freshers with basic skills)
+- **6+ LPA:** Junior roles (1-2 years equivalent experience)
+- **12+ LPA:** Mid-level roles (2-3 years equivalent, strong portfolio)
+- **24+ LPA:** Senior roles (3-5 years equivalent, advanced skills)
+
+For EACH tier, provide:
+1. **Current Probability** (0-100%): Based on current skills
+2. **Projected Probability** (0-100%): IF they complete your coach plan
+
+Be HARSH but FAIR. Example:
+- Current: 12+ LPA = 5% (Missing React, System Design, Production Experience)
+- Projected: 12+ LPA = 45% (After completing 2 production projects)
+
+## PART 2: THE BOLD TRUTH
+
+Give ONE sentence of brutal honesty. Examples:
+- "12 LPA is unrealistic in 28 days without prior JavaScript knowledge. Target 6 LPA first."
+- "You have strong fundamentals. With 2 polished projects, 12 LPA is achievable."
+- "24 LPA requires 3+ years experience. Focus on 12 LPA roles and build from there."
+
+## PART 3: PROJECT PROPOSALS
+
+Propose exactly {num_projects} project(s) tailored to the {target_lpa}+ LPA tier:
+
+**For 3-6 LPA:**
+- Simple CRUD apps
+- Basic APIs
+- Clone projects (Todo app, Blog)
+
+**For 12 LPA:**
+- Full-stack applications with auth
+- Production-ready APIs
+- Deployment experience
+
+**For 24 LPA:**
+- Microservices architecture
+- System design implementations
+- Scalable, production-grade systems
+
+Each project must include:
+- Clear tech stack (6-8 technologies)
+- Estimated hours (realistic for timeline)
+- Specific deliverables
+
+## PART 4: WEEKLY COACH PLAN
+
+Generate {total_weeks} weeks of tasks. Each week must have:
+
+**2 Daily Tasks (Micro-habits):**
+- 15 minutes each
+- Examples: "Connect with 1 dev on LinkedIn", "Solve 1 DSA problem", "Read 1 tech article"
+- Categories: networking, dsa, learning, job_search
+
+**3 Weekly Tasks (Big Rocks):**
+1. **Learn Task:** Study a concept (8-12 hours)
+   - Example: "Learn Redux state management"
+   - MUST include `tips` field with expert advice
+   
+2. **Build Task:** Implement a feature (12-16 hours)
+   - Example: "Build user authentication with JWT"
+   - MUST include `tips` field (e.g., "Use bcrypt, not MD5")
+   
+3. **Document Task:** Create proof of work (4-6 hours)
+   - Example: "Write API documentation + README"
+   - MUST include `tips` field
+
+**CRITICAL: Tips Field**
+Every weekly task MUST have actionable tips. Examples:
+- "Use Redux Toolkit, not vanilla Redux. It has 90% less boilerplate."
+- "Use Postman for testing. Create a collection with all endpoints."
+- "Deploy on Render.com for free. Avoid AWS until comfortable."
+
+---
+
+# OUTPUT FORMAT (STRICT JSON SCHEMA)
+
+Return ONLY this JSON structure:
+
+{{
+  "analysis": {{
+    "probabilities": {{
+      "3": <current % for 3+ LPA>,
+      "6": <current % for 6+ LPA>,
+      "12": <current % for 12+ LPA>,
+      "24": <current % for 24+ LPA>
+    }},
+    "projected_probabilities": {{
+      "3": <projected % for 3+ LPA after plan>,
+      "6": <projected % for 6+ LPA after plan>,
+      "12": <projected % for 12+ LPA after plan>,
+      "24": <projected % for 24+ LPA after plan>
+    }},
+    "bold_truth": "<one sentence brutal reality check>",
+    "missing_skills": ["<skill 1>", "<skill 2>", "..."]
+  }},
+  "projects": [
+    {{
+      "title": "<project name>",
+      "description": "<2-3 sentence overview>",
+      "tech_stack": ["<tech 1>", "<tech 2>", "..."],
+      "estimated_hours": <total hours>,
+      "lpa_tier": "{target_lpa}",
+      "deliverables": ["<deliverable 1>", "<deliverable 2>", "..."]
+    }}
+  ],
+  "coach_plan": {{
+    "total_weeks": {total_weeks},
+    "weeks": [
+      {{
+        "week_num": 1,
+        "theme": "<week theme>",
+        "daily_tasks": [
+          {{
+            "day": 1,
+            "title": "<task title>",
+            "description": "<short description>",
+            "minutes": 15,
+            "category": "networking|dsa|learning|job_search"
+          }},
+          {{
+            "day": 2,
+            "title": "<task title>",
+            "description": "<short description>",
+            "minutes": 15,
+            "category": "networking|dsa|learning|job_search"
+          }}
+        ],
+        "weekly_tasks": [
+          {{
+            "title": "<Learn task title>",
+            "category": "Learn",
+            "description": "<detailed description>",
+            "estimated_hours": <8-12>,
+            "tips": "<expert advice in 1-2 sentences>",
+            "skill_tags": ["<skill 1>", "<skill 2>"],
+            "deliverables": ["<what to produce>"]
+          }},
+          {{
+            "title": "<Build task title>",
+            "category": "Build",
+            "description": "<detailed description>",
+            "estimated_hours": <12-16>,
+            "tips": "<expert advice in 1-2 sentences>",
+            "skill_tags": ["<skill 1>", "<skill 2>"],
+            "deliverables": ["<what to produce>"]
+          }},
+          {{
+            "title": "<Document task title>",
+            "category": "Document",
+            "description": "<detailed description>",
+            "estimated_hours": <4-6>,
+            "tips": "<expert advice in 1-2 sentences>",
+            "skill_tags": ["<skill 1>", "<skill 2>"],
+            "deliverables": ["<what to produce>"]
+          }}
+        ]
+      }}
+      // ... repeat for all {total_weeks} weeks
+    ]
+  }},
+  "meta": {{
+    "generated_at": "{datetime.utcnow().isoformat()}Z",
+    "model_used": "gpt-4o",
+    "version": "sync_v1",
+    "target_role": "{job_title}",
+    "target_lpa": "{target_lpa}",
+    "timeline": "{timeline}"
+  }}
+}}
+
+CRITICAL RULES:
+1. Return ONLY valid JSON
+2. NO markdown code blocks (```json)
+3. NO preamble or explanation
+4. ALL {total_weeks} weeks must be included
+5. EVERY weekly task must have tips field
+6. Be brutally honest in probabilities and bold_truth
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model=os.getenv("SYNC_PLAN_MODEL", "gpt-4o"),
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.7,
+            max_tokens=8000,  # Large output for full plan
+        )
+        
+        raw_content = response.choices[0].message.content.strip()
+        
+        # Remove markdown code blocks if present
+        if raw_content.startswith("```json"):
+            raw_content = raw_content[7:]
+        if raw_content.startswith("```"):
+            raw_content = raw_content[3:]
+        if raw_content.endswith("```"):
+            raw_content = raw_content[:-3]
+        
+        raw_content = raw_content.strip()
+        
+        # Parse JSON
+        plan_dict = json.loads(raw_content)
+        
+        # Validate structure
+        if not isinstance(plan_dict, dict):
+            raise ValueError("AI returned non-dict")
+        
+        required_keys = ["analysis", "projects", "coach_plan", "meta"]
+        for key in required_keys:
+            if key not in plan_dict:
+                raise ValueError(f"Missing required key: {key}")
+        
+        # Add metadata
+        plan_dict["meta"]["used_live_ai"] = True
+        plan_dict["meta"]["tokens_used"] = response.usage.total_tokens if response.usage else 0
+        
+        if return_source:
+            return plan_dict, True
+        return plan_dict
+        
+    except Exception as e:
+        # Fallback to mock on error
+        print(f"AI sync plan failed: {e}. Using mock.")
+        return _generate_mock_sync_plan(
+            job_title=job_title,
+            target_lpa=target_lpa,
+            timeline=timeline,
+            return_source=return_source,
+        )
+
+
+def _generate_mock_sync_plan(
+    *,
+    job_title: str,
+    target_lpa: str,
+    timeline: str,
+    return_source: bool = False,
+) -> Dict[str, Any] | Tuple[Dict[str, Any], bool]:
+    """
+    Mock sync plan for testing without API costs.
+    """
+    total_weeks = 4 if timeline == "28_days" else 12
+    num_projects = 1 if timeline == "28_days" else 2
+    
+    # Probability matrix (mock realistic values)
+    lpa_int = int(target_lpa)
+    current_probs = {
+        "3": 90 if lpa_int <= 3 else 70 if lpa_int <= 6 else 40 if lpa_int <= 12 else 20,
+        "6": 60 if lpa_int <= 6 else 30 if lpa_int <= 12 else 10,
+        "12": 35 if lpa_int <= 12 else 5,
+        "24": 10 if lpa_int <= 24 else 1,
+    }
+    
+    projected_probs = {
+        "3": min(current_probs["3"] + 5, 98),
+        "6": min(current_probs["6"] + 30, 95),
+        "12": min(current_probs["12"] + 40, 85),
+        "24": min(current_probs["24"] + 15, 45),
+    }
+    
+    bold_truth_options = {
+        "3": "Focus on fundamentals. 3 LPA is achievable with basic project completion.",
+        "6": "Solid plan. Complete both projects to confidently target 6 LPA roles.",
+        "12": "Ambitious but achievable. Focus on production-quality code and deployment.",
+        "24": "24 LPA typically requires 3+ years experience. Target 12 LPA first and build from there.",
+    }
+    
+    projects = []
+    
+    if num_projects >= 1:
+        projects.append({
+            "title": f"{job_title} Portfolio API" if "full" in job_title.lower() else f"{job_title} Project",
+            "description": "A production-ready application demonstrating core skills for the target role.",
+            "tech_stack": ["React", "Node.js", "Express", "MongoDB", "JWT", "Docker"],
+            "estimated_hours": 40 if timeline == "28_days" else 60,
+            "lpa_tier": target_lpa,
+            "deliverables": [
+                "Fully functional application",
+                "GitHub repository with README",
+                "Deployed to cloud platform",
+                "API documentation",
+            ]
+        })
+    
+    if num_projects >= 2:
+        projects.append({
+            "title": "Advanced System Design Capstone",
+            "description": "A scalable application showcasing microservices, caching, and production best practices.",
+            "tech_stack": ["React", "Node.js", "PostgreSQL", "Redis", "AWS", "CI/CD"],
+            "estimated_hours": 80,
+            "lpa_tier": target_lpa,
+            "deliverables": [
+                "Microservices architecture",
+                "Load balancing implementation",
+                "Comprehensive system design document",
+                "Production deployment",
+            ]
+        })
+    
+    # Generate weeks
+    weeks = []
+    for week_num in range(1, total_weeks + 1):
+        week = {
+            "week_num": week_num,
+            "theme": f"Week {week_num}: {'Foundation' if week_num <= 2 else 'Building' if week_num <= total_weeks // 2 else 'Polishing'}",
+            "daily_tasks": [
+                {
+                    "day": 1,
+                    "title": "Connect with 1 developer on LinkedIn",
+                    "description": "Find someone in your target role and send a personalized connection request.",
+                    "minutes": 15,
+                    "category": "networking"
+                },
+                {
+                    "day": 2,
+                    "title": "Solve 1 medium DSA problem",
+                    "description": "Practice on LeetCode or HackerRank. Focus on arrays or linked lists.",
+                    "minutes": 15,
+                    "category": "dsa"
+                }
+            ],
+            "weekly_tasks": [
+                {
+                    "title": f"Learn Week {week_num} Concept",
+                    "category": "Learn",
+                    "description": f"Study core concepts for week {week_num} of the project.",
+                    "estimated_hours": 10,
+                    "tips": "Focus on official documentation first. Then watch 1-2 YouTube tutorials for hands-on examples.",
+                    "skill_tags": ["React", "Node.js"] if week_num <= 2 else ["MongoDB", "Authentication"],
+                    "deliverables": ["Notes document", "Code snippets"]
+                },
+                {
+                    "title": f"Build Week {week_num} Feature",
+                    "category": "Build",
+                    "description": f"Implement the main feature for week {week_num}.",
+                    "estimated_hours": 14,
+                    "tips": "Write tests as you go. Use git commits frequently with clear messages.",
+                    "skill_tags": ["Full Stack Development", "Git"],
+                    "deliverables": ["Working feature", "Git commits", "Basic tests"]
+                },
+                {
+                    "title": f"Document Week {week_num} Progress",
+                    "category": "Document",
+                    "description": "Create documentation and proof of work for this week's feature.",
+                    "estimated_hours": 6,
+                    "tips": "Use Postman for API testing. Add screenshots to README. Write clear setup instructions.",
+                    "skill_tags": ["Technical Writing", "Documentation"],
+                    "deliverables": ["Updated README", "API documentation", "Screenshots"]
+                }
+            ]
+        }
+        weeks.append(week)
+    
+    mock_plan = {
+        "analysis": {
+            "probabilities": current_probs,
+            "projected_probabilities": projected_probs,
+            "bold_truth": bold_truth_options.get(target_lpa, bold_truth_options["12"]),
+            "missing_skills": ["System Design", "Production Deployment", "Testing"] if lpa_int >= 12 else ["Git", "API Development"]
+        },
+        "projects": projects,
+        "coach_plan": {
+            "total_weeks": total_weeks,
+            "weeks": weeks
+        },
+        "meta": {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "model_used": "mock",
+            "version": "sync_v1",
+            "target_role": job_title,
+            "target_lpa": target_lpa,
+            "timeline": timeline,
+            "used_live_ai": False,
+        }
+    }
+    
+    if return_source:
+        return mock_plan, False
+    return mock_plan

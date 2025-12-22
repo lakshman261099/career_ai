@@ -103,7 +103,7 @@
     </div>
   {% else %}
 
-    {% set total_weeks = 12 %}
+    {% set total_weeks = 4 %}
     {% set active_week = (day_index or 1) %}
     {% if active_week < 1 %}{% set active_week = 1 %}{% endif %}
     {% if active_week > total_weeks %}{% set active_week = total_weeks %}{% endif %}
@@ -224,6 +224,8 @@
           {% endfor %}
         </div>
 
+        {# Phase 2 & 3 hidden for 4-week system #}
+        {% if total_weeks > 4 %}
         <div class="flex items-center justify-between text-white/55 mt-2">
           <span class="flex items-center gap-1">
             <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
@@ -361,11 +363,12 @@
             </div>
           {% endfor %}
         </div>
+        {% endif %}
       </div>
 
       <p class="text-[11px] text-white/55 mt-1">
         The roadmap above is a visual guide. New weeks unlock on the main Weekly Coach page
-        as you close sessions and open the next week in your 28-day plan.
+        as you close sessions and open the next week in your {{ '28-day' if total_weeks == 4 else '12-week' }} plan.
       </p>
     </section>
 
@@ -515,6 +518,41 @@
                       </p>
                     {% endif %}
 
+                    <!-- ✅ NEW: Expert Tips Section (after description) -->
+                    {% if t.tips %}
+                    <div class="p-4 rounded-xl bg-amber-500/10 border-2 border-amber-500/30 mt-2">
+                      <div class="flex items-start gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                          <i data-lucide="lightbulb" class="w-5 h-5 text-amber-400"></i>
+                        </div>
+                        <div class="flex-1">
+                          <div class="text-sm font-semibold text-amber-300 mb-1">💡 Expert Tips</div>
+                          <p class="text-sm text-white/90 leading-relaxed">{{ t.tips }}</p>
+                        </div>
+                      </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- ✅ NEW: Skill Tags (JSON string or list) -->
+                    {% if t.skill_tags %}
+                      {% set tags = t.skill_tags|from_json if t.skill_tags is string else t.skill_tags %}
+                      {% if tags and tags|length > 0 %}
+                      <div class="mt-2 space-y-2">
+                        <div class="text-xs font-semibold text-white/70 flex items-center gap-2">
+                          <i data-lucide="award" class="w-4 h-4 text-indigo-400"></i>
+                          You'll master:
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                          {% for tag in tags %}
+                          <span class="px-3 py-1.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-xs text-indigo-300">
+                            {{ tag }}
+                          </span>
+                          {% endfor %}
+                        </div>
+                      </div>
+                      {% endif %}
+                    {% endif %}
+
                     {% if t.milestone_title or t.milestone_step %}
                       <p class="mt-1 text-[11px] sm:text-xs text-emerald-200/85 flex items-center gap-1.5">
                         <i data-lucide="flag" class="w-3.5 h-3.5"></i>
@@ -545,6 +583,18 @@
                         {% endfor %}
                       </div>
                     {% endif %}
+
+                    <!-- ✅ NEW: DevLog CTA (weekly tasks only, keep toggle as-is) -->
+                    {% if (t.task_type == 'weekly') and (not t.is_done) %}
+                      <div class="mt-3">
+                        <a href="{{ url_for('coach.devlog', task_id=t.id) }}"
+                           class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-[11px] sm:text-xs">
+                          <i data-lucide="edit" class="w-4 h-4"></i>
+                          <span>Log Work & Complete Task</span>
+                        </a>
+                      </div>
+                    {% endif %}
+
                   </div>
                 </div>
               </form>

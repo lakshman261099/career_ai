@@ -176,13 +176,75 @@
               {% else %}
                 Time horizon to hit your target package
               {% endif %}
+              <span class="text-red-400">*</span>
             </label>
-            <select name="timeline_months" class="w-full select rounded-xl px-3 py-2 text-sm bg-black/40 border border-white/20">
-              {# 1 month here = 28-day sprint in practice #}
-              <option value="1">28 days · Focus sprint</option>
-              <option value="3" selected>3 months · Standard plan</option>
+
+            {# Keep existing timeline_months field for backend compatibility #}
+            <select
+              id="timeline_months"
+              name="timeline_months"
+              class="hidden"
+            >
+              <option value="1">28 days</option>
+              <option value="3" selected>3 months</option>
             </select>
-            <p class="text-[10px] text-white/55 mt-1">
+
+            <!-- ✅ Timeline Radio Buttons (IMPROVED ALIGNMENT) -->
+            <div class="space-y-2">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- 28 Days Sprint -->
+                <label class="relative cursor-pointer group">
+                  <input type="radio" name="timeline" value="28_days" class="peer sr-only">
+                  <div class="p-5 rounded-xl border-2 border-white/10 bg-white/5
+                              peer-checked:border-indigo-500 peer-checked:bg-indigo-500/10
+                              hover:border-white/20 hover:bg-white/[0.08] transition-all
+                              peer-checked:shadow-lg peer-checked:shadow-indigo-500/20
+                              h-full flex items-center">
+                    <div class="flex items-center gap-3 w-full">
+                      <div class="w-12 h-12 rounded-xl bg-indigo-500/20 peer-checked:bg-indigo-500/30 flex items-center justify-center flex-shrink-0 transition-all">
+                        <i data-lucide="zap" class="w-6 h-6 text-indigo-400"></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="font-bold text-base text-white">28 Days Sprint</div>
+                        <div class="text-xs text-white/70 mt-1">1 focused project</div>
+                      </div>
+                      <!-- Check indicator -->
+                      <div class="w-6 h-6 rounded-full border-2 border-white/20 flex items-center justify-center flex-shrink-0
+                                  peer-checked:border-indigo-500 peer-checked:bg-indigo-500 transition-all">
+                        <i data-lucide="check" class="w-4 h-4 text-white opacity-0 peer-checked:opacity-100"></i>
+                      </div>
+                    </div>
+                  </div>
+                </label>
+
+                <!-- 3 Months Marathon -->
+                <label class="relative cursor-pointer group">
+                  <input type="radio" name="timeline" value="3_months" checked class="peer sr-only">
+                  <div class="p-5 rounded-xl border-2 border-white/10 bg-white/5
+                              peer-checked:border-purple-500 peer-checked:bg-purple-500/10
+                              hover:border-white/20 hover:bg-white/[0.08] transition-all
+                              peer-checked:shadow-lg peer-checked:shadow-purple-500/20
+                              h-full flex items-center">
+                    <div class="flex items-center gap-3 w-full">
+                      <div class="w-12 h-12 rounded-xl bg-purple-500/20 peer-checked:bg-purple-500/30 flex items-center justify-center flex-shrink-0 transition-all">
+                        <i data-lucide="trending-up" class="w-6 h-6 text-purple-400"></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="font-bold text-base text-white">3 Months Marathon</div>
+                        <div class="text-xs text-white/70 mt-1">2 escalating projects</div>
+                      </div>
+                      <!-- Check indicator -->
+                      <div class="w-6 h-6 rounded-full border-2 border-white/20 flex items-center justify-center flex-shrink-0
+                                  peer-checked:border-purple-500 peer-checked:bg-purple-500 transition-all">
+                        <i data-lucide="check" class="w-4 h-4 text-white opacity-0 peer-checked:opacity-100"></i>
+                      </div>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <p class="text-[10px] text-white/55 mt-2">
               Choose between a <span class="font-semibold">28-day sprint</span> and a full
               <span class="font-semibold">3-month roadmap</span>. All 3 phases and tasks will be sized to this horizon.
             </p>
@@ -201,13 +263,21 @@
                 You can refine specific revenue targets later once you’ve validated the idea.
               </p>
             {% else %}
+              <!-- ✅ NEW (merged into existing location): Target LPA Dropdown (per merge guide) -->
               <label class="block text-sm font-semibold mb-1">
-                Target CTC / LPA band (optional)
+                Target Package (LPA)
+                <span class="text-red-400">*</span>
               </label>
-              <select name="target_lpa" class="w-full select rounded-xl px-3 py-2 text-sm bg-black/40 border border-white/20">
-                <option value="">Not sure / open (default)</option>
-                <option value="12">Around 8–15 LPA · solid first job</option>
-                <option value="24">Around 15–30 LPA · aggressive</option>
+              <select
+                name="target_lpa"
+                required
+                class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white
+                       focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+              >
+                <option value="3">3+ LPA (Entry-level)</option>
+                <option value="6">6+ LPA (Junior)</option>
+                <option value="12" selected>12+ LPA (Mid-level)</option>
+                <option value="24">24+ LPA (Senior)</option>
                 <option value="48">48 LPA+ / global remote tier</option>
               </select>
               <p class="text-[10px] text-white/55 mt-1">
@@ -340,6 +410,20 @@
     if (window.lucide) {
       window.lucide.createIcons();
     }
+
+    // Keep backend compatibility: sync "timeline" radios -> timeline_months select
+    const timelineSelect = document.getElementById('timeline_months');
+    const timelineRadios = document.querySelectorAll('input[name="timeline"]');
+
+    function syncTimelineMonths() {
+      if (!timelineSelect) return;
+      const checked = document.querySelector('input[name="timeline"]:checked');
+      if (!checked) return;
+      timelineSelect.value = (checked.value === '28_days') ? '1' : '3';
+    }
+
+    timelineRadios.forEach((r) => r.addEventListener('change', syncTimelineMonths));
+    syncTimelineMonths();
   });
 </script>
 {% endblock %}

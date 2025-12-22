@@ -1,13 +1,19 @@
 # modules/dream/routes.py
 """
-Dream Planner Routes - ASYNC VERSION
+Dream Planner Routes - ASYNC VERSION with SYNC UPGRADE
 
-Changes from sync version:
-1. Added async processing via RQ workers
-2. POST now creates snapshot → enqueues job → shows processing page
-3. Added /api/status/<snapshot_id> endpoint for polling
-4. Added /result/<snapshot_id> endpoint for viewing completed plans
-5. Credits still deducted BEFORE enqueue (refunded on failure by worker)
+Hybrid approach:
+- Keeps async processing via RQ workers (production-ready)
+- Worker now uses generate_sync_plan for better AI output
+- Added probability matrix, bold truth, project proposals
+- Added lock_plan endpoint for project selection handshake
+- Result page shows new sync data structure
+
+Changes from previous version:
+1. Worker uses generate_sync_plan (better AI output)
+2. Added lock_plan endpoint
+3. Updated result() to extract sync-specific data
+4. Timeline validation (3/6/12/24 LPA)
 """
 
 from datetime import datetime
@@ -24,6 +30,7 @@ from flask import (
     render_template,
     request,
     url_for,
+    abort,
 )
 from flask_login import current_user, login_required
 from sqlalchemy import desc
@@ -53,6 +60,17 @@ def _current_is_pro_user() -> bool:
         return True
     status = (getattr(current_user, "subscription_status", "free") or "free").lower()
     return status == "pro"
+
+
+def _current_is_verified_user() -> bool:
+    """
+    Email verification guard (schema-safe):
+    supports either `email_verified` or legacy `verified`.
+    """
+    try:
+        return bool(getattr(current_user, "email_verified", False) or getattr(current_user, "verified", False))
+    except Exception:
+        return False
 
 
 def _latest_resume_text(user_id: int) -> str:
@@ -203,17 +221,17 @@ def _max_projects_for_timeline(months: int | None) -> int:
 @login_required
 def index():
     """
-    Dream Planner (ASYNC flow)
+    Dream Planner (ASYNC flow with SYNC upgrade)
 
     - Pro-only feature (requires Pro subscription)
     - Consumes Gold ⭐ credits (feature key: 'dream_planner')
     - Two modes: 'job' (Dream Job Planner) or 'startup' (Dream Startup Planner)
-    
+
     POST flow:
     1. Validate user is Pro + has credits
     2. Deduct credits FIRST (reserve them)
     3. Create empty snapshot in DB
-    4. Enqueue background job
+    4. Enqueue background job (worker uses generate_sync_plan)
     5. Redirect to processing page
     """
     is_pro_user = _current_is_pro_user()
@@ -227,8 +245,8 @@ def index():
     # -----------------------------------
     if request.method == "POST":
 
-        # 🔒 Email verification guard
-        if not getattr(current_user, "verified", False):
+        # 🔒 Email verification guard (schema-safe)
+        if not _current_is_verified_user():
             flash(
                 "Please verify your email with a login code before using Dream Planner.",
                 "warning",
@@ -264,8 +282,8 @@ def index():
         # Collect inputs from form
         # --------------------------
         target_role = (request.form.get("target_role") or "").strip()
-        target_lpa = (request.form.get("target_lpa") or "").strip()
-        timeline_months_raw = (request.form.get("timeline_months") or "").strip()
+        target_lpa = (request.form.get("target_lpa") or "12").strip()
+        timeline_raw = (request.form.get("timeline") or "3_months").strip()
         # hours_per_day is no longer an explicit field in UI; default to ~2h/day
         hours_raw = (request.form.get("hours_per_day") or "").strip()
         company_prefs = (request.form.get("company_prefs") or "").strip()
@@ -278,10 +296,16 @@ def index():
             or ""
         ).strip()
 
-        try:
-            timeline_months = int(timeline_months_raw or 6)
-        except Exception:
-            timeline_months = 6
+        # ✅ Validate LPA (must be 3, 6, 12, or 24)
+        if target_lpa not in ["3", "6", "12", "24"]:
+            target_lpa = "12"  # Default
+
+        # ✅ Validate timeline
+        if timeline_raw not in ["28_days", "3_months"]:
+            timeline_raw = "3_months"  # Default
+
+        # Derive timeline_months for backward compatibility with worker
+        timeline_months = 1 if timeline_raw == "28_days" else 3
 
         try:
             hours_per_day = int(hours_raw or 2)
@@ -293,11 +317,11 @@ def index():
         skills_json = _skills_json_from_user()
         resume_text = _latest_resume_text(current_user.id)
 
-        # Shared AI inputs
+        # Shared AI inputs (passed to worker)
         ai_inputs = {
             "target_role": target_role,
-            # target_lpa now usually comes from a dropdown band (12/24/48)
             "target_salary_lpa": target_lpa,
+            "timeline": timeline_raw,  # NEW: Pass raw timeline string
             "timeline_months": timeline_months,
             "hours_per_day": hours_per_day,
             "company_preferences": company_prefs,
@@ -382,7 +406,7 @@ def index():
             return redirect(url_for("dream.index", path_type=path_type))
 
         # -----------------------------------
-        # ✅ STEP 3: Enqueue background job
+        # ✅ STEP 3: Enqueue background job (worker uses generate_sync_plan)
         # -----------------------------------
         try:
             job_id = enqueue_dream_plan_generation(
@@ -451,15 +475,12 @@ def index():
     )
 
 
-# modules/dream/routes.py - PART 2
-
 @dream_bp.route("/processing/<int:snapshot_id>", methods=["GET"], endpoint="processing")
 @login_required
 def processing(snapshot_id):
     """
-    Processing page - shows animated loader while worker generates plan.
-    Polls /api/status/<snapshot_id> endpoint.
-    Redirects to /result/<snapshot_id> when complete.
+    Show a processing/loading page while the background job runs.
+    Uses client-side polling to check status.
     """
     snapshot = DreamPlanSnapshot.query.filter_by(
         id=snapshot_id, user_id=current_user.id
@@ -469,42 +490,40 @@ def processing(snapshot_id):
         flash("Dream Plan not found.", "warning")
         return redirect(url_for("dream.index"))
 
-    # Check if already completed
+    # If already completed, redirect directly to result
     try:
         plan_data = json.loads(snapshot.plan_json or "{}")
         status = plan_data.get("_status", "queued")
-
         if status == "completed":
-            # Already done, redirect to result
             return redirect(url_for("dream.result", snapshot_id=snapshot_id))
-
         if status == "failed":
             flash(
-                "Your Dream Plan generation failed. Your credits were refunded. Please try again.",
+                "Dream Plan generation failed. Your credits were refunded.",
                 "danger",
             )
             return redirect(url_for("dream.index", path_type=snapshot.path_type))
     except Exception:
         pass
 
-    # Show processing page
+    # ✅ CRITICAL FIX: Provide URLs the processing template JS expects
+    status_url = url_for("dream.status_api", snapshot_id=snapshot_id)
+    result_url = url_for("dream.result", snapshot_id=snapshot_id)
+
     return render_template(
         "dream/processing.html",
         snapshot_id=snapshot_id,
         path_type=snapshot.path_type,
-        status_url=url_for(
-            "dream.api_status", snapshot_id=snapshot_id, _external=False
-        ),
-        result_url=url_for("dream.result", snapshot_id=snapshot_id, _external=False),
+        status_url=status_url,
+        result_url=result_url,
     )
 
 
-@dream_bp.route("/api/status/<int:snapshot_id>", methods=["GET"], endpoint="api_status")
+@dream_bp.route("/api/status/<int:snapshot_id>", methods=["GET"], endpoint="status_api")
 @login_required
-def api_status(snapshot_id):
+def status_api(snapshot_id):
     """
     API endpoint for polling job status.
-    Returns JSON: {"status": "queued|processing|completed|failed", ...}
+    Returns JSON: { "status": "queued|processing|completed|failed", "error": "..." }
     """
     snapshot = DreamPlanSnapshot.query.filter_by(
         id=snapshot_id, user_id=current_user.id
@@ -544,9 +563,11 @@ def api_status(snapshot_id):
 @login_required
 def result(snapshot_id):
     """
-    Show completed Dream Plan.
-    Uses normalized phase-based structure, plus legacy plan_core
-    for any older template bits.
+    Show completed Dream Plan with SYNC UPGRADE data:
+    - Probability Matrix (current vs projected for 3/6/12/24 LPA)
+    - Bold Truth (reality check)
+    - Project Proposals
+    - Lock Plan button (if not locked)
     """
     snapshot = DreamPlanSnapshot.query.filter_by(
         id=snapshot_id, user_id=current_user.id
@@ -587,16 +608,44 @@ def result(snapshot_id):
             or snapshot.path_type
         )
 
+        # ✅ NEW: Extract sync-specific data
+        is_locked = "_locked_at" in plan_view and "selected_projects" in plan_view
+
+        # Analysis (probability matrix, bold truth)
+        analysis = plan_view.get("analysis", {})
+        probabilities = analysis.get("probabilities", {"3": 0, "6": 0, "12": 0, "24": 0})
+        projected_probabilities = analysis.get("projected_probabilities", {"3": 0, "6": 0, "12": 0, "24": 0})
+        bold_truth = analysis.get("bold_truth", "")
+        missing_skills = analysis.get("missing_skills", [])
+
+        # Projects (proposals from AI)
+        projects = plan_view.get("projects", [])
+        selected_projects = plan_view.get("selected_projects", [])
+
+        # Coach plan metadata
+        coach_plan = plan_view.get("coach_plan", {})
+        total_weeks = coach_plan.get("total_weeks", 0)
+
         is_pro_user = _current_is_pro_user()
         profile_snapshot = load_profile_snapshot(current_user)
 
         return render_template(
             "dream/result.html",
             plan=plan_view,
+            snapshot=snapshot,
             path_type=path_type,
             is_pro_user=is_pro_user,
             profile_snapshot=profile_snapshot,
             snapshot_id=snapshot_id,
+            # ✅ NEW: Sync-specific template data
+            probabilities=probabilities,
+            projected_probabilities=projected_probabilities,
+            bold_truth=bold_truth,
+            missing_skills=missing_skills,
+            projects=projects,
+            selected_projects=selected_projects,
+            total_weeks=total_weeks,
+            is_locked=is_locked,
         )
 
     except Exception as e:
@@ -606,7 +655,67 @@ def result(snapshot_id):
 
 
 # -----------------------------------
-# Project Selection
+# ✅ NEW: Lock Plan Endpoint (Phase 2 Handshake)
+# -----------------------------------
+
+@dream_bp.route("/lock-plan/<int:snapshot_id>", methods=["POST"], endpoint="lock_plan")
+@login_required
+def lock_plan(snapshot_id):
+    """
+    Phase 2: Project Selection Handshake.
+
+    User clicks "Lock Plan & Start Coach" after reviewing probability matrix.
+    This saves selected_projects to the snapshot and redirects to Coach.
+    """
+    snapshot = DreamPlanSnapshot.query.get_or_404(snapshot_id)
+
+    # Verify ownership
+    if snapshot.user_id != current_user.id:
+        abort(403)
+
+    # Load plan JSON
+    try:
+        plan_json = json.loads(snapshot.plan_json or "{}")
+    except Exception:
+        flash("Invalid plan data.", "danger")
+        return redirect(url_for("dream.index"))
+
+    # Get selected project indices from form
+    selected_indices = request.form.getlist("selected_projects")  # e.g., ["0", "1"]
+
+    if not selected_indices:
+        flash("Please select at least one project.", "warning")
+        return redirect(url_for("dream.result", snapshot_id=snapshot_id))
+
+    # Extract selected projects from projects array
+    projects = plan_json.get("projects", [])
+    selected_projects = []
+
+    for idx_str in selected_indices:
+        try:
+            idx = int(idx_str)
+            if 0 <= idx < len(projects):
+                selected_projects.append(projects[idx])
+        except (ValueError, IndexError):
+            pass
+
+    if not selected_projects:
+        flash("Invalid project selection.", "warning")
+        return redirect(url_for("dream.result", snapshot_id=snapshot_id))
+
+    # Save selected projects to plan JSON
+    plan_json["selected_projects"] = selected_projects
+    plan_json["_locked_at"] = datetime.utcnow().isoformat()
+
+    snapshot.plan_json = json.dumps(plan_json, ensure_ascii=False)
+    db.session.commit()
+
+    flash("✅ Plan locked! Starting Coach...", "success")
+    return redirect(url_for("coach.index", path_type=snapshot.path_type))
+
+
+# -----------------------------------
+# Project Selection (Legacy endpoint - kept for compatibility)
 # -----------------------------------
 
 @dream_bp.route("/projects/select", methods=["POST"], endpoint="select_projects")
@@ -615,8 +724,8 @@ def select_projects():
     """
     Handle project selection from the Dream Plan UI.
 
-    The current result.html uses checkboxes named "project_index".
-    For compatibility with older versions, we also accept "selected_projects".
+    Legacy endpoint - kept for backward compatibility.
+    New code should use /lock-plan instead.
     """
     path_type = _normalize_path_type(request.form.get("path_type"))
     snapshot_id_raw = request.form.get("snapshot_id")
