@@ -1,0 +1,462 @@
+{% extends "base.html" %}
+{% block title %}DevLog — Weekly Task{% endblock %}
+
+{% block content %}
+{% set min_chars = min_chars|default(120, true) %}
+
+<section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-6 text-white">
+
+  <!-- Header -->
+  <header class="glass-card rounded-2xl p-6 sm:p-7 border border-white/10 shadow-xl relative overflow-hidden">
+    <div class="pointer-events-none absolute inset-0 opacity-60 -z-10">
+      <div class="w-full h-full bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.22),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.22),transparent_55%)]"></div>
+    </div>
+
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+      <div class="space-y-2">
+        <div class="inline-flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-white/65">
+          <span class="px-2 py-0.5 rounded-full bg-black/30 border border-white/15 inline-flex items-center gap-1">
+            <i data-lucide="notebook-pen" class="w-3.5 h-3.5"></i>
+            <span>DevLog</span>
+          </span>
+
+          <span class="px-2 py-0.5 rounded-full bg-black/20 border border-white/10">
+            Weekly verification · min {{ min_chars }} chars
+          </span>
+
+          {% if task and task.is_done %}
+            <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-300/50 text-emerald-100 inline-flex items-center gap-1">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+              <span>Completed</span>
+            </span>
+          {% else %}
+            <span class="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-300/40 text-amber-100 inline-flex items-center gap-1">
+              <i data-lucide="clock-3" class="w-3.5 h-3.5"></i>
+              <span>Pending</span>
+            </span>
+          {% endif %}
+        </div>
+
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">
+          Log your work
+        </h1>
+
+        <p class="text-sm sm:text-base text-white/80 max-w-2xl leading-relaxed">
+          Weekly tasks are <span class="font-semibold">DevLog-gated</span> to prevent tick-and-forget.
+          This creates proof-of-work for analytics and student readiness scoring.
+        </p>
+      </div>
+
+      <div class="text-xs text-right space-y-2">
+        <a href="{{ url_for('coach.session', session_id=session.id) }}"
+           class="inline-flex items-center gap-1 text-[11px] text-white/70 hover:text-white underline-offset-2 hover:underline">
+          <i data-lucide="arrow-left" class="w-3 h-3"></i>
+          Back to week
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Layout: Task + Skills + Meter -->
+  <div class="grid lg:grid-cols-12 gap-6">
+
+    <!-- Left: Task + Skills -->
+    <div class="lg:col-span-7 space-y-6">
+
+      <!-- Task Card -->
+      <section class="glass-card rounded-2xl p-5 sm:p-6 border border-white/10 space-y-4">
+        <div class="space-y-2">
+          <h2 class="text-lg sm:text-xl font-semibold flex items-start gap-2">
+            <span class="mt-0.5">
+              <i data-lucide="target" class="w-5 h-5 text-emerald-300"></i>
+            </span>
+            <span class="leading-snug">{{ task.title }}</span>
+          </h2>
+
+          {% if task.detail %}
+            <p class="text-sm text-white/80 leading-relaxed">{{ task.detail }}</p>
+          {% endif %}
+
+          <div class="flex flex-wrap gap-2 text-[11px] text-white/70">
+            {% if task.task_category %}
+              <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/15">{{ task.task_category }}</span>
+            {% endif %}
+            {% if task.category %}
+              <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/15">{{ task.category }}</span>
+            {% endif %}
+            {% if task.estimated_time_minutes %}
+              <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-300/50 text-emerald-100 inline-flex items-center gap-1">
+                <i data-lucide="clock-3" class="w-3 h-3"></i>
+                <span>{{ (task.estimated_time_minutes // 60) }}h {{ (task.estimated_time_minutes % 60) }}m</span>
+              </span>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if task.tips %}
+          <div class="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4">
+            <div class="flex items-start gap-3">
+              <div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="lightbulb" class="w-5 h-5 text-amber-300"></i>
+              </div>
+              <div class="space-y-1">
+                <p class="text-sm font-semibold text-amber-200">Expert tips</p>
+                <p class="text-sm text-white/85 leading-relaxed">{{ task.tips }}</p>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        {# ✅ IMPORTANT: remove from_json dependency (prevents white/empty page due to missing filter) #}
+        {% set tags = [] %}
+        {% if task and task.skill_tags %}
+          {% if task.skill_tags is string %}
+            {% set raw = task.skill_tags %}
+            {% set raw = raw.replace('[','').replace(']','').replace('"','').replace("'",'') %}
+            {% set tags = raw.split(',')|map('trim')|select|list %}
+          {% else %}
+            {% set tags = task.skill_tags %}
+          {% endif %}
+        {% endif %}
+
+        {% if tags and tags|length > 0 %}
+          <div class="rounded-2xl border border-indigo-400/20 bg-indigo-500/10 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2 text-sm font-semibold text-indigo-100">
+                <i data-lucide="award" class="w-4 h-4 text-indigo-300"></i>
+                <span>Skills you’ll unlock</span>
+              </div>
+              <span class="text-[11px] text-white/60">{{ tags|length }} tag{{ '' if tags|length == 1 else 's' }}</span>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              {% for tag in tags %}
+                <span class="px-3 py-1.5 rounded-xl bg-indigo-500/20 border border-indigo-400/25 text-xs text-indigo-100">
+                  {{ tag }}
+                </span>
+              {% endfor %}
+            </div>
+            <p class="mt-3 text-[11px] text-white/55">
+              Submitting the DevLog will queue these as <span class="font-semibold">skill suggestions</span> in Coach (pending approval).
+            </p>
+          </div>
+        {% endif %}
+      </section>
+
+      <!-- DevLog Form -->
+      <section class="glass-card rounded-2xl p-5 sm:p-6 border border-white/10 space-y-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="space-y-1">
+            <h3 class="text-base font-semibold flex items-center gap-2">
+              <i data-lucide="file-text" class="w-4 h-4"></i>
+              <span>Your DevLog</span>
+            </h3>
+            <p class="text-[11px] text-white/60">
+              Completion requires <span class="font-semibold">{{ min_chars }}+</span> characters across the main sections.
+            </p>
+          </div>
+
+          <div class="hidden sm:flex items-center gap-2 text-[11px] text-white/60">
+            <span class="px-2 py-1 rounded-full bg-black/30 border border-white/10 inline-flex items-center gap-1">
+              <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+              Proof-of-work
+            </span>
+            <span class="px-2 py-1 rounded-full bg-black/30 border border-white/10 inline-flex items-center gap-1">
+              <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i>
+              Analytics-ready
+            </span>
+          </div>
+        </div>
+
+        <form method="POST" class="space-y-4" id="devlogForm" novalidate>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div class="space-y-1">
+              <div class="flex items-center justify-between">
+                <label class="text-xs text-white/70">What did you build? <span class="text-white/40">(deliverable)</span></label>
+                <span class="text-[11px] text-white/55" data-section-count="built">0</span>
+              </div>
+              <textarea name="what_i_built" rows="4" data-pow-field="built"
+                class="w-full rounded-xl bg-black/40 border border-white/20 text-xs p-3 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                placeholder="Example: Built auth flow + refresh tokens; fixed CORS; added tests; shipped to staging."
+              >{{ existing_log.what_i_built if existing_log else '' }}</textarea>
+            </div>
+
+            <div class="space-y-1">
+              <div class="flex items-center justify-between">
+                <label class="text-xs text-white/70">What did you learn? <span class="text-white/40">(insights)</span></label>
+                <span class="text-[11px] text-white/55" data-section-count="learned">0</span>
+              </div>
+              <textarea name="what_i_learned" rows="4" data-pow-field="learned"
+                class="w-full rounded-xl bg-black/40 border border-white/20 text-xs p-3 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                placeholder="Example: Why token rotation matters, how middleware composition helps, how to isolate auth state."
+              >{{ existing_log.what_i_learned if existing_log else '' }}</textarea>
+            </div>
+
+            <div class="space-y-1">
+              <div class="flex items-center justify-between">
+                <label class="text-xs text-white/70">Challenges faced <span class="text-white/40">(blockers)</span></label>
+                <span class="text-[11px] text-white/55" data-section-count="challenges">0</span>
+              </div>
+              <textarea name="challenges_faced" rows="4" data-pow-field="challenges"
+                class="w-full rounded-xl bg-black/40 border border-white/20 text-xs p-3 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                placeholder="Example: Refresh loop, cookie flags in prod, env vars missing in CI, flaky tests."
+              >{{ existing_log.challenges_faced if existing_log else '' }}</textarea>
+            </div>
+
+            <div class="space-y-1">
+              <div class="flex items-center justify-between">
+                <label class="text-xs text-white/70">Next steps <span class="text-white/40">(what’s next)</span></label>
+                <span class="text-[11px] text-white/55" data-section-count="next">0</span>
+              </div>
+              <textarea name="next_steps" rows="4" data-pow-field="next"
+                class="w-full rounded-xl bg-black/40 border border-white/20 text-xs p-3 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                placeholder="Example: Add RBAC, integration tests, deploy + monitor, write docs, prep demo walkthrough."
+              >{{ existing_log.next_steps if existing_log else '' }}</textarea>
+            </div>
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div class="space-y-1">
+              <label class="text-xs text-white/70">GitHub link (optional)</label>
+              <input name="github_link" type="url"
+                value="{{ existing_log.github_link if existing_log else '' }}"
+                class="w-full rounded-xl bg-black/40 border border-white/20 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                placeholder="https://github.com/username/repo"
+              />
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs text-white/70">Demo link (optional)</label>
+              <input name="demo_link" type="url"
+                value="{{ existing_log.demo_link if existing_log else '' }}"
+                class="w-full rounded-xl bg-black/40 border border-white/20 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                placeholder="https://your-demo-link.com"
+              />
+            </div>
+          </div>
+
+          <div class="grid sm:grid-cols-3 gap-4">
+            <div class="space-y-1">
+              <label class="text-xs text-white/70">Time spent (minutes)</label>
+              <input name="time_spent_minutes" type="number" min="0" step="5"
+                value="{{ existing_log.time_spent_minutes if existing_log and existing_log.time_spent_minutes else '' }}"
+                class="w-full rounded-xl bg-black/40 border border-white/20 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                placeholder="120"
+              />
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-xs text-white/70">Difficulty (1–5)</label>
+              <input name="difficulty_rating" type="number" min="1" max="5"
+                value="{{ existing_log.difficulty_rating if existing_log and existing_log.difficulty_rating else '' }}"
+                class="w-full rounded-xl bg-black/40 border border-white/20 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                placeholder="3"
+              />
+            </div>
+
+            <div class="flex items-end">
+              <button id="submitBtn"
+                class="w-full btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-[12px] disabled:opacity-50 disabled:cursor-not-allowed"
+                type="submit" disabled>
+                <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                <span>{% if task and task.is_done %}Update DevLog{% else %}Save DevLog & Complete{% endif %}</span>
+              </button>
+            </div>
+          </div>
+
+          <p class="text-[11px] text-white/55">
+            This DevLog powers readiness analytics (and university dashboards). Keep it honest and specific.
+          </p>
+        </form>
+      </section>
+    </div>
+
+    <!-- Right: Proof-of-Work Meter (sticky on desktop) -->
+    <aside class="lg:col-span-5 space-y-6">
+      <section class="glass-card rounded-2xl p-5 border border-white/10 lg:sticky lg:top-6">
+        <div class="flex items-start justify-between gap-3">
+          <div class="space-y-1">
+            <p class="text-[11px] uppercase tracking-[0.16em] text-white/60 flex items-center gap-1.5">
+              <i data-lucide="radar" class="w-3.5 h-3.5"></i>
+              Proof-of-work meter
+            </p>
+            <p class="text-sm font-semibold text-white/90">
+              Verification status
+            </p>
+            <p class="text-[11px] text-white/55">
+              Submit unlocks completion + queues skill suggestions for approval.
+            </p>
+          </div>
+
+          <span id="powStatePill"
+                class="px-2 py-1 rounded-full bg-black/30 border border-white/10 text-[11px] text-white/70 inline-flex items-center gap-1">
+            <i data-lucide="circle" class="w-3.5 h-3.5"></i>
+            <span>Not ready</span>
+          </span>
+        </div>
+
+        <div class="mt-4 rounded-xl bg-black/30 border border-white/10 p-3">
+          <div class="flex items-center justify-between text-[11px] text-white/60">
+            <span>Total detail</span>
+            <span id="powCount">0 / {{ min_chars }}</span>
+          </div>
+          <div class="mt-2 w-full h-2 rounded-full bg-black/50 overflow-hidden">
+            <div id="powBar" class="h-2 rounded-full bg-emerald-400" style="width:0%;"></div>
+          </div>
+          <p id="powHint" class="mt-2 text-[11px] text-white/55">
+            Write what you learned/built + blockers + next steps.
+          </p>
+        </div>
+
+        <div class="mt-4 grid grid-cols-2 gap-3 text-[11px]">
+          <div class="rounded-xl bg-black/25 border border-white/10 p-3">
+            <p class="text-white/55">Built</p>
+            <p class="text-sm font-semibold" id="secBuilt">0</p>
+          </div>
+          <div class="rounded-xl bg-black/25 border border-white/10 p-3">
+            <p class="text-white/55">Learned</p>
+            <p class="text-sm font-semibold" id="secLearned">0</p>
+          </div>
+          <div class="rounded-xl bg-black/25 border border-white/10 p-3">
+            <p class="text-white/55">Challenges</p>
+            <p class="text-sm font-semibold" id="secChallenges">0</p>
+          </div>
+          <div class="rounded-xl bg-black/25 border border-white/10 p-3">
+            <p class="text-white/55">Next</p>
+            <p class="text-sm font-semibold" id="secNext">0</p>
+          </div>
+        </div>
+
+        <div class="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p class="text-xs font-semibold flex items-center gap-2">
+            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-300"></i>
+            <span>What good looks like</span>
+          </p>
+          <ul class="mt-2 space-y-2 text-[11px] text-white/70">
+            <li class="flex gap-2">
+              <span class="mt-0.5 text-emerald-300">•</span>
+              <span>1–2 concrete deliverables (code, report, prototype, notes, commits)</span>
+            </li>
+            <li class="flex gap-2">
+              <span class="mt-0.5 text-emerald-300">•</span>
+              <span>One “why” insight (what you understood better)</span>
+            </li>
+            <li class="flex gap-2">
+              <span class="mt-0.5 text-emerald-300">•</span>
+              <span>One blocker + how you attempted to solve it</span>
+            </li>
+            <li class="flex gap-2">
+              <span class="mt-0.5 text-emerald-300">•</span>
+              <span>Next steps that you can actually do in the next week</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="mt-4 flex items-center justify-between text-[11px] text-white/60">
+          <span>Min required: <span class="font-semibold">{{ min_chars }}</span></span>
+          <a href="{{ url_for('coach.session', session_id=session.id) }}"
+             class="inline-flex items-center gap-1 underline hover:text-white">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+            Back
+          </a>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.lucide) window.lucide.createIcons();
+
+    const minChars = {{ min_chars|int }};
+    const form = document.getElementById('devlogForm');
+    const submitBtn = document.getElementById('submitBtn');
+
+    const powCount = document.getElementById('powCount');
+    const powBar = document.getElementById('powBar');
+    const powHint = document.getElementById('powHint');
+    const powStatePill = document.getElementById('powStatePill');
+
+    const secBuilt = document.getElementById('secBuilt');
+    const secLearned = document.getElementById('secLearned');
+    const secChallenges = document.getElementById('secChallenges');
+    const secNext = document.getElementById('secNext');
+
+    if (!form) return;
+
+    const fields = Array.from(form.querySelectorAll('[data-pow-field]'));
+
+    function cleanLen(s) {
+      if (!s) return 0;
+      return String(s).replace(/\s+/g, ' ').trim().length;
+    }
+
+    function setPill(ok) {
+      if (!powStatePill) return;
+      if (ok) {
+        powStatePill.className = "px-2 py-1 rounded-full bg-emerald-500/15 border border-emerald-300/40 text-[11px] text-emerald-100 inline-flex items-center gap-1";
+        powStatePill.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i><span>Ready</span>';
+      } else {
+        powStatePill.className = "px-2 py-1 rounded-full bg-black/30 border border-white/10 text-[11px] text-white/70 inline-flex items-center gap-1";
+        powStatePill.innerHTML = '<i data-lucide="circle" class="w-3.5 h-3.5"></i><span>Not ready</span>';
+      }
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function recalc() {
+      let totals = { built: 0, learned: 0, challenges: 0, next: 0 };
+
+      fields.forEach((el) => {
+        const key = el.getAttribute('data-pow-field');
+        totals[key] = (totals[key] || 0) + cleanLen(el.value);
+      });
+
+      const total = (totals.built || 0) + (totals.learned || 0) + (totals.challenges || 0) + (totals.next || 0);
+      const pct = Math.max(0, Math.min(100, Math.round((total * 100) / minChars)));
+      const ok = total >= minChars;
+
+      if (powCount) powCount.textContent = `${total} / ${minChars}`;
+      if (powBar) powBar.style.width = `${pct}%`;
+
+      if (secBuilt) secBuilt.textContent = String(totals.built || 0);
+      if (secLearned) secLearned.textContent = String(totals.learned || 0);
+      if (secChallenges) secChallenges.textContent = String(totals.challenges || 0);
+      if (secNext) secNext.textContent = String(totals.next || 0);
+
+      // Update inline section counters above each textarea
+      const pills = document.querySelectorAll('[data-section-count]');
+      pills.forEach((p) => {
+        const k = p.getAttribute('data-section-count');
+        const val = totals[k] || 0;
+        p.textContent = `${val}`;
+      });
+
+      if (submitBtn) submitBtn.disabled = !ok;
+      setPill(ok);
+
+      if (powHint) {
+        if (ok) {
+          powHint.textContent = "✅ Enough detail. Submit to mark the weekly task complete.";
+        } else {
+          const left = Math.max(0, minChars - total);
+          powHint.textContent = `Add ~${left} more characters for completion.`;
+        }
+      }
+    }
+
+    fields.forEach((el) => el.addEventListener('input', recalc));
+    recalc();
+
+    // Prevent double-submit (cheap + effective at scale)
+    form.addEventListener('submit', function () {
+      if (!submitBtn) return;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Saving…</span>';
+      if (window.lucide) window.lucide.createIcons();
+    });
+  });
+</script>
+{% endblock %}

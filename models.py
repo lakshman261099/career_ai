@@ -1632,6 +1632,31 @@ CREATE TABLE IF NOT EXISTS profile_skill_suggestion (
     FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
 );
 
+-- 4. Create coach_saved_plan table
+CREATE TABLE IF NOT EXISTS coach_saved_plan (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    path_type VARCHAR(20) NOT NULL DEFAULT 'job',
+    dream_snapshot_id INTEGER,
+    title VARCHAR(255),
+    plan_json TEXT NOT NULL DEFAULT '{}',
+    locked_at TIMESTAMP,
+    is_deleted BOOLEAN NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    FOREIGN KEY (dream_snapshot_id) REFERENCES dream_plan_snapshot(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_coach_saved_plan_user_active
+ON coach_saved_plan(user_id, is_deleted);
+
+CREATE INDEX IF NOT EXISTS ix_coach_saved_plan_user_path_active
+ON coach_saved_plan(user_id, path_type, is_deleted);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_coach_saved_plan_user_snapshot
+ON coach_saved_plan(user_id, dream_snapshot_id);
+
 CREATE INDEX idx_skill_suggestion_user ON profile_skill_suggestion(user_id);
 CREATE INDEX idx_skill_suggestion_status ON profile_skill_suggestion(status);
 """
@@ -1710,3 +1735,88 @@ def check_sync_upgrade_status():
             print("✅ daily_coach_task has all new columns")
     
     print("\n" + "="*40)
+    
+    
+def cleanup_legacy_soft_deleted_coach_plans():
+    from models import db, CoachSavedPlan, DreamPlanSnapshot
+    import json
+    from datetime import datetime
+
+    rows = CoachSavedPlan.query.filter_by(is_deleted=True).all()
+    stamped = 0
+    deleted = 0
+
+    for p in rows:
+        snap_id = getattr(p, "dream_snapshot_id", None)
+        if snap_id:
+            snap = DreamPlanSnapshot.query.get(snap_id)
+            if snap:
+                try:
+                    pj = json.loads(snap.plan_json or "{}")
+                    if not pj.get("_coach_deleted_at"):
+                        pj["_coach_deleted_at"] = datetime.utcnow().isoformat()
+                        snap.plan_json = json.dumps(pj, ensure_ascii=False)
+                        stamped += 1
+                except Exception:
+                    pass
+
+        db.session.delete(p)
+        deleted += 1
+
+    db.session.commit()
+    return {"soft_deleted_rows_removed": deleted, "snapshots_stamped": stamped}
+
+    
+# ---------------------------------------------------------------------
+# NEW: Coach Saved Plans (Dream → Coach selectable library)
+# ---------------------------------------------------------------------
+class CoachSavedPlan(db.Model):
+    __tablename__ = "coach_saved_plan"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    path_type = db.Column(db.String(20), nullable=False, index=True, default="job")
+
+    dream_snapshot_id = db.Column(
+        db.Integer,
+        db.ForeignKey("dream_plan_snapshot.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    title = db.Column(db.String(255), nullable=True)
+    plan_json = db.Column(db.Text, nullable=False, default="{}")
+    locked_at = db.Column(db.DateTime, nullable=True)
+
+    # Legacy only (you hard-delete now)
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = db.relationship(
+        "User",
+        backref=db.backref("coach_saved_plans", lazy=True, cascade="all, delete-orphan"),
+    )
+
+    dream_snapshot = db.relationship(
+        "DreamPlanSnapshot",
+        backref=db.backref("coach_saved_plans", lazy=True),
+        foreign_keys=[dream_snapshot_id],
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "dream_snapshot_id", name="uq_coach_saved_plan_user_snapshot"),
+        Index("ix_coach_saved_plan_user_path_created", "user_id", "path_type", "created_at"),
+    )
+
+
+    def __repr__(self):
+        return f"<CoachSavedPlan {self.id} u={self.user_id} {self.path_type} deleted={self.is_deleted}>"

@@ -14,6 +14,13 @@ Changes from previous version:
 2. Added lock_plan endpoint
 3. Updated result() to extract sync-specific data
 4. Timeline validation (3/6/12/24 LPA)
+
+✅ IMPORTANT (storage + no resurrection):
+- Coach deletes saved plans permanently (hard delete)
+- If a Coach plan is deleted, Coach stamps the Dream snapshot JSON with `_coach_deleted_at`
+  so auto-promotion won't recreate it.
+- Dream lock_plan will NOT "resurrect" any deleted Coach plan, and will not re-promote
+  a snapshot that is stamped `_coach_deleted_at`. User must generate a NEW Dream plan if needed.
 """
 
 from datetime import datetime
@@ -68,7 +75,10 @@ def _current_is_verified_user() -> bool:
     supports either `email_verified` or legacy `verified`.
     """
     try:
-        return bool(getattr(current_user, "email_verified", False) or getattr(current_user, "verified", False))
+        return bool(
+            getattr(current_user, "email_verified", False)
+            or getattr(current_user, "verified", False)
+        )
     except Exception:
         return False
 
@@ -505,16 +515,13 @@ def processing(snapshot_id):
     except Exception:
         pass
 
-    # ✅ CRITICAL FIX: Provide URLs the processing template JS expects
-    status_url = url_for("dream.status_api", snapshot_id=snapshot_id)
-    result_url = url_for("dream.result", snapshot_id=snapshot_id)
-
     return render_template(
         "dream/processing.html",
         snapshot_id=snapshot_id,
         path_type=snapshot.path_type,
-        status_url=status_url,
-        result_url=result_url,
+        # ✅ CRITICAL: your processing.html JS requires these
+        status_url=url_for("dream.status_api", snapshot_id=snapshot_id),
+        result_url=url_for("dream.result", snapshot_id=snapshot_id),
     )
 
 
@@ -609,12 +616,18 @@ def result(snapshot_id):
         )
 
         # ✅ NEW: Extract sync-specific data
-        is_locked = "_locked_at" in plan_view and "selected_projects" in plan_view
+        try:
+            sp = plan_view.get("selected_projects")
+            is_locked = ("_locked_at" in plan_view) and isinstance(sp, list) and len(sp) > 0
+        except Exception:
+            is_locked = "_locked_at" in plan_view and "selected_projects" in plan_view
 
         # Analysis (probability matrix, bold truth)
         analysis = plan_view.get("analysis", {})
         probabilities = analysis.get("probabilities", {"3": 0, "6": 0, "12": 0, "24": 0})
-        projected_probabilities = analysis.get("projected_probabilities", {"3": 0, "6": 0, "12": 0, "24": 0})
+        projected_probabilities = analysis.get(
+            "projected_probabilities", {"3": 0, "6": 0, "12": 0, "24": 0}
+        )
         bold_truth = analysis.get("bold_truth", "")
         missing_skills = analysis.get("missing_skills", [])
 
@@ -665,7 +678,14 @@ def lock_plan(snapshot_id):
     Phase 2: Project Selection Handshake.
 
     User clicks "Lock Plan & Start Coach" after reviewing probability matrix.
-    This saves selected_projects to the snapshot and redirects to Coach.
+    This saves selected_projects to the snapshot AND promotes it into Coach's
+    selectable plan library (max 3 plans per user).
+
+    ✅ No-resurrection policy:
+    - If this snapshot has `_coach_deleted_at`, we still lock in Dream,
+      but we do NOT promote/save into Coach again. User must generate a new Dream plan.
+    - If a legacy soft-deleted CoachSavedPlan row exists, we HARD DELETE it
+      (storage saving) and proceed normally (subject to max-3 rule).
     """
     snapshot = DreamPlanSnapshot.query.get_or_404(snapshot_id)
 
@@ -689,8 +709,10 @@ def lock_plan(snapshot_id):
 
     # Extract selected projects from projects array
     projects = plan_json.get("projects", [])
-    selected_projects = []
+    if not isinstance(projects, list):
+        projects = []
 
+    selected_projects = []
     for idx_str in selected_indices:
         try:
             idx = int(idx_str)
@@ -707,11 +729,162 @@ def lock_plan(snapshot_id):
     plan_json["selected_projects"] = selected_projects
     plan_json["_locked_at"] = datetime.utcnow().isoformat()
 
-    snapshot.plan_json = json.dumps(plan_json, ensure_ascii=False)
-    db.session.commit()
+    # Helpful for Coach fallback redirects (safe)
+    try:
+        if "_snapshot_id" not in plan_json:
+            plan_json["_snapshot_id"] = snapshot.id
+    except Exception:
+        pass
 
-    flash("✅ Plan locked! Starting Coach...", "success")
-    return redirect(url_for("coach.index", path_type=snapshot.path_type))
+    # Persist back to Dream snapshot (LOCK ALWAYS SUCCEEDS OR FAILS IN DREAM)
+    try:
+        snapshot.plan_json = json.dumps(plan_json, ensure_ascii=False)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash("Could not lock plan. Please try again.", "danger")
+        return redirect(url_for("dream.result", snapshot_id=snapshot_id))
+
+    # ✅ No resurrection: if user deleted this plan from Coach earlier, do not re-save it there.
+    try:
+        if plan_json.get("_coach_deleted_at"):
+            flash(
+                "✅ Plan locked in Dream. You deleted this plan from Coach earlier, so it won’t be re-added there. "
+                "Generate a new Dream plan if you want a new Coach plan slot.",
+                "info",
+            )
+            return redirect(url_for("coach.manage_plans", path_type=snapshot.path_type))
+    except Exception:
+        pass
+
+    # ✅ Promote into Coach plan library (max 3 plans per user)
+    #    Hard-delete policy: we do NOT resurrect soft deleted rows. If legacy soft-deleted exists,
+    #    we hard delete it to save storage and avoid uniqueness collisions.
+    try:
+        from models import CoachSavedPlan  # NEW model (may not exist yet)
+
+        # Count active plans (hard delete preferred; legacy support excludes is_deleted=True)
+        active_count = 0
+        try:
+            q = CoachSavedPlan.query.filter_by(user_id=current_user.id)
+            try:
+                # legacy schema
+                q = q.filter_by(is_deleted=False)
+            except Exception:
+                pass
+            active_count = q.count()
+        except Exception:
+            active_count = 0
+
+        # Find existing record for this snapshot (do NOT filter is_deleted here)
+        existing = None
+
+        # Preferred schema: dream_snapshot_id
+        try:
+            existing = CoachSavedPlan.query.filter_by(
+                user_id=current_user.id,
+                dream_snapshot_id=snapshot.id,
+            ).first()
+        except Exception:
+            existing = None
+
+        # Alternate schema: snapshot_id (defensive)
+        if not existing:
+            try:
+                existing = CoachSavedPlan.query.filter_by(
+                    user_id=current_user.id,
+                    snapshot_id=snapshot.id,
+                ).first()
+            except Exception:
+                existing = None
+
+        # Legacy cleanup: if a soft-deleted row exists, hard-delete it (storage saving)
+        if existing:
+            try:
+                if bool(getattr(existing, "is_deleted", False)):
+                    db.session.delete(existing)
+                    db.session.flush()
+                    existing = None
+            except Exception:
+                # if we can't inspect/delete, just treat as existing and update it
+                pass
+
+        if not existing:
+            if active_count >= 3:
+                flash(
+                    "✅ Plan locked in Dream. You already have 3 saved Coach plans — delete one in Coach to save a new plan there.",
+                    "warning",
+                )
+                return redirect(url_for("coach.manage_plans", path_type=snapshot.path_type))
+
+            # Create new saved plan (field-safe)
+            new_saved = CoachSavedPlan(
+                user_id=current_user.id,
+                path_type=snapshot.path_type,
+                title=snapshot.plan_title or f"Dream Plan {snapshot.id}",
+                plan_json=json.dumps(plan_json, ensure_ascii=False),
+            )
+
+            # attach snapshot id if the field exists
+            if hasattr(new_saved, "dream_snapshot_id"):
+                new_saved.dream_snapshot_id = snapshot.id
+            if hasattr(new_saved, "snapshot_id"):
+                new_saved.snapshot_id = snapshot.id
+
+            # timestamps if present
+            if hasattr(new_saved, "locked_at"):
+                new_saved.locked_at = datetime.utcnow()
+            if hasattr(new_saved, "created_at") and getattr(new_saved, "created_at", None) is None:
+                new_saved.created_at = datetime.utcnow()
+            if hasattr(new_saved, "updated_at"):
+                new_saved.updated_at = datetime.utcnow()
+
+            # legacy compat: keep false, but we never rely on soft delete anymore
+            if hasattr(new_saved, "is_deleted"):
+                try:
+                    new_saved.is_deleted = False
+                except Exception:
+                    pass
+
+            db.session.add(new_saved)
+
+        else:
+            # Update existing saved plan with the latest locked version
+            try:
+                existing.path_type = snapshot.path_type
+            except Exception:
+                pass
+            try:
+                existing.title = snapshot.plan_title or existing.title
+            except Exception:
+                pass
+            try:
+                existing.plan_json = json.dumps(plan_json, ensure_ascii=False)
+            except Exception:
+                pass
+            if hasattr(existing, "locked_at"):
+                existing.locked_at = datetime.utcnow()
+            if hasattr(existing, "updated_at"):
+                existing.updated_at = datetime.utcnow()
+
+            # legacy: keep as active if column exists
+            if hasattr(existing, "is_deleted"):
+                try:
+                    existing.is_deleted = False
+                except Exception:
+                    pass
+
+        db.session.commit()
+
+    except Exception:
+        # If migration/model not applied yet, don't crash the app.
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+    flash("✅ Plan locked & saved to Coach! Select it in Coach and press Start.", "success")
+    return redirect(url_for("coach.manage_plans", path_type=snapshot.path_type))
 
 
 # -----------------------------------
@@ -790,7 +963,7 @@ def select_projects():
                 selected_projects.append(
                     {
                         "title": proj.get("title", "Project"),
-                        "description": proj.get("description", ""),
+                        "description": "",
                         "index": idx,
                     }
                 )

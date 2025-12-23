@@ -172,8 +172,10 @@
 <script>
   // Provided by server (routes.py)
   const snapshotId = "{{ snapshot_id }}";
-  const STATUS_URL = "{{ status_url }}";
-  const RESULT_URL = "{{ result_url }}";
+
+  // ✅ UPGRADE-IN-PLACE: safe fallbacks if template vars aren't passed
+  const STATUS_URL = "{{ status_url or url_for('dream.status_api', snapshot_id=snapshot_id) }}";
+  const RESULT_URL = "{{ result_url or url_for('dream.result', snapshot_id=snapshot_id) }}";
 
   const statusText = document.getElementById("statusText");
   const progressBar = document.getElementById("progressBar");

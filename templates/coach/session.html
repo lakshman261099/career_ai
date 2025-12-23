@@ -7,23 +7,31 @@
 {% set week_label = week_label|default('Week 1', true) %}
 {% set session_scope_label = session_scope_label|default('This week', true) %}
 
+{# Server should pass this, but default safely #}
+{% set session_locked = session_locked|default(false, true) %}
+{% set current_week_index = current_week_index|default(None, true) %}
+{% set min_chars = min_chars|default(120, true) %}
+
 {% if session and session.id %}
   {% set session_id = session.id %}
 {% endif %}
 
-{# Small local styles for streak celebration pop #}
 <style>
   @keyframes coachStreakPop {
     0%   { transform: scale(0.95); opacity: 0; }
     25%  { transform: scale(1.05); opacity: 1; }
     100% { transform: scale(1.0); opacity: 0; }
   }
-  .coach-streak-pop {
-    animation: coachStreakPop 0.9s ease-out forwards;
+  .coach-streak-pop { animation: coachStreakPop 0.9s ease-out forwards; }
+
+  @keyframes coachToastIn {
+    0% { transform: translateY(8px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
   }
+  .coach-toast { animation: coachToastIn .18s ease-out forwards; }
 </style>
 
-<section class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-6 text-white">
+<section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-16 space-y-6 text-white">
 
   <!-- HEADER -->
   <header class="glass-card rounded-2xl p-6 sm:p-7 border border-white/10 shadow-xl relative overflow-hidden">
@@ -44,16 +52,22 @@
           <span class="hidden sm:inline px-2 py-0.5 rounded-full bg-black/20 border border-white/10">
             {{ week_label }}
           </span>
+
+          {% if session_locked %}
+            <span class="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-300/40 text-amber-100 inline-flex items-center gap-1">
+              <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+              <span>Locked</span>
+            </span>
+          {% endif %}
         </div>
 
         <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">
           This week’s focus
         </h1>
 
-        <p class="text-sm sm:text-base text-white/80 max-w-xl leading-relaxed">
-          This is your <span class="font-semibold">execution view</span> for {{ session_scope_label|lower }} —
-          a set of realistic, weekly-sized moves drawn from your Dream Plan. Treat this as your
-          main checklist and use the timer below for deep work blocks.
+        <p class="text-sm sm:text-base text-white/80 max-w-2xl leading-relaxed">
+          Execution view for {{ session_scope_label|lower }} — weekly-sized moves pulled from your Dream Plan.
+          Weekly tasks require a DevLog (proof-of-work). Daily tasks can be ticked normally.
         </p>
 
         {% if plan_title %}
@@ -74,12 +88,12 @@
             </span>
           </div>
         {% endif %}
+
         {% if session_date %}
-          <p class="text-[11px] text-white/65">
-            Session created on {{ session_date }}
-          </p>
+          <p class="text-[11px] text-white/65">Session created on {{ session_date }}</p>
         {% endif %}
-        <div>
+
+        <div class="space-y-2">
           <a href="{{ url_for('coach.index', path_type=path_type) }}"
              class="inline-flex items-center gap-1 text-[11px] text-white/70 hover:text-white underline-offset-2 hover:underline">
             <i data-lucide="arrow-left" class="w-3 h-3"></i>
@@ -88,12 +102,30 @@
         </div>
       </div>
     </div>
+
+    {% if session_locked %}
+      <div class="mt-5 rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+            <i data-lucide="lock" class="w-5 h-5 text-amber-200"></i>
+          </div>
+          <div class="space-y-1">
+            <p class="text-sm font-semibold text-amber-100">This week is locked</p>
+            <p class="text-[11px] text-white/70 leading-relaxed">
+              You can view the plan, but you can’t mark tasks complete until this week becomes active.
+              {% if current_week_index %}
+                (Current active week: <span class="font-semibold">Week {{ current_week_index }}</span>)
+              {% endif %}
+            </p>
+          </div>
+        </div>
+      </div>
+    {% endif %}
   </header>
 
   {% if not tasks %}
     <div class="glass-card rounded-2xl p-6 border border-white/10 text-center text-sm text-white/70">
-      No tasks were generated for this session yet. <br>
-      This screen will show your weekly checklist once a Coach session is active.
+      No tasks were generated for this session yet.
       <div class="mt-3">
         <a href="{{ url_for('coach.index', path_type=path_type) }}" class="btn-primary inline-flex items-center gap-1 px-4 py-2">
           <i data-lucide="arrow-left" class="w-4 h-4"></i>
@@ -115,6 +147,7 @@
     {% endif %}
     {% if unlocked_through > total_weeks %}{% set unlocked_through = total_weeks %}{% endif %}
 
+    <!-- Roadmap -->
     <section class="glass-card rounded-2xl p-4 sm:p-5 border border-white/10 space-y-3">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div class="space-y-1">
@@ -123,34 +156,20 @@
             <span>Weekly roadmap</span>
           </p>
           <p class="text-xs sm:text-sm text-white/80">
-            You are on
-            <span class="font-semibold">Week {{ active_week }}</span>
-            inside your 3-phase Dream Plan.
+            You are on <span class="font-semibold">Week {{ active_week }}</span>.
             {% if session_is_closed %}
-              This week is <span class="font-semibold text-emerald-300">marked as done</span> — the next week is unlocked on the main Coach page.
+              This week is <span class="font-semibold text-emerald-300">marked as done</span>.
             {% else %}
-              Close this week when you’ve honestly done what you could.
+              Weekly tasks require DevLog proof.
             {% endif %}
           </p>
         </div>
 
         <div class="flex flex-wrap items-center gap-3 text-[11px] text-white/60">
-          <div class="inline-flex items-center gap-1">
-            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-            <span>Active</span>
-          </div>
-          <div class="inline-flex items-center gap-1">
-            <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
-            <span>Completed</span>
-          </div>
-          <div class="inline-flex items-center gap-1">
-            <i data-lucide="circle-dot" class="w-3.5 h-3.5"></i>
-            <span>Next up</span>
-          </div>
-          <div class="inline-flex items-center gap-1">
-            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
-            <span>Locked</span>
-          </div>
+          <div class="inline-flex items-center gap-1"><i data-lucide="sparkles" class="w-3.5 h-3.5"></i><span>Active</span></div>
+          <div class="inline-flex items-center gap-1"><i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i><span>Completed</span></div>
+          <div class="inline-flex items-center gap-1"><i data-lucide="circle-dot" class="w-3.5 h-3.5"></i><span>Next up</span></div>
+          <div class="inline-flex items-center gap-1"><i data-lucide="lock" class="w-3.5 h-3.5"></i><span>Locked</span></div>
         </div>
       </div>
 
@@ -162,6 +181,7 @@
           </span>
           <span>Foundation</span>
         </div>
+
         <div class="flex items-center gap-1 overflow-x-auto pb-1">
           {% for week in range(1, 5) %}
             {% set status = 'locked' %}
@@ -176,8 +196,7 @@
             {% endif %}
 
             <div class="flex flex-col items-center gap-0.5 min-w-[56px]">
-              <div
-                class="
+              <div class="
                   flex items-center justify-center rounded-full border
                   {% if status == 'active' %}
                     w-9 h-9 border-emerald-300/80 bg-emerald-500/20 shadow-lg shadow-emerald-500/30
@@ -190,8 +209,7 @@
                   {% else %}
                     w-7 h-7 border-white/20 bg-black/20 opacity-50
                   {% endif %}
-                "
-              >
+                ">
                 {% if status == 'active' %}
                   <i data-lucide="sparkles" class="w-4 h-4"></i>
                 {% elif status == 'completed' %}
@@ -204,8 +222,7 @@
                   <i data-lucide="lock" class="w-3.5 h-3.5"></i>
                 {% endif %}
               </div>
-              <span
-                class="
+              <span class="
                   mt-0.5
                   {% if status == 'active' %}
                     text-emerald-200 font-semibold
@@ -216,159 +233,16 @@
                   {% else %}
                     text-white/75
                   {% endif %}
-                "
-              >
+                ">
                 W{{ week }}
               </span>
             </div>
           {% endfor %}
         </div>
-
-        {# Phase 2 & 3 hidden for 4-week system #}
-        {% if total_weeks > 4 %}
-        <div class="flex items-center justify-between text-white/55 mt-2">
-          <span class="flex items-center gap-1">
-            <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
-            <span>Phase 2 · Weeks 5–8</span>
-          </span>
-          <span>Projects & depth</span>
-        </div>
-        <div class="flex items-center gap-1 overflow-x-auto pb-1">
-          {% for week in range(5, 9) %}
-            {% set status = 'locked' %}
-            {% if week < active_week %}
-              {% set status = 'completed' %}
-            {% elif week == active_week %}
-              {% set status = 'active' %}
-            {% elif week == active_week + 1 and week <= unlocked_through %}
-              {% set status = 'next' %}
-            {% elif week <= unlocked_through %}
-              {% set status = 'unlocked' %}
-            {% endif %}
-
-            <div class="flex flex-col items-center gap-0.5 min-w-[56px]">
-              <div
-                class="
-                  flex items-center justify-center rounded-full border
-                  {% if status == 'active' %}
-                    w-9 h-9 border-emerald-300/80 bg-emerald-500/20 shadow-lg shadow-emerald-500/30
-                  {% elif status == 'completed' %}
-                    w-8 h-8 border-emerald-400/70 bg-emerald-500/15
-                  {% elif status == 'next' %}
-                    w-8 h-8 border-white/60 bg-black/40
-                  {% elif status == 'unlocked' %}
-                    w-7 h-7 border-white/40 bg-black/40
-                  {% else %}
-                    w-7 h-7 border-white/20 bg-black/20 opacity-50
-                  {% endif %}
-                "
-              >
-                {% if status == 'active' %}
-                  <i data-lucide="sparkles" class="w-4 h-4"></i>
-                {% elif status == 'completed' %}
-                  <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-                {% elif status == 'next' %}
-                  <i data-lucide="circle-dot" class="w-4 h-4"></i>
-                {% elif status == 'unlocked' %}
-                  <i data-lucide="circle" class="w-3.5 h-3.5"></i>
-                {% else %}
-                  <i data-lucide="lock" class="w-3.5 h-3.5"></i>
-                {% endif %}
-              </div>
-              <span
-                class="
-                  mt-0.5
-                  {% if status == 'active' %}
-                    text-emerald-200 font-semibold
-                  {% elif status == 'completed' %}
-                    text-emerald-200
-                  {% elif status == 'locked' %}
-                    text-white/45
-                  {% else %}
-                    text-white/75
-                  {% endif %}
-                "
-              >
-                W{{ week }}
-              </span>
-            </div>
-          {% endfor %}
-        </div>
-
-        <div class="flex items-center justify-between text-white/55 mt-2">
-          <span class="flex items-center gap-1">
-            <i data-lucide="send" class="w-3.5 h-3.5"></i>
-            <span>Phase 3 · Weeks 9–12</span>
-          </span>
-          <span>Showcase & applications</span>
-        </div>
-        <div class="flex items-center gap-1 overflow-x-auto pb-1">
-          {% for week in range(9, total_weeks + 1) %}
-            {% set status = 'locked' %}
-            {% if week < active_week %}
-              {% set status = 'completed' %}
-            {% elif week == active_week %}
-              {% set status = 'active' %}
-            {% elif week == active_week + 1 and week <= unlocked_through %}
-              {% set status = 'next' %}
-            {% elif week <= unlocked_through %}
-              {% set status = 'unlocked' %}
-            {% endif %}
-
-            <div class="flex flex-col items-center gap-0.5 min-w-[56px]">
-              <div
-                class="
-                  flex items-center justify-center rounded-full border
-                  {% if status == 'active' %}
-                    w-9 h-9 border-emerald-300/80 bg-emerald-500/20 shadow-lg shadow-emerald-500/30
-                  {% elif status == 'completed' %}
-                    w-8 h-8 border-emerald-400/70 bg-emerald-500/15
-                  {% elif status == 'next' %}
-                    w-8 h-8 border-white/60 bg-black/40
-                  {% elif status == 'unlocked' %}
-                    w-7 h-7 border-white/40 bg-black/40
-                  {% else %}
-                    w-7 h-7 border-white/20 bg-black/20 opacity-50
-                  {% endif %}
-                "
-              >
-                {% if status == 'active' %}
-                  <i data-lucide="sparkles" class="w-4 h-4"></i>
-                {% elif status == 'completed' %}
-                  <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-                {% elif status == 'next' %}
-                  <i data-lucide="circle-dot" class="w-4 h-4"></i>
-                {% elif status == 'unlocked' %}
-                  <i data-lucide="circle" class="w-3.5 h-3.5"></i>
-                {% else %}
-                  <i data-lucide="lock" class="w-3.5 h-3.5"></i>
-                {% endif %}
-              </div>
-              <span
-                class="
-                  mt-0.5
-                  {% if status == 'active' %}
-                    text-emerald-200 font-semibold
-                  {% elif status == 'completed' %}
-                    text-emerald-200
-                  {% elif status == 'locked' %}
-                    text-white/45
-                  {% else %}
-                    text-white/75
-                  {% endif %}
-                "
-              >
-                W{{ week }}
-              </span>
-            </div>
-          {% endfor %}
-        </div>
-        {% endif %}
       </div>
 
       <p class="text-[11px] text-white/55 mt-1">
-        The roadmap above is a visual guide. New weeks unlock on the main Weekly Coach page
-        as you close sessions and open the next week in your {{ '28-day' if total_weeks == 4 else '12-week' }} plan.
+        New weeks unlock as time progresses (and as you close sessions on the main Coach page).
       </p>
     </section>
 
@@ -382,60 +256,39 @@
           {{ ai_note }}
         </p>
         <p class="text-[11px] text-white/60">
-          Re-read this whenever you feel lost. It’s your <span class="font-semibold">anchor</span> for the current phase.
+          This is your anchor for the week.
         </p>
       </section>
     {% endif %}
 
     <!-- TASK LIST -->
     <section class="glass-card rounded-2xl p-5 sm:p-6 border border-white/10 space-y-4">
+
       <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 class="text-lg sm:text-xl font-semibold flex items-center gap-1.5">
             <i data-lucide="check-square" class="w-4 h-4"></i>
             <span>This week’s checklist</span>
           </h2>
-          <p class="text-[11px] text-white/60 mt-1 max-w-md">
-            These are <span class="font-semibold">weekly-sized</span> tasks. Daily micro-tasks are short (5–15 min),
-            while weekly “Big Rock” tasks take a few hours. It’s okay if you don’t finish all of them —
-            aim for honest, visible progress.
+          <p class="text-[11px] text-white/60 mt-1 max-w-xl">
+            Daily tasks can be ticked. Weekly tasks are <span class="font-semibold">DevLog-gated</span> (min {{ min_chars }} chars proof).
           </p>
         </div>
 
         {% if day_index is defined and day_index is not none %}
           <div class="text-[11px] text-white/65 text-left sm:text-right space-y-1">
-            <p>
-              Week <span class="font-semibold">{{ day_index }}</span> inside your 3-phase roadmap.
-            </p>
-            <p class="text-white/50">
-              Try to complete at least 60–70% before starting the next week’s pack.
-            </p>
+            <p>Week <span class="font-semibold">{{ day_index }}</span></p>
+            {% if session_locked %}
+              <p class="text-amber-200/90">Locked until it becomes active.</p>
+            {% endif %}
           </div>
         {% endif %}
-      </div>
-
-      <div class="mt-1 rounded-xl bg-black/30 border border-white/10 p-3 text-[11px] flex flex-wrap items-center justify-between gap-3">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="uppercase tracking-[0.18em] text-white/55 flex items-center gap-1">
-            <i data-lucide="map" class="w-3.5 h-3.5"></i>
-            <span>Phase rail</span>
-          </span>
-          <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/20">
-            {{ phase_label }}
-          </span>
-          <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/20">
-            {{ week_label }}
-          </span>
-        </div>
-        <p class="text-white/55">
-          Click a task to toggle it complete. Progress updates instantly.
-        </p>
       </div>
 
       {% set total = tasks|length %}
       {% set done = (tasks | selectattr('is_done') | list | length) if tasks else 0 %}
       {% set pct = (done * 100 // total) if total > 0 else 0 %}
-      <div class="space-y-1 mt-3">
+      <div class="space-y-1 mt-1">
         <div class="flex items-center justify-between text-[11px] text-white/65">
           <span>Weekly progress</span>
           <span id="coach-week-progress-label">{{ done }}/{{ total }} tasks · {{ pct }}%</span>
@@ -456,148 +309,180 @@
             data-task-done="{{ 1 if t.is_done else 0 }}"
           >
             <div class="w-full">
-              <form
-                method="POST"
-                action="{{ url_for('coach.complete_task', task_id=t.id) }}"
-                data-coach-task-form
-                data-task-type="{{ t.task_type }}"
-              >
-                <div class="flex items-start gap-3">
-                  <button
-                    type="submit"
-                    data-coach-task-toggle
-                    class="mt-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-all
-                           {% if t.is_done %}
-                           bg-emerald-500 border-emerald-500
-                           {% else %}
-                           border-white/30 hover:border-white/50
-                           {% endif %}"
-                    aria-label="Toggle task complete"
-                  >
-                    {% if t.is_done %}
-                      <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
-                    {% endif %}
-                  </button>
 
-                  <div class="flex-1 space-y-1.5">
-                    <div class="flex items-center justify-between gap-2">
-                      <p
-                        data-coach-task-title
-                        class="leading-snug {% if t.is_done %}line-through text-white/60{% else %}text-white/90{% endif %}"
-                      >
-                        {{ t.title }}
-                        {% if t.task_type %}
-                          <span class="ml-2 text-[10px] uppercase tracking-[0.16em] text-white/50">
-                            · {{ t.task_type }}
-                          </span>
-                        {% endif %}
+              {# =========================
+                 WEEKLY TASK (DevLog gated)
+                 ========================= #}
+              {% if t.task_type == 'weekly' %}
+
+                <div class="rounded-2xl border border-white/10 bg-black/25 p-4 sm:p-5">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="space-y-1.5">
+                      <p class="text-[11px] uppercase tracking-[0.16em] text-white/55 flex items-center gap-1.5">
+                        <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                        Weekly · Proof required
                       </p>
-                      <div class="flex items-center gap-1 flex-wrap justify-end">
+
+                      <p class="leading-snug font-semibold {% if t.is_done %}text-white/70 line-through{% else %}text-white/95{% endif %}">
+                        {{ t.title }}
+                      </p>
+
+                      {% if t.detail %}
+                        <p class="text-[11px] sm:text-xs text-white/70 leading-snug">{{ t.detail }}</p>
+                      {% endif %}
+
+                      <div class="flex flex-wrap gap-2 text-[10px] text-white/70 mt-2">
                         {% if est %}
-                          <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 border border-emerald-300/60 text-emerald-100 inline-flex items-center gap-1">
+                          <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-300/40 text-emerald-100 inline-flex items-center gap-1">
                             <i data-lucide="clock-3" class="w-3 h-3"></i>
                             <span>{{ est }} min</span>
                           </span>
                         {% endif %}
                         {% if t.category %}
-                          <span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 border border-white/20">
-                            {{ t.category }}
-                          </span>
+                          <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/20">{{ t.category }}</span>
                         {% endif %}
                         {% if t.target_lpa_level %}
-                          <span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 border border-white/20">
-                            {{ t.target_lpa_level }} LPA
-                          </span>
+                          <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/20">{{ t.target_lpa_level }} LPA</span>
                         {% endif %}
-                      </div>
-                    </div>
-
-                    {% if t.detail %}
-                      <p class="text-[11px] sm:text-xs text-white/70 leading-snug">
-                        {{ t.detail }}
-                      </p>
-                    {% endif %}
-
-                    <!-- ✅ NEW: Expert Tips Section (after description) -->
-                    {% if t.tips %}
-                    <div class="p-4 rounded-xl bg-amber-500/10 border-2 border-amber-500/30 mt-2">
-                      <div class="flex items-start gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-                          <i data-lucide="lightbulb" class="w-5 h-5 text-amber-400"></i>
-                        </div>
-                        <div class="flex-1">
-                          <div class="text-sm font-semibold text-amber-300 mb-1">💡 Expert Tips</div>
-                          <p class="text-sm text-white/90 leading-relaxed">{{ t.tips }}</p>
-                        </div>
-                      </div>
-                    </div>
-                    {% endif %}
-
-                    <!-- ✅ NEW: Skill Tags (JSON string or list) -->
-                    {% if t.skill_tags %}
-                      {% set tags = t.skill_tags|from_json if t.skill_tags is string else t.skill_tags %}
-                      {% if tags and tags|length > 0 %}
-                      <div class="mt-2 space-y-2">
-                        <div class="text-xs font-semibold text-white/70 flex items-center gap-2">
-                          <i data-lucide="award" class="w-4 h-4 text-indigo-400"></i>
-                          You'll master:
-                        </div>
-                        <div class="flex flex-wrap gap-2">
-                          {% for tag in tags %}
-                          <span class="px-3 py-1.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-xs text-indigo-300">
-                            {{ tag }}
-                          </span>
-                          {% endfor %}
-                        </div>
-                      </div>
-                      {% endif %}
-                    {% endif %}
-
-                    {% if t.milestone_title or t.milestone_step %}
-                      <p class="mt-1 text-[11px] sm:text-xs text-emerald-200/85 flex items-center gap-1.5">
-                        <i data-lucide="flag" class="w-3.5 h-3.5"></i>
-                        <span>
-                          {% if t.milestone_title %}
-                            <span class="font-semibold">{{ t.milestone_title }}</span>
-                          {% endif %}
-                          {% if t.milestone_step %}
-                            {% if t.milestone_title %} · {% endif %}
-                            <span>{{ t.milestone_step }}</span>
-                          {% endif %}
+                        <span class="px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-400/25 text-indigo-100">
+                          min {{ min_chars }} chars
                         </span>
-                      </p>
-                    {% endif %}
-
-                    {% if t.guide %}
-                      <div class="mt-1 p-2 rounded-lg bg-white/5 border border-white/10 text-[11px] sm:text-xs text-white/70">
-                        {{ t.guide }}
                       </div>
-                    {% endif %}
 
-                    {% if t.tags %}
-                      <div class="mt-1 flex flex-wrap gap-1.5">
-                        {% for tag in t.tags %}
-                          <span class="px-2 py-0.5 rounded-full bg-black/40 border border-white/15 text-[10px] text-white/75">
-                            {{ tag }}
-                          </span>
-                        {% endfor %}
-                      </div>
-                    {% endif %}
+                      {% if t.tips %}
+                        <div class="mt-3 rounded-xl border border-amber-400/20 bg-amber-500/10 p-3">
+                          <p class="text-[11px] font-semibold text-amber-200 flex items-center gap-2">
+                            <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
+                            Expert tip
+                          </p>
+                          <p class="text-[11px] text-white/80 mt-1 leading-relaxed">{{ t.tips }}</p>
+                        </div>
+                      {% endif %}
 
-                    <!-- ✅ NEW: DevLog CTA (weekly tasks only, keep toggle as-is) -->
-                    {% if (t.task_type == 'weekly') and (not t.is_done) %}
-                      <div class="mt-3">
+                      {# Remove from_json to avoid template crash #}
+                      {% set tags = [] %}
+                      {% if t.skill_tags %}
+                        {% if t.skill_tags is string %}
+                          {% set raw = t.skill_tags %}
+                          {% set raw = raw.replace('[','').replace(']','').replace('"','').replace("'",'') %}
+                          {% set tags = raw.split(',')|map('trim')|select|list %}
+                        {% else %}
+                          {% set tags = t.skill_tags %}
+                        {% endif %}
+                      {% endif %}
+                      {% if tags and tags|length > 0 %}
+                        <div class="mt-3">
+                          <p class="text-[11px] font-semibold text-white/70 flex items-center gap-2">
+                            <i data-lucide="award" class="w-4 h-4 text-indigo-300"></i>
+                            Skills unlocked by proof:
+                          </p>
+                          <div class="mt-2 flex flex-wrap gap-2">
+                            {% for tag in tags %}
+                              <span class="px-3 py-1.5 rounded-xl bg-indigo-500/20 border border-indigo-500/25 text-[11px] text-indigo-100">
+                                {{ tag }}
+                              </span>
+                            {% endfor %}
+                          </div>
+                        </div>
+                      {% endif %}
+                    </div>
+
+                    <div class="flex flex-col items-end gap-2 flex-shrink-0">
+                      {% if t.is_done %}
+                        <span class="px-2 py-1 rounded-full bg-emerald-500/15 border border-emerald-300/40 text-[11px] text-emerald-100 inline-flex items-center gap-1">
+                          <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                          Completed
+                        </span>
                         <a href="{{ url_for('coach.devlog', task_id=t.id) }}"
-                           class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-[11px] sm:text-xs">
-                          <i data-lucide="edit" class="w-4 h-4"></i>
-                          <span>Log Work & Complete Task</span>
+                           class="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 text-[11px]">
+                          <i data-lucide="notebook-pen" class="w-4 h-4"></i>
+                          View DevLog
                         </a>
-                      </div>
-                    {% endif %}
+                      {% else %}
+                        <span class="px-2 py-1 rounded-full bg-black/30 border border-white/10 text-[11px] text-white/65 inline-flex items-center gap-1">
+                          <i data-lucide="lock-keyhole" class="w-3.5 h-3.5"></i>
+                          Tick disabled
+                        </span>
 
+                        {% if session_locked or session_is_closed %}
+                          <button type="button" disabled
+                            class="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-white/15 bg-black/30 text-[11px] text-white/45 cursor-not-allowed">
+                            <i data-lucide="lock" class="w-4 h-4"></i>
+                            Locked
+                          </button>
+                        {% else %}
+                          <a href="{{ url_for('coach.devlog', task_id=t.id) }}"
+                             class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-[11px]">
+                            <i data-lucide="edit" class="w-4 h-4"></i>
+                            Log Work & Complete
+                          </a>
+                        {% endif %}
+                      {% endif %}
+                    </div>
                   </div>
                 </div>
-              </form>
+
+              {# =========================
+                 DAILY TASK (tick allowed)
+                 ========================= #}
+              {% else %}
+
+                <form
+                  method="POST"
+                  action="{{ url_for('coach.complete_task', task_id=t.id) }}"
+                  data-coach-task-form
+                  data-coach-task-form
+                  data-task-type="{{ t.task_type }}"
+                  {% if session_locked or session_is_closed %}data-locked="1"{% endif %}
+                >
+                  <div class="flex items-start gap-3">
+                    <button
+                      type="submit"
+                      data-coach-task-toggle
+                      {% if session_locked or session_is_closed %}disabled{% endif %}
+                      class="mt-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-all
+                             {% if session_locked or session_is_closed %}
+                               opacity-50 cursor-not-allowed border-white/20
+                             {% else %}
+                               {% if t.is_done %}bg-emerald-500 border-emerald-500{% else %}border-white/30 hover:border-white/50{% endif %}
+                             {% endif %}"
+                      aria-label="Toggle task complete"
+                    >
+                      {% if t.is_done %}
+                        <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
+                      {% endif %}
+                    </button>
+
+                    <div class="flex-1 space-y-1.5">
+                      <div class="flex items-center justify-between gap-2">
+                        <p
+                          data-coach-task-title
+                          class="leading-snug {% if t.is_done %}line-through text-white/60{% else %}text-white/90{% endif %}"
+                        >
+                          {{ t.title }}
+                          <span class="ml-2 text-[10px] uppercase tracking-[0.16em] text-white/50">· daily</span>
+                        </p>
+                        <div class="flex items-center gap-1 flex-wrap justify-end">
+                          {% if est %}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 border border-emerald-300/60 text-emerald-100 inline-flex items-center gap-1">
+                              <i data-lucide="clock-3" class="w-3 h-3"></i>
+                              <span>{{ est }} min</span>
+                            </span>
+                          {% endif %}
+                          {% if t.category %}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 border border-white/20">{{ t.category }}</span>
+                          {% endif %}
+                        </div>
+                      </div>
+
+                      {% if t.detail %}
+                        <p class="text-[11px] sm:text-xs text-white/70 leading-snug">{{ t.detail }}</p>
+                      {% endif %}
+                    </div>
+                  </div>
+                </form>
+
+              {% endif %}
             </div>
           </li>
         {% endfor %}
@@ -605,8 +490,7 @@
 
       <div class="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
         <p class="text-white/65">
-          Check off what you actually completed this week. Even if you only move 2–3 tasks forward,
-          you’ve moved your whole roadmap forward — that’s what matters.
+          Daily ticks update instantly. Weekly completion is proof-based (DevLog).
         </p>
         <div class="flex flex-wrap gap-2 justify-end">
           <a
@@ -620,7 +504,7 @@
       </div>
     </section>
 
-    <!-- FOCUS TIMER -->
+    <!-- FOCUS TIMER (unchanged) -->
     <section class="glass-card rounded-2xl p-5 border border-white/10 space-y-3">
       <h2 class="text-sm font-semibold flex items-center gap-1.5">
         <i data-lucide="timer" class="w-4 h-4"></i>
@@ -628,7 +512,6 @@
       </h2>
       <p class="text-xs text-white/70">
         Pick a focus block and a break. Start the timer when you begin deep work on any task above.
-        During breaks, actually step away — that’s when your brain consolidates what you just did.
       </p>
 
       <div class="grid sm:grid-cols-3 gap-4 text-xs">
@@ -637,25 +520,13 @@
           <div class="flex items-center gap-2">
             <div>
               <label class="block text-[11px] text-white/60">Hours</label>
-              <input
-                id="focusHours"
-                type="number"
-                min="0"
-                max="8"
-                value="0"
-                class="w-16 rounded-lg bg-black/40 border border-white/25 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
-              >
+              <input id="focusHours" type="number" min="0" max="8" value="0"
+                class="w-16 rounded-lg bg-black/40 border border-white/25 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400">
             </div>
             <div>
               <label class="block text-[11px] text-white/60">Minutes</label>
-              <input
-                id="focusMinutes"
-                type="number"
-                min="5"
-                max="180"
-                value="45"
-                class="w-16 rounded-lg bg-black/40 border border-white/25 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
-              >
+              <input id="focusMinutes" type="number" min="5" max="180" value="45"
+                class="w-16 rounded-lg bg-black/40 border border-white/25 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400">
             </div>
           </div>
         </div>
@@ -664,43 +535,22 @@
           <p class="font-semibold">Break duration</p>
           <div>
             <label class="block text-[11px] text-white/60">Minutes</label>
-            <input
-              id="breakMinutes"
-              type="number"
-              min="3"
-              max="30"
-              value="10"
-              class="w-20 rounded-lg bg-black/40 border border-white/25 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
-            >
+            <input id="breakMinutes" type="number" min="3" max="30" value="10"
+              class="w-20 rounded-lg bg-black/40 border border-white/25 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400">
           </div>
         </div>
 
         <div class="space-y-2">
           <p class="font-semibold">Controls</p>
           <div class="flex flex-wrap gap-2">
-            <button
-              id="timerStart"
-              type="button"
-              class="btn-primary inline-flex items-center gap-1 px-3 py-1.5 text-[11px]"
-            >
-              <i data-lucide="play" class="w-3.5 h-3.5"></i>
-              <span>Start</span>
+            <button id="timerStart" type="button" class="btn-primary inline-flex items-center gap-1 px-3 py-1.5 text-[11px]">
+              <i data-lucide="play" class="w-3.5 h-3.5"></i><span>Start</span>
             </button>
-            <button
-              id="timerPause"
-              type="button"
-              class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/25 bg-white/5 hover:bg-white/10 text-[11px]"
-            >
-              <i data-lucide="pause" class="w-3.5 h-3.5"></i>
-              <span>Pause</span>
+            <button id="timerPause" type="button" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/25 bg-white/5 hover:bg-white/10 text-[11px]">
+              <i data-lucide="pause" class="w-3.5 h-3.5"></i><span>Pause</span>
             </button>
-            <button
-              id="timerReset"
-              type="button"
-              class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/25 bg-white/5 hover:bg-white/10 text-[11px]"
-            >
-              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-              <span>Reset</span>
+            <button id="timerReset" type="button" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/25 bg-white/5 hover:bg-white/10 text-[11px]">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i><span>Reset</span>
             </button>
           </div>
         </div>
@@ -708,87 +558,63 @@
 
       <div class="mt-4 grid sm:grid-cols-2 gap-4 items-center">
         <div class="space-y-1 text-center sm:text-left">
-          <p id="timerPhase" class="text-xs text-white/60 uppercase tracking-[0.16em]">
-            FOCUS PHASE
-          </p>
-          <p id="timerDisplay" class="text-3xl sm:text-4xl font-mono font-semibold">
-            45:00
-          </p>
+          <p id="timerPhase" class="text-xs text-white/60 uppercase tracking-[0.16em]">FOCUS PHASE</p>
+          <p id="timerDisplay" class="text-3xl sm:text-4xl font-mono font-semibold">45:00</p>
         </div>
         <div class="text-xs text-white/75">
           <p class="font-semibold mb-1">Coach note for this phase</p>
           <p id="timerMessage">
             Set your phone away, close extra tabs, and give this block your full attention.
-            Even 25–45 minutes of deep work beats 3 hours of half-focus.
           </p>
         </div>
       </div>
     </section>
 
-    <!-- REFLECTION / NOTES -->
+    <!-- REFLECTION (unchanged) -->
     <section class="glass-card rounded-2xl p-5 border border-white/10 space-y-3">
       <h2 class="text-sm font-semibold flex items-center gap-1.5">
         <i data-lucide="notebook-pen" class="w-4 h-4"></i>
         <span>Quick reflection</span>
       </h2>
       <p class="text-xs text-white/70">
-        Spend 1–2 minutes writing what went well and what felt hard. This helps you notice patterns.
-        (Saved locally in your browser for now.)
+        Saved locally in your browser for now.
       </p>
 
       <div>
-        <textarea
-          id="coachReflection"
-          rows="3"
+        <textarea id="coachReflection" rows="3"
           class="w-full mt-2 rounded-xl bg-black/40 border border-white/20 text-xs p-3 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-          placeholder="Example: Finished SQL tasks, but interview questions felt hard. Need more time for mock interviews."
+          placeholder="Example: Finished SQL tasks, interview questions felt hard."
         >{{ reflection or '' }}</textarea>
 
         <div class="mt-3 flex items-center justify-between gap-3 text-[11px] text-white/60">
-          <span>Your note stays on this device unless you clear site data.</span>
-          <button
-            id="saveReflectionBtn"
-            type="button"
-            class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/25 bg-white/5 hover:bg-white/10"
-          >
-            <i data-lucide="pen" class="w-3.5 h-3.5"></i>
-            <span>Save note</span>
+          <span>Your note stays on this device.</span>
+          <button id="saveReflectionBtn" type="button"
+            class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/25 bg-white/5 hover:bg-white/10">
+            <i data-lucide="pen" class="w-3.5 h-3.5"></i><span>Save note</span>
           </button>
         </div>
       </div>
     </section>
 
-    <!-- NAV + NEXT WEEK HINT -->
+    <!-- NAV -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-white/70">
       <div class="flex flex-wrap items-center gap-3">
         <a href="{{ url_for('coach.index', path_type=path_type) }}" class="inline-flex items-center gap-1 underline hover:text-white">
-          <i data-lucide="timer-reset" class="w-3.5 h-3.5"></i>
-          <span>Back to Coach</span>
+          <i data-lucide="timer-reset" class="w-3.5 h-3.5"></i><span>Back to Coach</span>
         </a>
         <a href="{{ url_for('dream.index', path_type=path_type) }}" class="inline-flex items-center gap-1 underline hover:text-white">
-          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-          <span>Dream Planner</span>
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i><span>Dream Planner</span>
         </a>
-        {% if feature_paths is defined and feature_paths and feature_paths.skillmapper %}
-          <a href="{{ feature_paths.skillmapper }}" class="inline-flex items-center gap-1 underline hover:text-white">
-            <i data-lucide="route" class="w-3.5 h-3.5"></i>
-            <span>Skill Mapper</span>
-          </a>
-        {% endif %}
       </div>
 
       {% if session_is_closed %}
         <p class="flex-shrink-0 text-right text-white/70">
-          This week is closed. To continue, open the next week from the
-          <a href="{{ url_for('coach.index', path_type=path_type) }}" class="underline hover:text-white">
-            Weekly Coach overview
-          </a>.
+          This week is closed. Open the next week from the Coach overview.
         </p>
       {% endif %}
     </div>
 
   {% endif %}
-
 </section>
 {% endblock %}
 
@@ -796,10 +622,9 @@
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
-    if (window.lucide) {
-      window.lucide.createIcons();
-    }
+    if (window.lucide) window.lucide.createIcons();
 
+    // ===== Timer (same logic, minimal edits) =====
     const focusHoursInput   = document.getElementById('focusHours');
     const focusMinutesInput = document.getElementById('focusMinutes');
     const breakMinutesInput = document.getElementById('breakMinutes');
@@ -812,56 +637,37 @@
     const btnPause = document.getElementById('timerPause');
     const btnReset = document.getElementById('timerReset');
 
-    if (!focusHoursInput || !focusMinutesInput || !breakMinutesInput ||
-        !timerDisplay || !timerPhase || !timerMessage ||
-        !btnStart || !btnPause || !btnReset) {
-      // Timer can't init, but we still want streak logic below, so don't return.
-    }
-
-    let timerId          = null;
-    let remainingSeconds = 0;
-    let phase            = 'focus';
-    let isRunning        = false;
+    let timerId = null, remainingSeconds = 0, phase = 'focus', isRunning = false;
 
     const focusMessages = [
       "Set your phone away, close extra tabs, and give this block your full attention.",
-      "You don’t need to be perfect, just present. One small chunk at a time.",
-      "If your brain resists, that’s normal. Gently bring it back to the task.",
-      "Imagine explaining this topic to a junior. Study as if you’ll teach it."
+      "One clean chunk beats hours of half-focus.",
+      "If your brain resists, that’s normal. Bring it back gently.",
+      "Study as if you’ll teach it to someone else."
     ];
-
     const breakMessages = [
-      "Stand up, stretch, drink some water. Your brain is doing background work.",
-      "Try a few deep breaths. In for 4, hold for 4, out for 6.",
-      "Look away from the screen for 30 seconds. Relax your eyes and shoulders.",
-      "You’re allowed to rest. Good rest makes good focus possible."
+      "Stand up, stretch, drink some water.",
+      "Deep breaths: in 4, hold 4, out 6.",
+      "Look away from the screen and relax your shoulders.",
+      "Rest is part of performance."
     ];
-
-    function pickRandom(arr) {
-      return arr[Math.floor(Math.random() * arr.length)];
+    function pickRandom(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
+    function formatTime(seconds){
+      const m = Math.floor(seconds / 60), s = seconds % 60;
+      return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     }
-
-    function formatTime(seconds) {
-      const m  = Math.floor(seconds / 60);
-      const s  = seconds % 60;
-      const mm = String(m).padStart(2, '0');
-      const ss = String(s).padStart(2, '0');
-      return `${mm}:${ss}`;
-    }
-
-    function setPhase(newPhase) {
+    function setPhase(newPhase){
       phase = newPhase;
       if (!timerPhase || !timerMessage) return;
       if (phase === 'focus') {
-        timerPhase.textContent   = 'FOCUS PHASE';
+        timerPhase.textContent = 'FOCUS PHASE';
         timerMessage.textContent = pickRandom(focusMessages);
       } else {
-        timerPhase.textContent   = 'BREAK PHASE';
+        timerPhase.textContent = 'BREAK PHASE';
         timerMessage.textContent = pickRandom(breakMessages);
       }
     }
-
-    function initFromInputs() {
+    function initFromInputs(){
       if (!focusHoursInput || !focusMinutesInput || !timerDisplay) return;
       const h = parseInt(focusHoursInput.value || '0', 10);
       const m = parseInt(focusMinutesInput.value || '0', 10);
@@ -870,13 +676,10 @@
       setPhase('focus');
       timerDisplay.textContent = formatTime(remainingSeconds);
     }
-
-    function startTimer() {
+    function startTimer(){
       if (!timerDisplay || !breakMinutesInput) return;
       if (isRunning) return;
-      if (!remainingSeconds) {
-        initFromInputs();
-      }
+      if (!remainingSeconds) initFromInputs();
       isRunning = true;
       timerId = setInterval(() => {
         if (remainingSeconds > 0) {
@@ -885,49 +688,31 @@
         } else {
           if (phase === 'focus') {
             const breakM = parseInt(breakMinutesInput.value || '5', 10);
-            const brSecs = (isNaN(breakM) ? 5 : breakM) * 60;
-            remainingSeconds = brSecs > 0 ? brSecs : 300;
+            remainingSeconds = (isNaN(breakM) ? 5 : breakM) * 60;
             setPhase('break');
             timerDisplay.textContent = formatTime(remainingSeconds);
           } else {
             clearInterval(timerId);
-            timerId   = null;
+            timerId = null;
             isRunning = false;
             initFromInputs();
           }
         }
       }, 1000);
     }
-
-    function pauseTimer() {
-      if (timerId) {
-        clearInterval(timerId);
-        timerId = null;
-      }
-      isRunning = false;
-    }
-
-    function resetTimer() {
-      pauseTimer();
-      initFromInputs();
-    }
+    function pauseTimer(){ if (timerId) { clearInterval(timerId); timerId = null; } isRunning = false; }
+    function resetTimer(){ pauseTimer(); initFromInputs(); }
 
     if (btnStart && btnPause && btnReset && focusHoursInput && focusMinutesInput && breakMinutesInput && timerDisplay && timerPhase && timerMessage) {
       initFromInputs();
-
       btnStart.addEventListener('click', startTimer);
       btnPause.addEventListener('click', pauseTimer);
       btnReset.addEventListener('click', resetTimer);
-
-      focusHoursInput.addEventListener('change', () => {
-        if (!isRunning) initFromInputs();
-      });
-      focusMinutesInput.addEventListener('change', () => {
-        if (!isRunning) initFromInputs();
-      });
+      focusHoursInput.addEventListener('change', () => { if (!isRunning) initFromInputs(); });
+      focusMinutesInput.addEventListener('change', () => { if (!isRunning) initFromInputs(); });
     }
 
-    // Local reflection save
+    // ===== Local reflection save =====
     const reflectionEl = document.getElementById('coachReflection');
     const saveBtn = document.getElementById('saveReflectionBtn');
     const key = "coach_reflection_session_{{ session_id or 0 }}";
@@ -935,12 +720,9 @@
     if (reflectionEl) {
       try {
         const existing = localStorage.getItem(key);
-        if (existing && (!reflectionEl.value || reflectionEl.value.trim() === "")) {
-          reflectionEl.value = existing;
-        }
+        if (existing && (!reflectionEl.value || reflectionEl.value.trim() === "")) reflectionEl.value = existing;
       } catch (e) {}
     }
-
     if (saveBtn && reflectionEl) {
       saveBtn.addEventListener('click', () => {
         try {
@@ -955,14 +737,40 @@
       });
     }
 
-    // ===== Streak celebration + live progress update =====
+    // ===== Toast helper =====
+    function toast(msg) {
+      const el = document.createElement('div');
+      el.className = 'fixed inset-x-0 top-4 flex justify-center z-[90] px-4 pointer-events-none';
+      el.innerHTML = `
+        <div class="coach-toast pointer-events-auto max-w-xl w-full rounded-2xl border border-white/15 bg-black/60 backdrop-blur px-4 py-3 text-[12px] text-white/90 shadow-xl">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start gap-2">
+              <i data-lucide="info" class="w-4 h-4 mt-0.5 text-white/70"></i>
+              <div>${msg}</div>
+            </div>
+            <button type="button" class="text-white/60 hover:text-white" aria-label="Close">✕</button>
+          </div>
+        </div>`;
+      document.body.appendChild(el);
+      if (window.lucide) window.lucide.createIcons();
+      const btn = el.querySelector('button');
+      if (btn) btn.addEventListener('click', () => el.remove());
+      setTimeout(() => { try { el.remove(); } catch(e){} }, 3200);
+    }
+
+    // ✅ NEW: Alert + toast (user asked for alert as well)
+    function notify(msg) {
+      try { alert(msg); } catch (e) {}
+      toast(msg);
+    }
+
+    // ===== Streak + live progress (daily forms only) =====
     const streakValueEl = document.getElementById('coach-streak-value');
     let currentStreak = 0;
     if (streakValueEl) {
       const raw = streakValueEl.dataset.streak || streakValueEl.textContent || '0';
       currentStreak = parseInt(raw, 10) || 0;
     }
-
     const progressLabelEl = document.getElementById('coach-week-progress-label');
     const progressBarEl   = document.getElementById('coach-week-progress-bar');
 
@@ -971,64 +779,73 @@
       const items = document.querySelectorAll('[data-coach-task-item]');
       const total = items.length;
       let done = 0;
-      items.forEach((el) => {
-        if (el.getAttribute('data-task-done') === '1') {
-          done += 1;
-        }
-      });
+      items.forEach((el) => { if (el.getAttribute('data-task-done') === '1') done += 1; });
       const pct = total > 0 ? Math.round((done * 100) / total) : 0;
       progressLabelEl.textContent = `${done}/${total} tasks · ${pct}%`;
       progressBarEl.style.width = `${pct}%`;
     }
 
-    function triggerStreakCelebration(taskType) {
+    function triggerStreakCelebration() {
       const container = document.createElement('div');
       container.className = 'fixed inset-0 flex items-start justify-center pointer-events-none z-[80]';
-      const message = taskType === 'weekly'
-        ? 'Weekly milestone locked in — nice.'
-        : 'Another day in your streak. Keep it going.';
       container.innerHTML = `
         <div class="mt-20 px-4 py-2 rounded-full bg-emerald-500/20 border border-emerald-300/80 shadow-lg text-xs sm:text-sm text-emerald-50 coach-streak-pop">
-          <span class="inline-flex items-center gap-1">
-            <span>🔥 Streak up!</span>
-            <span class="hidden sm:inline">${message}</span>
-          </span>
-        </div>
-      `;
+          <span class="inline-flex items-center gap-1"><span>🔥 Streak up!</span><span class="hidden sm:inline">Nice consistency.</span></span>
+        </div>`;
       document.body.appendChild(container);
-      setTimeout(() => {
-        container.classList.add('opacity-0');
-      }, 650);
-      setTimeout(() => {
-        container.remove();
-      }, 1100);
+      setTimeout(() => container.classList.add('opacity-0'), 650);
+      setTimeout(() => container.remove(), 1100);
     }
 
     const taskForms = document.querySelectorAll('form[data-coach-task-form]');
     taskForms.forEach((form) => {
       form.addEventListener('submit', function (e) {
-        if (form.dataset.noAjax === '1') return;  // fallback guard
-        e.preventDefault();
+        if (form.dataset.noAjax === '1') return;
 
+        // ✅ Locked/closed — show alert + toast
+        if (form.dataset.locked === '1') {
+          e.preventDefault();
+          notify("This week is locked. You can’t complete tasks yet.");
+          return;
+        }
+
+        e.preventDefault();
         const toggleBtn = form.querySelector('[data-coach-task-toggle]');
         const taskItem  = form.closest('[data-coach-task-item]');
-        const taskType  = form.dataset.taskType || (taskItem ? taskItem.getAttribute('data-task-type') : 'daily');
+        const taskType  = form.dataset.taskType || 'daily';
 
         fetch(form.action, {
           method: form.method || 'POST',
           body: new FormData(form),
           headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
-        .then((res) => {
-          if (!res.ok) throw new Error('Network error');
-          return res.json();
-        })
+        .then((res) => { if (!res.ok) throw new Error('Network error'); return res.json(); })
         .then((data) => {
-          if (!data || !data.ok) throw new Error('Bad response');
+          if (!data) {
+            notify("Action not allowed.");
+            return;
+          }
+
+          // ✅ Backend blocked (future week / closed / weekly-devlog gating)
+          if (data.ok === false) {
+            const msg = data.message || "Action not allowed.";
+            notify(msg);
+
+            // If backend gives devlog_url, route them there
+            if (data.devlog_url) {
+              window.location.href = data.devlog_url;
+            }
+            return;
+          }
+
+          if (data.ok !== true) {
+            const msg = data.message || "Action not allowed.";
+            notify(msg);
+            return;
+          }
 
           const isDone = !!data.is_done;
 
-          // Toggle button visuals
           if (toggleBtn) {
             if (isDone) {
               toggleBtn.classList.add('bg-emerald-500', 'border-emerald-500');
@@ -1042,7 +859,6 @@
             if (window.lucide) window.lucide.createIcons();
           }
 
-          // Mark task item done / not done + title style
           if (taskItem) {
             taskItem.setAttribute('data-task-done', isDone ? '1' : '0');
             const titleEl = taskItem.querySelector('[data-coach-task-title]');
@@ -1055,22 +871,17 @@
             }
           }
 
-          // Recalc weekly progress bar
           recalcProgress();
 
-          // Update streak + celebration
           if (typeof data.user_streak === 'number' && streakValueEl) {
             const newStreak = data.user_streak || 0;
-            if (newStreak > currentStreak) {
-              triggerStreakCelebration(taskType);
-            }
+            if (newStreak > currentStreak) triggerStreakCelebration();
             currentStreak = newStreak;
             streakValueEl.dataset.streak = String(newStreak);
             streakValueEl.textContent = String(newStreak);
           }
         })
         .catch(() => {
-          // Fallback: if AJAX fails, do a real POST once
           form.dataset.noAjax = '1';
           form.submit();
         });
