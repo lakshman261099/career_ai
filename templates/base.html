@@ -1,5 +1,99 @@
+{# templates/base.html #}
+
+{# -----------------------------
+   Safe defaults
+   ----------------------------- #}
 {% set FREE = user_free|default(0, true) %}
-{% set PRO = user_pro|default(0, true) %}
+{% set PRO  = user_pro|default(0, true) %}
+
+{# feature_paths can be missing on admin/auth pages; keep base.html crash-proof #}
+{% set feature_paths = feature_paths|default({}) %}
+{% set fp_home        = feature_paths.home|default(url_for('dashboard'), true) %}
+{% set fp_portfolio   = feature_paths.portfolio|default('#', true) %}
+{% set fp_internships = feature_paths.internships|default('#', true) %}
+{% set fp_skillmapper = feature_paths.skillmapper|default('#', true) %}
+{% set fp_referral    = feature_paths.referral|default('#', true) %}
+{% set fp_jobpack     = feature_paths.jobpack|default('#', true) %}
+{% set fp_dream       = feature_paths.dream|default('#', true) %}
+{% set fp_coach       = feature_paths.coach|default(url_for('coach.index'), true) %}
+{% set fp_billing     = feature_paths.billing|default('#', true) %}
+{% set fp_profile     = feature_paths.profile|default('#', true) %}
+{% set fp_settings    = feature_paths.settings|default('#', true) %}
+{% set fp_logout      = feature_paths.logout|default('#', true) %}
+{% set fp_signup      = feature_paths.signup|default('#', true) %}
+{% set fp_login       = feature_paths.login|default('#', true) %}
+{% set fp_admin_home  = feature_paths.admin_home|default(None, true) %}
+
+{# ------------------------------------------------------------
+   Role detection for header UI (Admin vs Student)
+   - IMPORTANT: University admins must NOT see student UI
+   - Robust even if role string is missing OR is_* flags are callables
+   ------------------------------------------------------------ #}
+{% set _authed = (current_user.is_authenticated if current_user is defined else false) %}
+{% set role_raw = (((current_user.role or '')|trim|lower) if _authed else '') %}
+
+{# callable-safe flags #}
+{% set _uni_flag = false %}
+{% if _authed and (current_user.is_university_admin is defined) %}
+  {% if current_user.is_university_admin is callable %}
+    {% set _uni_flag = current_user.is_university_admin() %}
+  {% else %}
+    {% set _uni_flag = current_user.is_university_admin %}
+  {% endif %}
+{% endif %}
+
+{% set _super_flag = false %}
+{% if _authed and (current_user.is_super_admin is defined) %}
+  {% if current_user.is_super_admin is callable %}
+    {% set _super_flag = current_user.is_super_admin() %}
+  {% else %}
+    {% set _super_flag = current_user.is_super_admin %}
+  {% endif %}
+{% endif %}
+
+{% set _ultra_flag = false %}
+{% if _authed and (current_user.is_ultra_admin is defined) %}
+  {% if current_user.is_ultra_admin is callable %}
+    {% set _ultra_flag = current_user.is_ultra_admin() %}
+  {% else %}
+    {% set _ultra_flag = current_user.is_ultra_admin %}
+  {% endif %}
+{% endif %}
+
+{# role-based flags (string) + attribute flags #}
+{% set is_uni_admin    = _authed and (role_raw == 'university_admin' or _uni_flag) %}
+{% set is_super_admin  = _authed and (role_raw == 'super_admin' or _super_flag) %}
+{% set is_ultra_admin  = _authed and (role_raw == 'ultra_admin' or _ultra_flag) %}
+{% set is_global_admin = is_super_admin or is_ultra_admin %}
+
+{# Prefer server-provided nav_mode if available (most reliable) #}
+{% set _nav_mode = (nav_mode|default(None)) %}
+{% set is_any_admin =
+    (_authed and _nav_mode == 'admin')
+    or (_authed and (is_uni_admin or is_global_admin))
+    or (_authed and (nav_is_admin|default(false)))
+%}
+
+{# Subscription status (prefer current_user if template var not provided) #}
+{% set _sub_status = 'free' %}
+{% if subscription_status is defined and subscription_status %}
+  {% set _sub_status = (subscription_status|string|lower) %}
+{% elif _authed and current_user is defined and current_user.subscription_status is defined and current_user.subscription_status %}
+  {% set _sub_status = (current_user.subscription_status|string|lower) %}
+{% endif %}
+
+{# Admin home routing #}
+{% set admin_home = None %}
+{% if fp_admin_home and fp_admin_home != '#' %}
+  {% set admin_home = fp_admin_home %}
+{% else %}
+  {% if is_uni_admin %}
+    {% set admin_home = url_for('admin.strategy') %}
+  {% elif is_global_admin or (nav_is_admin|default(false)) %}
+    {% set admin_home = url_for('admin.dashboard') %}
+  {% endif %}
+{% endif %}
+
 <!doctype html>
 <html lang="en" class="h-full">
 <head>
@@ -210,12 +304,18 @@
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4 pb-2">
       <div class="relative glass-bar rounded-2xl px-4 py-3 flex items-center justify-between shadow-lg shadow-black/40">
         <!-- Logo + name -->
-        <a href="{{ feature_paths.home }}" class="flex items-center gap-2">
+        <a href="{% if is_any_admin and admin_home %}{{ admin_home }}{% else %}{{ fp_home }}{% endif %}"
+           class="flex items-center gap-2">
           <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-fuchsia-500 border border-indigo-200/70 grid place-items-center shadow-neon">
             <span class="text-xl font-extrabold">C</span>
           </div>
           <span class="font-semibold tracking-wide text-sm sm:text-base">CareerAI</span>
-          {% if subscription_status|default('free') == 'pro' %}
+
+          {% if is_any_admin %}
+            <span class="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-300/70 uppercase tracking-widest text-indigo-100">
+              Admin
+            </span>
+          {% elif _sub_status == 'pro' %}
             <span class="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-300/70 uppercase tracking-widest text-emerald-100">
               Pro
             </span>
@@ -224,53 +324,87 @@
 
         <!-- Nav links (desktop) -->
         <nav class="hidden md:flex items-center gap-5 text-[13px]">
-          <a class="nav-link {% if request.endpoint in ['portfolio.index','portfolio.wizard'] %}nav-active{% endif %}"
-             href="{{ feature_paths.portfolio }}">Portfolio</a>
-          <a class="nav-link {% if request.endpoint=='internships.index' %}nav-active{% endif %}"
-             href="{{ feature_paths.internships }}">Internships</a>
-          <a class="nav-link {% if request.endpoint=='skillmapper.index' %}nav-active{% endif %}"
-             href="{{ feature_paths.skillmapper }}">Skill Mapper</a>
-          <a class="nav-link {% if request.endpoint=='referral.index' %}nav-active{% endif %}"
-             href="{{ feature_paths.referral }}">Referrals</a>
-          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('jobpack.') %}nav-active{% endif %}"
-             href="{{ feature_paths.jobpack }}">Job Packs</a>
-          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('dream.') %}nav-active{% endif %}"
-             href="{{ feature_paths.dream }}">Dream Planner</a>
-          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('coach.') %}nav-active{% endif %}"
-             href="{{ feature_paths.coach if feature_paths and feature_paths.coach else url_for('coach.index') }}">Coach</a>
-          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('billing.') %}nav-active{% endif %}"
-             href="{{ feature_paths.billing }}">Pricing</a>
+          {% if not is_any_admin %}
+            {# STUDENT NAV (hidden for ALL admins) #}
+            <a class="nav-link {% if request.endpoint in ['portfolio.index','portfolio.wizard'] %}nav-active{% endif %}"
+               href="{{ fp_portfolio }}">Portfolio</a>
+            <a class="nav-link {% if request.endpoint=='internships.index' %}nav-active{% endif %}"
+               href="{{ fp_internships }}">Internships</a>
+            <a class="nav-link {% if request.endpoint=='skillmapper.index' %}nav-active{% endif %}"
+               href="{{ fp_skillmapper }}">Skill Mapper</a>
+            <a class="nav-link {% if request.endpoint=='referral.index' %}nav-active{% endif %}"
+               href="{{ fp_referral }}">Referrals</a>
+            <a class="nav-link {% if request.endpoint and request.endpoint.startswith('jobpack.') %}nav-active{% endif %}"
+               href="{{ fp_jobpack }}">Job Packs</a>
+            <a class="nav-link {% if request.endpoint and request.endpoint.startswith('dream.') %}nav-active{% endif %}"
+               href="{{ fp_dream }}">Dream Planner</a>
+            <a class="nav-link {% if request.endpoint and request.endpoint.startswith('coach.') %}nav-active{% endif %}"
+               href="{{ fp_coach }}">Coach</a>
+            <a class="nav-link {% if request.endpoint and request.endpoint.startswith('billing.') %}nav-active{% endif %}"
+               href="{{ fp_billing }}">Pricing</a>
 
-          {% if nav_is_admin %}
-            <a class="nav-link {% if request.endpoint and request.endpoint.startswith('admin.') %}nav-active{% endif %}"
-               href="{{ url_for('admin.dashboard') }}">
-              Admin
-            </a>
+          {% else %}
+            {# ADMIN NAV (shown to university admins + global admins) #}
+            {% if is_uni_admin %}
+              <a class="nav-link {% if request.endpoint and request.endpoint == 'admin.strategy' %}nav-active{% endif %}"
+                 href="{{ url_for('admin.strategy') }}">Dean Dashboard</a>
+              <a class="nav-link {% if request.endpoint and request.endpoint == 'admin.users' %}nav-active{% endif %}"
+                 href="{{ url_for('admin.users') }}">Students</a>
+              <a class="nav-link {% if request.endpoint and request.endpoint == 'admin.analytics' %}nav-active{% endif %}"
+                 href="{{ url_for('admin.analytics') }}">Student Analytics</a>
+            {% else %}
+              <a class="nav-link {% if request.endpoint and request.endpoint.startswith('admin.') %}nav-active{% endif %}"
+                 href="{{ url_for('admin.dashboard') }}">Admin Overview</a>
+              <a class="nav-link {% if request.endpoint == 'admin.universities' %}nav-active{% endif %}"
+                 href="{{ url_for('admin.universities') }}">Universities</a>
+              <a class="nav-link {% if request.endpoint == 'admin.university_wallets' %}nav-active{% endif %}"
+                 href="{{ url_for('admin.university_wallets') }}">Wallets</a>
+              <a class="nav-link {% if request.endpoint == 'admin.deals' %}nav-active{% endif %}"
+                 href="{{ url_for('admin.deals') }}">Deals</a>
+              <a class="nav-link {% if request.endpoint == 'admin.vouchers' %}nav-active{% endif %}"
+                 href="{{ url_for('admin.vouchers') }}">Vouchers</a>
+              {% if is_ultra_admin %}
+                <a class="nav-link {% if request.endpoint == 'admin.audit' %}nav-active{% endif %}"
+                   href="{{ url_for('admin.audit') }}">Audit</a>
+              {% endif %}
+            {% endif %}
           {% endif %}
         </nav>
 
-        <!-- Right cluster: coins + auth buttons -->
+        <!-- Right cluster -->
         <div class="flex items-center gap-3">
-          <div class="coins-pill items-center gap-2 rounded-full border border-slate-200/35 bg-slate-900/70 px-3 py-1 text-[11px] shadow-lg shadow-black/30">
-            <span class="coins-chip">🪙 {{ FREE }}</span>
-            <span class="coins-sep">|</span>
-            <span class="coins-chip">⭐ {{ PRO }}</span>
-          </div>
 
-          {% if current_user.is_authenticated %}
-            <a href="{{ feature_paths.profile }}"
-               class="btn-ghost hidden sm:inline {% if request.endpoint=='settings.profile' %}nav-active{% endif %}">
-              <span>Profile Portal</span>
-              <span class="hidden md:inline text-[10px] opacity-70">· start here · powers all tools</span>
-            </a>
-            <a href="{{ feature_paths.settings }}"
-               class="btn-ghost hidden sm:inline {% if request.endpoint and request.endpoint.startswith('settings.') and request.endpoint != 'settings.profile' %}nav-active{% endif %}">
-              Settings
-            </a>
-            <a href="{{ feature_paths.logout }}" class="btn-primary">Logout</a>
+          {# Hide coins for admins (admins should not see student currency UI) #}
+          {% if not is_any_admin %}
+            <div class="coins-pill items-center gap-2 rounded-full border border-slate-200/35 bg-slate-900/70 px-3 py-1 text-[11px] shadow-lg shadow-black/30">
+              <span class="coins-chip">🪙 {{ FREE }}</span>
+              <span class="coins-sep">|</span>
+              <span class="coins-chip">⭐ {{ PRO }}</span>
+            </div>
+          {% endif %}
+
+          {% if _authed %}
+            {% if not is_any_admin %}
+              <a href="{{ fp_profile }}"
+                 class="btn-ghost hidden sm:inline {% if request.endpoint=='settings.profile' %}nav-active{% endif %}">
+                <span>Profile Portal</span>
+                <span class="hidden md:inline text-[10px] opacity-70">· start here · powers all tools</span>
+              </a>
+              <a href="{{ fp_settings }}"
+                 class="btn-ghost hidden sm:inline {% if request.endpoint and request.endpoint.startswith('settings.') and request.endpoint != 'settings.profile' %}nav-active{% endif %}">
+                Settings
+              </a>
+            {% else %}
+              <a href="{{ admin_home if admin_home else url_for('admin.dashboard') }}"
+                 class="btn-ghost hidden sm:inline {% if request.endpoint and request.endpoint.startswith('admin.') %}nav-active{% endif %}">
+                Admin Console
+              </a>
+            {% endif %}
+
+            <a href="{{ fp_logout }}" class="btn-primary">Logout</a>
           {% else %}
-            <a href="{{ feature_paths.signup }}" class="btn-ghost hidden sm:inline">Sign up</a>
-            <a href="{{ feature_paths.login }}" class="btn-primary">Login</a>
+            <a href="{{ fp_signup }}" class="btn-ghost hidden sm:inline">Sign up</a>
+            <a href="{{ fp_login }}" class="btn-primary">Login</a>
           {% endif %}
         </div>
 
@@ -298,33 +432,36 @@
       {% endwith %}
     </div>
 
-    {# Email verification banner #}
-    {% set _is_verified = (
-         current_user.is_authenticated
-         and (
-           (current_user.email_verified|default(false))
-           or
-           (current_user.verified|default(false))
+    {# Email verification banner — hide for admins to keep admin UI clean #}
+    {% if _authed and not is_any_admin %}
+      {% set _is_verified = (
+           _authed
+           and (
+             (current_user.email_verified|default(false))
+             or
+             (current_user.verified|default(false))
+           )
          )
-       )
-    %}
-    {% if current_user.is_authenticated and not _is_verified %}
-      <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-3">
-        <div class="glass-card rounded-2xl border border-yellow-400/70 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-amber-100">
-          <div class="space-y-0.5">
-            <p class="font-semibold">Verify your email to unlock AI features.</p>
-            <p class="text-amber-100/80 text-[11px] sm:text-xs">
-              You can browse all tools, but AI actions (analyze, generate, etc.) need a one-time email code.
-            </p>
+      %}
+      {% if not _is_verified %}
+        <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-3">
+          <div class="glass-card rounded-2xl border border-yellow-400/70 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-amber-100">
+            <div class="space-y-0.5">
+              <p class="font-semibold">Verify your email to unlock AI features.</p>
+              <p class="text-amber-100/80 text-[11px] sm:text-xs">
+                You can browse all tools, but AI actions (analyze, generate, etc.) need a one-time email code.
+              </p>
+            </div>
+            <a href="{{ url_for('auth.otp_request') }}" class="btn-primary text-xs whitespace-nowrap">
+              Get login code
+            </a>
           </div>
-          <a href="{{ url_for('auth.otp_request') }}" class="btn-primary text-xs whitespace-nowrap">
-            Get login code
-          </a>
         </div>
-      </div>
+      {% endif %}
     {% endif %}
 
-    {% if current_user.is_authenticated %}
+    {# Student onboarding strip — hide for admins #}
+    {% if _authed and not is_any_admin %}
       <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 mt-3">
         <div class="glass-card rounded-2xl px-4 py-2.5 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
           <span class="font-semibold text-white/80">Simple way to use CareerAI:</span>

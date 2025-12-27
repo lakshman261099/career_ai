@@ -1,3 +1,4 @@
+import os
 import random
 import string
 from datetime import datetime, timedelta
@@ -43,10 +44,76 @@ def _normalize_email(email: str) -> str:
     return (email or "").strip().lower()
 
 
+# ------------------------------------------------------------
+# Admin role detection + post-login redirect
+# ------------------------------------------------------------
+def _email_in_env_list(env_key: str, email: str) -> bool:
+    raw = os.getenv(env_key, "") or ""
+    if not raw:
+        return False
+    allowed = {e.strip().lower() for e in raw.split(",") if e.strip()}
+    return (email or "").strip().lower() in allowed
+
+
+def _is_ultra_admin_user(u: User) -> bool:
+    if not u:
+        return False
+    email = (getattr(u, "email", "") or "").lower()
+    if _email_in_env_list("ULTRA_ADMIN_EMAILS", email):
+        return True
+    role = (getattr(u, "role", "") or "").lower()
+    if role == "ultra_admin":
+        return True
+    return bool(getattr(u, "is_ultra_admin", False))
+
+
+def _is_super_admin_user(u: User) -> bool:
+    if not u:
+        return False
+    email = (getattr(u, "email", "") or "").lower()
+    if _email_in_env_list("ADMIN_EMAILS", email):
+        return True
+    role = (getattr(u, "role", "") or "").lower()
+    if role == "super_admin":
+        return True
+    return bool(getattr(u, "is_super_admin", False))
+
+
+def _is_university_admin_user(u: User) -> bool:
+    if not u:
+        return False
+    role = (getattr(u, "role", "") or "").lower()
+    if role == "university_admin":
+        return True
+    return bool(getattr(u, "is_university_admin", False))
+
+
+def _post_login_redirect(u: User):
+    """
+    Single source of truth for where a user lands after login.
+
+    - university_admin -> Dean Dashboard (/admin/university/strategy)
+    - super/ultra admin -> Admin dashboard
+    - students -> /dashboard
+    """
+    if not u:
+        return redirect(url_for("landing"))
+
+    if _is_university_admin_user(u) and not (_is_super_admin_user(u) or _is_ultra_admin_user(u)):
+        # University admin: always to Dean Dashboard
+        return redirect(url_for("admin.strategy"))
+
+    if _is_super_admin_user(u) or _is_ultra_admin_user(u) or bool(getattr(u, "is_admin", False)):
+        # Platform/global admin: admin overview
+        return redirect(url_for("admin.dashboard"))
+
+    # Default student route
+    return redirect(url_for("dashboard"))
+
+
 # ---------------------------
 # Password-based Register/Login
 # ---------------------------
-
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -84,7 +151,8 @@ def register():
             "before using AI features.",
             "info",
         )
-        return redirect(url_for("dashboard"))
+        return _post_login_redirect(u)
+
     return render_template("auth/register.html")
 
 
@@ -99,9 +167,9 @@ def login():
     """
     Email+password login, with visible options for OTP and Google.
     """
-    # Optional: if already logged in, just go to dashboard
+    # If already logged in, route to correct home (admin vs student)
     if current_user.is_authenticated:
-        return redirect(url_for("dashboard"))
+        return _post_login_redirect(current_user)
 
     if request.method == "POST":
         email = _normalize_email(request.form.get("email"))
@@ -114,14 +182,14 @@ def login():
 
         login_user(u)
         flash("Logged in.", "success")
-        return redirect(url_for("dashboard"))
+        return _post_login_redirect(u)
+
     return render_template("auth/login.html")
 
 
 # ---------------------------
 # OTP-based Login & Verification
 # ---------------------------
-
 OTP_SESSION_KEY = "otp_login"
 OTP_TTL_MINUTES = 10
 
@@ -165,13 +233,11 @@ def otp_request():
         Show the "Login with OTP" page (email form).
         POST: send OTP to the entered email and redirect to /otp/verify.
     """
-
     # ✅ Already logged in → verification flow (no email form)
     if current_user.is_authenticated:
         email = _normalize_email(getattr(current_user, "email", ""))
         if not email:
             flash("Your account does not have an email address yet.", "error")
-            # You can change this redirect if you have a profile settings page
             return redirect(url_for("settings.profile"))
 
         try:
@@ -181,7 +247,7 @@ def otp_request():
                 "Failed to create/send OTP for logged-in user: %s", e
             )
             flash("Could not send a verification code. Please try again.", "error")
-            return redirect(url_for("dashboard"))
+            return _post_login_redirect(current_user)
 
         # Store OTP session data
         session[OTP_SESSION_KEY] = {"email": email, "otp_id": otp.id}
@@ -289,7 +355,7 @@ def otp_verify():
         session.pop(OTP_SESSION_KEY, None)
 
         flash("Logged in with OTP. Welcome!", "success")
-        return redirect(url_for("dashboard"))
+        return _post_login_redirect(user)
 
     return render_template("auth/otp_verify.html")
 
@@ -297,7 +363,6 @@ def otp_verify():
 # ---------------------------
 # Google OAuth Login
 # ---------------------------
-
 @auth_bp.route("/google/login", methods=["GET"], endpoint="google_login")
 def google_login():
     """
@@ -378,7 +443,7 @@ def google_callback():
     else:
         flash("Logged in with Google.", "success")
 
-    return redirect(url_for("dashboard"))
+    return _post_login_redirect(user)
 
 
 @auth_bp.route("/logout")

@@ -5,6 +5,8 @@ import os
 import json
 import io
 import csv
+import zipfile
+from collections import defaultdict
 from datetime import datetime, date, timedelta
 from typing import Any, Dict
 
@@ -17,9 +19,10 @@ from flask import (
     url_for,
     g,
     make_response,
+    send_file,
 )
 from flask_login import current_user, login_required
-from sqlalchemy import func
+from sqlalchemy import func, and_
 
 from models import (
     User,
@@ -45,11 +48,44 @@ from modules.credits import engine as credits_engine
 
 admin_bp = Blueprint("admin", __name__, template_folder="../../templates/admin")
 
+try:
+    from models import ResumeAsset
+except Exception:
+    ResumeAsset = None
+
+
+# ---------------------------------------------------------------------
+# Helpers: boolean/callable-safe flags
+# ---------------------------------------------------------------------
+def _bool_attr(obj, name: str, default: bool = False) -> bool:
+    """
+    Safe attribute accessor where an attribute may be:
+      - bool field/property
+      - method returning bool
+    """
+    try:
+        val = getattr(obj, name, default)
+    except Exception:
+        return default
+
+    try:
+        if callable(val):
+            return bool(val())
+        return bool(val)
+    except Exception:
+        return default
+
+
+def _role_lower() -> str:
+    try:
+        return (getattr(current_user, "role", "") or "").strip().lower()
+    except Exception:
+        return ""
+
+
 # ---------------------------------------------------------------------
 # Helpers: admin / tenant checks
 # ---------------------------------------------------------------------
-
-
 def _is_ultra_admin() -> bool:
     """
     Ultra admin check:
@@ -57,24 +93,22 @@ def _is_ultra_admin() -> bool:
     - If ULTRA_ADMIN_EMAILS env var is set (comma-separated), any user whose email
       is in that list is treated as ULTRA ADMIN.
     - Otherwise (or in addition), use:
-        * role == "ultra_admin" OR is_ultra_admin bool field/property.
+        * role == "ultra_admin" OR is_ultra_admin bool field/property/method.
     """
     if not getattr(current_user, "is_authenticated", False):
         return False
 
-    # Env override (highest authority)
     emails = os.getenv("ULTRA_ADMIN_EMAILS", "")
     if emails:
         allowed = {e.strip().lower() for e in emails.split(",") if e.strip()}
         if (current_user.email or "").lower() in allowed:
             return True
 
-    # Role-based ultra admin
-    role = (getattr(current_user, "role", "") or "").lower()
+    role = _role_lower()
     if role == "ultra_admin":
         return True
 
-    return bool(getattr(current_user, "is_ultra_admin", False))
+    return _bool_attr(current_user, "is_ultra_admin", False)
 
 
 def _is_super_admin() -> bool:
@@ -84,24 +118,22 @@ def _is_super_admin() -> bool:
     - If ADMIN_EMAILS env var is set (comma-separated), any user whose email
       is in that list is treated as SUPER ADMIN.
     - Otherwise (or in addition), use:
-        * role == "super_admin" OR is_super_admin bool field/property.
+        * role == "super_admin" OR is_super_admin bool field/property/method.
     """
     if not getattr(current_user, "is_authenticated", False):
         return False
 
-    # Env override
     emails = os.getenv("ADMIN_EMAILS", "")
     if emails:
         allowed = {e.strip().lower() for e in emails.split(",") if e.strip()}
         if (current_user.email or "").lower() in allowed:
             return True
 
-    # Role-based super admin
-    role = (getattr(current_user, "role", "") or "").lower()
+    role = _role_lower()
     if role == "super_admin":
         return True
 
-    return bool(getattr(current_user, "is_super_admin", False))
+    return _bool_attr(current_user, "is_super_admin", False)
 
 
 def _is_global_admin() -> bool:
@@ -126,11 +158,11 @@ def _is_admin_user() -> bool:
     if _is_global_admin():
         return True
 
-    role = (getattr(current_user, "role", "") or "").lower()
+    role = _role_lower()
     if role == "university_admin":
         return True
 
-    return bool(getattr(current_user, "is_university_admin", False))
+    return _bool_attr(current_user, "is_university_admin", False)
 
 
 def _effective_tenant_for_admin() -> University | None:
@@ -145,9 +177,11 @@ def _effective_tenant_for_admin() -> University | None:
     if tenant is not None:
         return tenant
 
-    role = (getattr(current_user, "role", "") or "").lower()
+    role = _role_lower()
     uni_id = getattr(current_user, "university_id", None)
-    if role == "university_admin" and uni_id:
+
+    is_uni_admin = (role == "university_admin") or _bool_attr(current_user, "is_university_admin", False)
+    if is_uni_admin and uni_id:
         try:
             return University.query.get(int(uni_id))
         except Exception:
@@ -168,7 +202,6 @@ def _check_tenant_scope_for_user(target: User | None) -> bool:
     if not getattr(current_user, "is_authenticated", False):
         return False
 
-    # Global admins can operate across tenants
     if _is_global_admin():
         return True
 
@@ -197,10 +230,6 @@ def _log_admin_action(
 ) -> None:
     """
     Centralized helper to append an AdminActionLog row.
-
-    - performed_by_user_id: current_user.id (if authenticated)
-    - target_user_id: optional, the user being modified/credited
-    - university_id: explicit, or inferred from target_user, or effective tenant
     """
     if not getattr(current_user, "is_authenticated", False):
         return
@@ -226,6 +255,237 @@ def _log_admin_action(
 
 
 # ---------------------------------------------------------------------
+# Analytics helpers
+# ---------------------------------------------------------------------
+def _safe_int(v, default=0):
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+
+def _parse_yyyy_mm_dd(s: str | None):
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def _score_tier(score: int) -> str:
+    if score >= 80:
+        return "Top Tier (80+)"
+    if score >= 60:
+        return "Job Ready (60–79)"
+    if score >= 40:
+        return "Building (40–59)"
+    return "Getting Started (0–39)"
+
+
+def _norm_skill_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    s = str(name).strip()
+    if not s:
+        return None
+    return " ".join(s.split())
+
+
+def _norm_skill_key(name: str | None) -> str | None:
+    nm = _norm_skill_name(name)
+    if not nm:
+        return None
+    return nm.lower()
+
+
+def _extract_skills_from_any(obj) -> list[str]:
+    out: list[str] = []
+
+    def add(v):
+        if v is None:
+            return
+        if isinstance(v, str):
+            nm = _norm_skill_name(v)
+            if nm:
+                out.append(nm)
+        elif isinstance(v, dict):
+            nm = _norm_skill_name(v.get("name") or v.get("skill") or v.get("title"))
+            if nm:
+                out.append(nm)
+            for k in ("skills", "top_skills", "core_skills", "missing_skills", "skill_gaps"):
+                if k in v:
+                    add(v.get(k))
+        elif isinstance(v, list):
+            for it in v:
+                add(it)
+
+    add(obj)
+    return out
+
+
+def _extract_skills_from_skillmap_payload(payload):
+    skills: list[str] = []
+
+    if isinstance(payload, list):
+        return _extract_skills_from_any(payload)
+
+    if not isinstance(payload, dict):
+        return skills
+
+    if isinstance(payload.get("skills"), list):
+        skills.extend(_extract_skills_from_any(payload.get("skills")))
+
+    for key in ("roles", "top_roles", "role_roadmap", "role_cards", "primary_roles"):
+        if isinstance(payload.get(key), list):
+            for role in payload.get(key) or []:
+                if not isinstance(role, dict):
+                    continue
+                for rk in (
+                    "skills",
+                    "top_skills",
+                    "core_skills",
+                    "missing_skills",
+                    "skill_gaps",
+                    "skills_to_learn",
+                    "recommended_skills",
+                    "must_have_skills",
+                    "nice_to_have_skills",
+                ):
+                    if rk in role:
+                        skills.extend(_extract_skills_from_any(role.get(rk)))
+                for nested_key in ("gap_analysis", "analysis", "roadmap", "plan", "requirements"):
+                    nv = role.get(nested_key)
+                    if nv:
+                        skills.extend(_extract_skills_from_any(nv))
+
+    if isinstance(payload.get("learning_paths"), list):
+        for lp in payload.get("learning_paths") or []:
+            skills.extend(_extract_skills_from_any(lp))
+
+    if isinstance(payload.get("next_steps"), list):
+        skills.extend(_extract_skills_from_any(payload.get("next_steps")))
+
+    return skills
+
+# ---------------------------------------------------------------------
+# Analytics helpers: filter parsing (shared by /analytics + /analytics/export)
+# ---------------------------------------------------------------------
+def _analytics_params_from_request():
+    q = (request.args.get("q") or "").strip()
+
+    only_verified = (request.args.get("verified") or "").strip().lower() in ("1", "true", "yes", "on")
+    only_pro = (request.args.get("pro") or "").strip().lower() in ("1", "true", "yes", "on")
+
+    min_ready = _safe_int(request.args.get("min_ready"), 0)
+    max_ready = _safe_int(request.args.get("max_ready"), 100)
+
+    start_dt = _parse_yyyy_mm_dd(request.args.get("start"))
+    end_dt = _parse_yyyy_mm_dd(request.args.get("end"))
+    if end_dt:
+        end_dt = end_dt.replace(hour=23, minute=59, second=59)
+
+    return q, only_verified, only_pro, min_ready, max_ready, start_dt, end_dt
+
+
+def _apply_user_filters(user_q, q: str, only_verified: bool, only_pro: bool, min_ready: int, max_ready: int):
+    if q:
+        like = f"%{q}%"
+        user_q = user_q.filter(db.or_(User.email.ilike(like), User.name.ilike(like)))
+
+    if only_verified:
+        user_q = user_q.filter(User.verified.is_(True))
+
+    if only_pro:
+        user_q = user_q.filter(func.lower(User.subscription_status) == "pro")
+
+    user_q = user_q.filter(User.ready_score >= min_ready, User.ready_score <= max_ready)
+    return user_q
+
+
+def _apply_date_filter(qry, col, start_dt, end_dt):
+    if start_dt:
+        qry = qry.filter(col >= start_dt)
+    if end_dt:
+        qry = qry.filter(col <= end_dt)
+    return qry
+
+# -----------------------------
+# Dean-friendly extraction helpers (single source)
+# -----------------------------
+MISSING_SKILL_KEYS = {
+    "missing_skills",
+    "skill_gaps",
+    "skills_to_learn",
+    "must_have_skills",
+    "missing",
+}
+
+
+def _collect_skill_names(v) -> list[str]:
+    out: list[str] = []
+
+    def add(x):
+        if x is None:
+            return
+        if isinstance(x, str):
+            s = _norm_skill_name(x)
+            if s:
+                out.append(s)
+        elif isinstance(x, dict):
+            nm = _norm_skill_name(x.get("name") or x.get("skill") or x.get("title"))
+            if nm:
+                out.append(nm)
+            for _, vv in x.items():
+                add(vv)
+        elif isinstance(x, list):
+            for it in x:
+                add(it)
+
+    add(v)
+    return out
+
+
+def _extract_missing_skills(payload) -> list[str]:
+    skills: list[str] = []
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k in MISSING_SKILL_KEYS:
+                    skills.extend(_collect_skill_names(v))
+                walk(v)
+        elif isinstance(obj, list):
+            for it in obj:
+                walk(it)
+
+    walk(payload)
+    return skills
+
+
+def _extract_resume_issues(jobpack_payload: dict) -> dict[str, list[str]]:
+    ra = (jobpack_payload or {}).get("resume_ats") or {}
+    blockers = ra.get("blockers") or []
+    warnings = ra.get("warnings") or []
+    kc = ra.get("keyword_coverage") or {}
+    missing_kw = kc.get("missing_keywords") or []
+
+    def norm_list(xs):
+        out = []
+        for x in xs or []:
+            if isinstance(x, str) and x.strip():
+                out.append(" ".join(x.split()))
+        return out
+
+    return {
+        "blockers": norm_list(blockers),
+        "warnings": norm_list(warnings),
+        "missing_keywords": norm_list(missing_kw),
+    }
+
+
+# ---------------------------------------------------------------------
 # Admin dashboard
 # ---------------------------------------------------------------------
 @admin_bp.route("/", methods=["GET"], endpoint="dashboard")
@@ -235,20 +495,22 @@ def dashboard():
         flash("You are not allowed to access the admin panel.", "danger")
         return redirect(url_for("dashboard"))
 
+    # ✅ University admins should not land on “credits/admin ops” style dashboard
+    role = _role_lower()
+    is_uni_admin = (role == "university_admin") or _bool_attr(current_user, "is_university_admin", False)
+    if is_uni_admin and not _is_global_admin():
+        return redirect(url_for("admin.strategy"))
+
     tenant = _effective_tenant_for_admin()
 
     user_q = User.query
     uni_q = University.query
     tx_q = CreditTransaction.query
 
-    # Tenant scoping for non-global admins
     if not _is_global_admin():
         if tenant is not None:
             user_q = user_q.filter(User.university_id == tenant.id)
-            # IMPORTANT FIX: scope tx by joining User (NOT tx.university_id)
-            tx_q = tx_q.join(User, CreditTransaction.user_id == User.id).filter(
-                User.university_id == tenant.id
-            )
+            tx_q = tx_q.join(User, CreditTransaction.user_id == User.id).filter(User.university_id == tenant.id)
             uni_q = uni_q.filter(University.id == tenant.id)
         else:
             user_q = user_q.filter(User.id == -1)
@@ -287,7 +549,7 @@ def dashboard():
 
 
 # ---------------------------------------------------------------------
-# Admin · Users (search + edit)
+# Admin · Users (search + edit + university admin student management)
 # ---------------------------------------------------------------------
 @admin_bp.route("/users", methods=["GET", "POST"], endpoint="users")
 @login_required
@@ -296,125 +558,290 @@ def users():
         flash("You are not allowed to access admin users.", "danger")
         return redirect(url_for("dashboard"))
 
+    import csv
+    import io
+    import secrets
+
     actor_is_ultra = _is_ultra_admin()
     actor_is_global = _is_global_admin()
-
-    # -------- POST: update a user (role / university) ----------
-    if request.method == "POST":
-        user_id_raw = request.form.get("user_id")
-        new_role = (request.form.get("role") or "").strip()
-        uni_id_raw = request.form.get("university_id") or ""
-
-        try:
-            user_id = int(user_id_raw)
-        except (TypeError, ValueError):
-            flash("Invalid user id.", "danger")
-            return redirect(url_for("admin.users"))
-
-        target = User.query.get(user_id)
-        if not target:
-            flash("User not found.", "danger")
-            return redirect(url_for("admin.users"))
-
-        if not _check_tenant_scope_for_user(target):
-            flash("You cannot modify users outside your tenant.", "danger")
-            return redirect(url_for("admin.users"))
-
-        target_role = (getattr(target, "role", "") or "").lower()
-        old_role = target_role
-        old_university_id = target.university_id
-
-        allowed_roles = ["student", "university_admin", "super_admin"]
-        if actor_is_ultra:
-            allowed_roles.append("ultra_admin")
-
-        if new_role not in allowed_roles:
-            flash("Invalid role.", "danger")
-            return redirect(url_for("admin.users"))
-
-        if not actor_is_global and target_role in ("super_admin", "ultra_admin"):
-            flash("You cannot modify a global admin account.", "danger")
-            return redirect(url_for("admin.users"))
-
-        if not actor_is_ultra and target_role == "ultra_admin":
-            flash("Only ultra admins can modify ultra admin accounts.", "danger")
-            return redirect(url_for("admin.users"))
-
-        if (target_role == "super_admin" or new_role == "super_admin") and not actor_is_ultra:
-            flash("Only ultra admins can assign or remove the super_admin role.", "danger")
-            return redirect(url_for("admin.users"))
-
-        if new_role == "ultra_admin" and not actor_is_ultra:
-            flash("Only ultra admins can assign the ultra_admin role.", "danger")
-            return redirect(url_for("admin.users"))
-
-        target.role = new_role
-        new_role_l = (new_role or "").lower()
-
-        # ----- University assignment rules -----
-        if actor_is_global:
-            if uni_id_raw.strip():
-                try:
-                    uni_id = int(uni_id_raw)
-                except ValueError:
-                    flash("Invalid university id.", "danger")
-                    db.session.rollback()
-                    return redirect(url_for("admin.users"))
-
-                uni = University.query.get(uni_id)
-                if not uni:
-                    flash("University not found.", "danger")
-                    db.session.rollback()
-                    return redirect(url_for("admin.users"))
-
-                target.university_id = uni.id
-            else:
-                target.university_id = None
-        else:
-            tenant = _effective_tenant_for_admin()
-            if tenant is not None:
-                target.university_id = tenant.id
-
-        try:
-            changes: Dict[str, Any] = {}
-
-            if old_role != new_role_l:
-                changes["role"] = {"before": old_role, "after": new_role_l}
-
-            if old_university_id != target.university_id:
-                changes["university_id"] = {"before": old_university_id, "after": target.university_id}
-
-            if changes:
-                meta: Dict[str, Any] = {
-                    "changes": changes,
-                    "admin_email": current_user.email,
-                    "target_email": target.email,
-                }
-
-                if "role" in changes:
-                    before = (changes["role"]["before"] or "").lower()
-                    after = (changes["role"]["after"] or "").lower()
-
-                    if "super_admin" in (before, after):
-                        meta["super_admin_change"] = {"before": before, "after": after}
-                    if "ultra_admin" in (before, after):
-                        meta["ultra_admin_change"] = {"before": before, "after": after}
-
-                _log_admin_action("user_update", target_user=target, meta=meta)
-
-            db.session.commit()
-            flash("User updated.", "success")
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Failed to update user: {e}", "danger")
-
-        return redirect(url_for("admin.users"))
-
-    # -------- GET: list/search users ----------
     tenant = _effective_tenant_for_admin()
+
+    role = _role_lower()
+    is_uni_admin = ((role == "university_admin") or _bool_attr(current_user, "is_university_admin", False)) and not actor_is_global
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "update_user").strip()
+
+        if action == "add_student":
+            if not is_uni_admin or tenant is None:
+                flash("You are not allowed to add students here.", "danger")
+                return redirect(url_for("admin.users"))
+
+            email = (request.form.get("email") or "").strip().lower()
+            name = (request.form.get("name") or "").strip()
+            department = (request.form.get("department") or "").strip()
+
+            if not email or "@" not in email:
+                flash("Please enter a valid student email.", "danger")
+                return redirect(url_for("admin.users"))
+
+            existing = User.query.filter(func.lower(User.email) == email.lower()).first()
+            if existing:
+                if getattr(existing, "university_id", None) != tenant.id:
+                    flash("That email already exists in another university / scope.", "danger")
+                    return redirect(url_for("admin.users"))
+
+                if name:
+                    existing.name = name
+                if department and hasattr(User, "department"):
+                    existing.department = department
+
+                db.session.commit()
+                flash("Student already existed — updated details.", "success")
+                return redirect(url_for("admin.users"))
+
+            temp_pw = secrets.token_urlsafe(10)
+
+            u = User(
+                email=email,
+                name=name or email.split("@")[0],
+                role="student",
+                university_id=tenant.id,
+                verified=False,
+            )
+            if department and hasattr(User, "department"):
+                u.department = department
+
+            u.set_password(temp_pw)
+            db.session.add(u)
+
+            try:
+                # ✅ ensure u.id exists for logging
+                db.session.flush()
+
+                _log_admin_action(
+                    "student_create",
+                    target_user=u,
+                    meta={"admin_email": current_user.email, "tenant_id": tenant.id, "email": email},
+                )
+                db.session.commit()
+                flash(f"Student added. Temporary password: {temp_pw}", "success")
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Failed to add student: {e}", "danger")
+
+            return redirect(url_for("admin.users"))
+
+        if action == "bulk_import":
+            if not is_uni_admin or tenant is None:
+                flash("You are not allowed to import students here.", "danger")
+                return redirect(url_for("admin.users"))
+
+            f = request.files.get("csv_file")
+            if not f:
+                flash("Please upload a CSV file.", "danger")
+                return redirect(url_for("admin.users"))
+
+            raw = f.read()
+            try:
+                text = raw.decode("utf-8-sig", errors="ignore")
+            except Exception:
+                text = raw.decode("utf-8", errors="ignore")
+
+            stream = io.StringIO(text)
+            reader = csv.DictReader(stream)
+
+            created = 0
+            updated = 0
+            skipped = 0
+            creds = []
+
+            max_rows = 500
+            for i, row in enumerate(reader):
+                if i >= max_rows:
+                    break
+
+                email = (row.get("email") or "").strip().lower()
+                name = (row.get("name") or "").strip()
+                department = (row.get("department") or "").strip()
+
+                if not email or "@" not in email:
+                    skipped += 1
+                    continue
+
+                existing = User.query.filter(func.lower(User.email) == email.lower()).first()
+                if existing:
+                    if getattr(existing, "university_id", None) != tenant.id:
+                        skipped += 1
+                        continue
+
+                    if name:
+                        existing.name = name
+                    if department and hasattr(User, "department"):
+                        existing.department = department
+
+                    updated += 1
+                    continue
+
+                temp_pw = secrets.token_urlsafe(10)
+                u = User(
+                    email=email,
+                    name=name or email.split("@")[0],
+                    role="student",
+                    university_id=tenant.id,
+                    verified=False,
+                )
+                if department and hasattr(User, "department"):
+                    u.department = department
+
+                u.set_password(temp_pw)
+                db.session.add(u)
+                created += 1
+                creds.append((email, temp_pw))
+
+            try:
+                _log_admin_action(
+                    "student_bulk_import",
+                    meta={
+                        "admin_email": current_user.email,
+                        "tenant_id": tenant.id,
+                        "created": created,
+                        "updated": updated,
+                        "skipped": skipped,
+                        "max_rows": max_rows,
+                    },
+                )
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Import failed: {e}", "danger")
+                return redirect(url_for("admin.users"))
+
+            if creds:
+                out = io.StringIO()
+                w = csv.writer(out)
+                w.writerow(["email", "temp_password"])
+                for em, pw in creds:
+                    w.writerow([em, pw])
+
+                data = out.getvalue().encode("utf-8")
+                bio = io.BytesIO(data)
+                bio.seek(0)
+
+                filename = f"careerai_student_credentials_{tenant.id}.csv"
+                return send_file(
+                    bio,
+                    mimetype="text/csv",
+                    as_attachment=True,
+                    download_name=filename,
+                )
+
+            flash(f"Import complete. Updated: {updated}, skipped: {skipped}. No new accounts created.", "success")
+            return redirect(url_for("admin.users"))
+
+        if action == "update_user":
+            user_id_raw = request.form.get("user_id")
+            new_role = (request.form.get("role") or "").strip()
+            uni_id_raw = request.form.get("university_id") or ""
+
+            try:
+                user_id = int(user_id_raw)
+            except (TypeError, ValueError):
+                flash("Invalid user id.", "danger")
+                return redirect(url_for("admin.users"))
+
+            target = User.query.get(user_id)
+            if not target:
+                flash("User not found.", "danger")
+                return redirect(url_for("admin.users"))
+
+            if not _check_tenant_scope_for_user(target):
+                flash("You cannot modify users outside your tenant.", "danger")
+                return redirect(url_for("admin.users"))
+
+            target_role = (getattr(target, "role", "") or "").lower()
+            old_role = target_role
+            old_university_id = target.university_id
+
+            allowed_roles = ["student", "university_admin", "super_admin"]
+            if actor_is_ultra:
+                allowed_roles.append("ultra_admin")
+
+            if new_role not in allowed_roles:
+                flash("Invalid role.", "danger")
+                return redirect(url_for("admin.users"))
+
+            if not actor_is_global and target_role in ("super_admin", "ultra_admin"):
+                flash("You cannot modify a global admin account.", "danger")
+                return redirect(url_for("admin.users"))
+
+            if not actor_is_ultra and target_role == "ultra_admin":
+                flash("Only ultra admins can modify ultra admin accounts.", "danger")
+                return redirect(url_for("admin.users"))
+
+            if (target_role == "super_admin" or new_role == "super_admin") and not actor_is_ultra:
+                flash("Only ultra admins can assign or remove the super_admin role.", "danger")
+                return redirect(url_for("admin.users"))
+
+            if new_role == "ultra_admin" and not actor_is_ultra:
+                flash("Only ultra admins can assign the ultra_admin role.", "danger")
+                return redirect(url_for("admin.users"))
+
+            target.role = new_role
+            new_role_l = (new_role or "").lower()
+
+            if actor_is_global:
+                if uni_id_raw.strip():
+                    try:
+                        uni_id = int(uni_id_raw)
+                    except ValueError:
+                        flash("Invalid university id.", "danger")
+                        db.session.rollback()
+                        return redirect(url_for("admin.users"))
+
+                    uni = University.query.get(uni_id)
+                    if not uni:
+                        flash("University not found.", "danger")
+                        db.session.rollback()
+                        return redirect(url_for("admin.users"))
+
+                    target.university_id = uni.id
+                else:
+                    target.university_id = None
+            else:
+                if tenant is not None:
+                    target.university_id = tenant.id
+
+            try:
+                changes = {}
+
+                if old_role != new_role_l:
+                    changes["role"] = {"before": old_role, "after": new_role_l}
+                if old_university_id != target.university_id:
+                    changes["university_id"] = {"before": old_university_id, "after": target.university_id}
+
+                if changes:
+                    meta = {
+                        "changes": changes,
+                        "admin_email": current_user.email,
+                        "target_email": target.email,
+                    }
+                    _log_admin_action("user_update", target_user=target, meta=meta)
+
+                db.session.commit()
+                flash("User updated.", "success")
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Failed to update user: {e}", "danger")
+
+            return redirect(url_for("admin.users"))
+
+        flash("Unknown action.", "danger")
+        return redirect(url_for("admin.users"))
 
     q = (request.args.get("q") or "").strip()
     role_filter = (request.args.get("role") or "").strip()
+    selected_department = (request.args.get("department") or "").strip()
 
     user_q = User.query
 
@@ -424,12 +851,29 @@ def users():
         else:
             user_q = user_q.filter(User.id == -1)
 
+    if is_uni_admin:
+        user_q = user_q.filter(User.role == "student")
+        role_filter = "student"
+    elif role_filter:
+        user_q = user_q.filter(User.role == role_filter)
+
+    departments = []
+    if tenant is not None and hasattr(User, "department"):
+        dept_q = (
+            db.session.query(User.department)
+            .filter(User.university_id == tenant.id, User.role == "student", User.department.isnot(None))
+            .distinct()
+            .order_by(User.department.asc())
+            .all()
+        )
+        departments = [r[0] for r in dept_q if r and r[0]]
+
+        if selected_department:
+            user_q = user_q.filter(func.lower(User.department) == selected_department.lower())
+
     if q:
         like = f"%{q}%"
         user_q = user_q.filter(db.or_(User.email.ilike(like), User.name.ilike(like)))
-
-    if role_filter:
-        user_q = user_q.filter(User.role == role_filter)
 
     users_list = user_q.order_by(User.created_at.desc()).limit(100).all()
 
@@ -444,8 +888,13 @@ def users():
         universities=universities,
         q=q,
         role_filter=role_filter,
+        tenant=tenant,
         is_super_admin=_is_super_admin(),
         is_ultra_admin=actor_is_ultra,
+        is_global_admin=actor_is_global,
+        is_university_admin=is_uni_admin,
+        departments=departments,
+        selected_department=selected_department,
     )
 
 
@@ -606,14 +1055,14 @@ def user_unverify(user_id: int):
 
 
 # ---------------------------------------------------------------------
-# Credits top-up
+# Credits top-up (GLOBAL ADMINS ONLY)
 # ---------------------------------------------------------------------
 @admin_bp.route("/credits", methods=["GET", "POST"], endpoint="credits")
 @login_required
 def credits():
-    if not _is_admin_user():
-        flash("You are not allowed to access the admin credits panel.", "danger")
-        return redirect(url_for("dashboard"))
+    if not _is_admin_user() or not _is_global_admin():
+        flash("Only global admins can access the credits panel.", "danger")
+        return redirect(url_for("admin.dashboard"))
 
     target: User | None = None
     recent_txs: list[CreditTransaction] = []
@@ -632,10 +1081,6 @@ def credits():
         if not target:
             flash(f"No user found with email: {email}", "danger")
             return redirect(url_for("admin.credits"))
-
-        if not _check_tenant_scope_for_user(target):
-            flash("You cannot modify credits for users outside your university.", "danger")
-            return redirect(url_for("dashboard"))
 
         try:
             if currency == "gold":
@@ -670,10 +1115,6 @@ def credits():
     if email:
         target = User.query.filter_by(email=email).first()
         if target:
-            if not _check_tenant_scope_for_user(target):
-                flash("You cannot view credit history for users outside your university.", "danger")
-                return redirect(url_for("dashboard"))
-
             recent_txs = (
                 CreditTransaction.query.filter_by(user_id=target.id)
                 .order_by(CreditTransaction.created_at.desc())
@@ -967,9 +1408,6 @@ def vouchers():
     return render_template("admin/vouchers.html", vouchers=vouchers_list, universities=universities_list)
 
 
-# ---------------------------------------------------------------------
-# Voucher redemptions detail (global admins only)
-# ---------------------------------------------------------------------
 @admin_bp.route("/vouchers/<int:campaign_id>", methods=["GET"], endpoint="voucher_detail")
 @login_required
 def voucher_detail(campaign_id: int):
@@ -987,116 +1425,7 @@ def voucher_detail(campaign_id: int):
 
 
 # ---------------------------------------------------------------------
-# Analytics helpers
-# ---------------------------------------------------------------------
-def _safe_int(v, default=0):
-    try:
-        return int(v)
-    except Exception:
-        return default
-
-
-def _parse_yyyy_mm_dd(s: str | None):
-    s = (s or "").strip()
-    if not s:
-        return None
-    try:
-        return datetime.strptime(s, "%Y-%m-%d")
-    except Exception:
-        return None
-
-
-def _score_tier(score: int) -> str:
-    if score >= 80:
-        return "Top Tier (80+)"
-    if score >= 60:
-        return "Job Ready (60–79)"
-    if score >= 40:
-        return "Building (40–59)"
-    return "Getting Started (0–39)"
-
-
-def _norm_skill_name(name: str | None) -> str | None:
-    if not name:
-        return None
-    s = str(name).strip()
-    if not s:
-        return None
-    return " ".join(s.split())
-
-
-def _extract_skills_from_any(obj) -> list[str]:
-    out: list[str] = []
-
-    def add(v):
-        if v is None:
-            return
-        if isinstance(v, str):
-            nm = _norm_skill_name(v)
-            if nm:
-                out.append(nm)
-        elif isinstance(v, dict):
-            nm = _norm_skill_name(v.get("name") or v.get("skill") or v.get("title"))
-            if nm:
-                out.append(nm)
-            for k in ("skills", "top_skills", "core_skills", "missing_skills", "skill_gaps"):
-                if k in v:
-                    add(v.get(k))
-        elif isinstance(v, list):
-            for it in v:
-                add(it)
-
-    add(obj)
-    return out
-
-
-def _extract_skills_from_skillmap_payload(payload):
-    skills: list[str] = []
-
-    if isinstance(payload, list):
-        return _extract_skills_from_any(payload)
-
-    if not isinstance(payload, dict):
-        return skills
-
-    if isinstance(payload.get("skills"), list):
-        skills.extend(_extract_skills_from_any(payload.get("skills")))
-
-    for key in ("roles", "top_roles", "role_roadmap", "role_cards", "primary_roles"):
-        if isinstance(payload.get(key), list):
-            for role in payload.get(key) or []:
-                if not isinstance(role, dict):
-                    continue
-                for rk in (
-                    "skills",
-                    "top_skills",
-                    "core_skills",
-                    "missing_skills",
-                    "skill_gaps",
-                    "skills_to_learn",
-                    "recommended_skills",
-                    "must_have_skills",
-                    "nice_to_have_skills",
-                ):
-                    if rk in role:
-                        skills.extend(_extract_skills_from_any(role.get(rk)))
-                for nested_key in ("gap_analysis", "analysis", "roadmap", "plan", "requirements"):
-                    nv = role.get(nested_key)
-                    if nv:
-                        skills.extend(_extract_skills_from_any(nv))
-
-    if isinstance(payload.get("learning_paths"), list):
-        for lp in payload.get("learning_paths") or []:
-            skills.extend(_extract_skills_from_any(lp))
-
-    if isinstance(payload.get("next_steps"), list):
-        skills.extend(_extract_skills_from_any(payload.get("next_steps")))
-
-    return skills
-
-
-# ---------------------------------------------------------------------
-# University Analytics (university admins ONLY)
+# University Analytics (university admins ONLY) — Student Analytics ONLY
 # ---------------------------------------------------------------------
 @admin_bp.route("/analytics", methods=["GET"], endpoint="analytics")
 @login_required
@@ -1105,8 +1434,10 @@ def analytics():
         flash("You are not allowed to access analytics.", "danger")
         return redirect(url_for("dashboard"))
 
-    role = (getattr(current_user, "role", "") or "").lower()
-    if role != "university_admin":
+    role = _role_lower()
+    is_uni_admin = (role == "university_admin") or _bool_attr(current_user, "is_university_admin", False)
+
+    if not is_uni_admin:
         flash("Only university admins can view student analytics.", "danger")
         return redirect(url_for("admin.dashboard"))
 
@@ -1114,37 +1445,17 @@ def analytics():
         flash("Global admins cannot view student-level analytics.", "danger")
         return redirect(url_for("admin.dashboard"))
 
-    # IMPORTANT FIX: tenant fallback (works on localhost too)
     tenant = _effective_tenant_for_admin()
     if tenant is None or getattr(current_user, "university_id", None) != tenant.id:
         flash("Analytics are only available for your university account.", "danger")
         return redirect(url_for("admin.dashboard"))
 
-    q = (request.args.get("q") or "").strip()
-    only_verified = (request.args.get("verified") or "").strip().lower() in ("1", "true", "yes", "on")
-    only_pro = (request.args.get("pro") or "").strip().lower() in ("1", "true", "yes", "on")
+    # ✅ SAME parsing logic used by /analytics/export
+    q, only_verified, only_pro, min_ready, max_ready, start_dt, end_dt = _analytics_params_from_request()
 
-    min_ready = _safe_int(request.args.get("min_ready"), 0)
-    max_ready = _safe_int(request.args.get("max_ready"), 100)
-
-    start_dt = _parse_yyyy_mm_dd(request.args.get("start"))
-    end_dt = _parse_yyyy_mm_dd(request.args.get("end"))
-    if end_dt:
-        end_dt = end_dt.replace(hour=23, minute=59, second=59)
-
+    # ✅ SAME user filters used by /analytics/export
     user_q = User.query.filter(User.university_id == tenant.id, User.role == "student")
-
-    if q:
-        like = f"%{q}%"
-        user_q = user_q.filter(db.or_(User.email.ilike(like), User.name.ilike(like)))
-
-    if only_verified:
-        user_q = user_q.filter(User.verified.is_(True))
-
-    if only_pro:
-        user_q = user_q.filter(func.lower(User.subscription_status) == "pro")
-
-    user_q = user_q.filter(User.ready_score >= min_ready, User.ready_score <= max_ready)
+    user_q = _apply_user_filters(user_q, q, only_verified, only_pro, min_ready, max_ready)
 
     students = user_q.all()
     student_ids = [u.id for u in students]
@@ -1192,53 +1503,47 @@ def analytics():
         "top_longest": (sorted(longest, reverse=True)[0] if longest else 0),
     }
 
-    def _apply_date_filter(qry, col):
-        if start_dt:
-            qry = qry.filter(col >= start_dt)
-        if end_dt:
-            qry = qry.filter(col <= end_dt)
-        return qry
-
+    # ✅ Use the SHARED _apply_date_filter(qry, col, start_dt, end_dt)
     sm_q = SkillMapSnapshot.query.join(User, SkillMapSnapshot.user_id == User.id).filter(
         User.university_id == tenant.id,
         User.role == "student",
     )
-    sm_q = _apply_date_filter(sm_q, SkillMapSnapshot.created_at)
+    sm_q = _apply_date_filter(sm_q, SkillMapSnapshot.created_at, start_dt, end_dt)
     total_skillmapper_runs = sm_q.count()
 
     jp_q = JobPackReport.query.join(User, JobPackReport.user_id == User.id).filter(
         User.university_id == tenant.id,
         User.role == "student",
     )
-    jp_q = _apply_date_filter(jp_q, JobPackReport.created_at)
+    jp_q = _apply_date_filter(jp_q, JobPackReport.created_at, start_dt, end_dt)
     total_jobpack_runs = jp_q.count()
 
     ir_q = InternshipRecord.query.join(User, InternshipRecord.user_id == User.id).filter(
         User.university_id == tenant.id,
         User.role == "student",
     )
-    ir_q = _apply_date_filter(ir_q, InternshipRecord.created_at)
+    ir_q = _apply_date_filter(ir_q, InternshipRecord.created_at, start_dt, end_dt)
     total_internship_runs = ir_q.count()
 
     ll_q = LearningLog.query.join(User, LearningLog.user_id == User.id).filter(
         User.university_id == tenant.id,
         User.role == "student",
     )
-    ll_q = _apply_date_filter(ll_q, LearningLog.created_at)
+    ll_q = _apply_date_filter(ll_q, LearningLog.created_at, start_dt, end_dt)
     total_learning_logs = ll_q.count()
 
     pr_q = Project.query.join(User, Project.user_id == User.id).filter(
         User.university_id == tenant.id,
         User.role == "student",
     )
-    pr_q = _apply_date_filter(pr_q, Project.created_at)
+    pr_q = _apply_date_filter(pr_q, Project.created_at, start_dt, end_dt)
     total_projects = pr_q.count()
 
     pp_q = PortfolioPage.query.join(User, PortfolioPage.user_id == User.id).filter(
         User.university_id == tenant.id,
         User.role == "student",
     )
-    pp_q = _apply_date_filter(pp_q, PortfolioPage.created_at)
+    pp_q = _apply_date_filter(pp_q, PortfolioPage.created_at, start_dt, end_dt)
     total_portfolio_pages = pp_q.count()
     total_public_portfolios = pp_q.filter(PortfolioPage.is_public.is_(True)).count()
 
@@ -1312,79 +1617,7 @@ def analytics():
         .limit(10)
         .all()
     )
-    internship_roles = [
-        {"name": (t or "").strip(), "count": int(n or 0)} for (t, n) in internship_rows if (t or "").strip()
-    ]
-
-    # IMPORTANT FIX: credit usage should be scoped by USER.university_id (not tx.university_id)
-    tx_q = CreditTransaction.query.join(User, CreditTransaction.user_id == User.id).filter(
-        User.university_id == tenant.id,
-        User.role == "student",
-    )
-    if student_ids:
-        tx_q = tx_q.filter(CreditTransaction.user_id.in_(student_ids))
-    else:
-        tx_q = tx_q.filter(CreditTransaction.id == -1)
-
-    if start_dt:
-        tx_q = tx_q.filter(CreditTransaction.created_at >= start_dt)
-    if end_dt:
-        tx_q = tx_q.filter(CreditTransaction.created_at <= end_dt)
-
-    total_debits = (
-        tx_q.filter(CreditTransaction.tx_type == "debit")
-        .with_entities(func.coalesce(func.sum(CreditTransaction.amount), 0))
-        .scalar()
-        or 0
-    )
-    total_credits = (
-        tx_q.filter(CreditTransaction.tx_type.in_(["credit", "refund"]))
-        .with_entities(func.coalesce(func.sum(CreditTransaction.amount), 0))
-        .scalar()
-        or 0
-    )
-
-    admin_adjust_txs = (
-        tx_q.filter(CreditTransaction.feature.ilike("admin%"))
-        .order_by(CreditTransaction.created_at.desc())
-        .limit(50)
-        .all()
-    )
-
-    silver_daily_rows = (
-        tx_q.filter(CreditTransaction.tx_type == "debit", CreditTransaction.currency == "silver")
-        .with_entities(func.date(CreditTransaction.created_at).label("day"), func.coalesce(func.sum(CreditTransaction.amount), 0))
-        .group_by("day")
-        .order_by("day")
-        .all()
-    )
-    gold_daily_rows = (
-        tx_q.filter(CreditTransaction.tx_type == "debit", CreditTransaction.currency == "gold")
-        .with_entities(func.date(CreditTransaction.created_at).label("day"), func.coalesce(func.sum(CreditTransaction.amount), 0))
-        .group_by("day")
-        .order_by("day")
-        .all()
-    )
-
-    silver_map = {str(day): int(total or 0) for day, total in silver_daily_rows}
-    gold_map = {str(day): int(total or 0) for day, total in gold_daily_rows}
-    all_days = sorted(set(silver_map.keys()) | set(gold_map.keys()))
-
-    daily_credits = {
-        "labels": all_days,
-        "silver": [silver_map.get(d, 0) for d in all_days],
-        "gold": [gold_map.get(d, 0) for d in all_days],
-    }
-
-    tool_rows = (
-        tx_q.filter(CreditTransaction.tx_type == "debit")
-        .with_entities(CreditTransaction.feature, func.coalesce(func.sum(CreditTransaction.amount), 0))
-        .group_by(CreditTransaction.feature)
-        .order_by(func.coalesce(func.sum(CreditTransaction.amount), 0).desc())
-        .limit(10)
-        .all()
-    )
-    tool_debits = [{"feature": (row[0] or "unknown"), "amount": int(row[1] or 0)} for row in tool_rows]
+    internship_roles = [{"name": (t or "").strip(), "count": int(n or 0)} for (t, n) in internship_rows if (t or "").strip()]
 
     proj_counts = dict(
         db.session.query(Project.user_id, func.count(Project.id))
@@ -1436,25 +1669,213 @@ def analytics():
             }
         )
 
+    resume_missing_users: dict[str, set[int]] = defaultdict(set)
+    resume_missing_mentions: dict[str, int] = defaultdict(int)
+    resume_missing_display: dict[str, str] = {}
+
+    blocker_users: dict[str, set[int]] = defaultdict(set)
+    blocker_display: dict[str, str] = {}
+    warning_users: dict[str, set[int]] = defaultdict(set)
+    warning_display: dict[str, str] = {}
+
+    students_with_jobpack: set[int] = set()
+    students_with_resume_missing: set[int] = set()
+    students_with_blockers: set[int] = set()
+
+    if student_ids:
+        jp_scan = JobPackReport.query.filter(JobPackReport.user_id.in_(student_ids))
+        jp_scan = _apply_date_filter(jp_scan, JobPackReport.created_at, start_dt, end_dt)
+        jp_scan = jp_scan.order_by(JobPackReport.created_at.desc()).limit(2000).all()
+
+        seen_users: set[int] = set()
+        for r in jp_scan:
+            if r.user_id in seen_users:
+                continue
+            seen_users.add(r.user_id)
+            students_with_jobpack.add(r.user_id)
+
+            try:
+                payload = json.loads(r.analysis or "{}")
+            except Exception:
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+
+            issues = _extract_resume_issues(payload)
+
+            missing_kw = issues.get("missing_keywords") or []
+            if missing_kw:
+                students_with_resume_missing.add(r.user_id)
+
+            for kw in missing_kw:
+                k = _norm_skill_key(kw)
+                if not k:
+                    continue
+                if k not in resume_missing_display:
+                    resume_missing_display[k] = _norm_skill_name(kw) or kw
+                resume_missing_mentions[k] += 1
+                resume_missing_users[k].add(r.user_id)
+
+            blockers = issues.get("blockers") or []
+            if blockers:
+                students_with_blockers.add(r.user_id)
+            for b in blockers:
+                k = _norm_skill_key(b)
+                if not k:
+                    continue
+                if k not in blocker_display:
+                    blocker_display[k] = _norm_skill_name(b) or b
+                blocker_users[k].add(r.user_id)
+
+            warnings = issues.get("warnings") or []
+            for w in warnings:
+                k = _norm_skill_key(w)
+                if not k:
+                    continue
+                if k not in warning_display:
+                    warning_display[k] = _norm_skill_name(w) or w
+                warning_users[k].add(r.user_id)
+
+    resume_denom = max(1, len(students_with_jobpack) or 1)
+    resume_missing_skills_top = []
+    for k, users_set in sorted(resume_missing_users.items(), key=lambda kv: len(kv[1]), reverse=True)[:12]:
+        resume_missing_skills_top.append(
+            {
+                "name": resume_missing_display.get(k, k),
+                "students": len(users_set),
+                "percent": round((len(users_set) / resume_denom) * 100, 1),
+                "mentions": int(resume_missing_mentions.get(k, 0) or 0),
+            }
+        )
+
+    resume_blockers_top = []
+    for k, users_set in sorted(blocker_users.items(), key=lambda kv: len(kv[1]), reverse=True)[:10]:
+        resume_blockers_top.append(
+            {
+                "text": blocker_display.get(k, k),
+                "students": len(users_set),
+                "percent": round((len(users_set) / resume_denom) * 100, 1),
+            }
+        )
+
+    resume_warnings_top = []
+    for k, users_set in sorted(warning_users.items(), key=lambda kv: len(kv[1]), reverse=True)[:10]:
+        resume_warnings_top.append(
+            {
+                "text": warning_display.get(k, k),
+                "students": len(users_set),
+                "percent": round((len(users_set) / resume_denom) * 100, 1),
+            }
+        )
+
+    roadmap_gap_users: dict[str, set[int]] = defaultdict(set)
+    roadmap_gap_display: dict[str, str] = {}
+    students_with_skillmap: set[int] = set()
+
+    if student_ids:
+        sm_scan = SkillMapSnapshot.query.filter(SkillMapSnapshot.user_id.in_(student_ids))
+        sm_scan = _apply_date_filter(sm_scan, SkillMapSnapshot.created_at, start_dt, end_dt)
+        sm_scan = sm_scan.order_by(SkillMapSnapshot.created_at.desc()).limit(2000).all()
+
+        seen_users_sm: set[int] = set()
+        for snap in sm_scan:
+            if snap.user_id in seen_users_sm:
+                continue
+            seen_users_sm.add(snap.user_id)
+            students_with_skillmap.add(snap.user_id)
+
+            if not snap.skills_json:
+                continue
+            try:
+                payload = json.loads(snap.skills_json)
+            except Exception:
+                payload = None
+            if payload is None:
+                continue
+
+            missing = set(_extract_missing_skills(payload))
+            for sk in missing:
+                k = _norm_skill_key(sk)
+                if not k:
+                    continue
+                if k not in roadmap_gap_display:
+                    roadmap_gap_display[k] = _norm_skill_name(sk) or sk
+                roadmap_gap_users[k].add(snap.user_id)
+
+    roadmap_denom = max(1, len(students_with_skillmap) or 1)
+    roadmap_missing_skills_top = []
+    for k, users_set in sorted(roadmap_gap_users.items(), key=lambda kv: len(kv[1]), reverse=True)[:12]:
+        roadmap_missing_skills_top.append(
+            {
+                "name": roadmap_gap_display.get(k, k),
+                "students": len(users_set),
+                "percent": round((len(users_set) / roadmap_denom) * 100, 1),
+            }
+        )
+
+    no_projects = sum(1 for u in students if int(proj_counts.get(u.id, 0) or 0) == 0)
+    no_devlogs = sum(1 for u in students if int(log_counts.get(u.id, 0) or 0) == 0)
+    no_public_portfolio = sum(1 for u in students if int(pub_port_counts.get(u.id, 0) or 0) == 0)
+    inactive = sum(1 for u in students if int(u.current_streak or 0) <= 0)
+    low_ready = sum(1 for u in students if int(u.ready_score or 0) < 40)
+
+    problems_summary = [
+        {"label": "No projects yet", "count": no_projects, "percent": round((no_projects / max(1, total_students)) * 100, 1)},
+        {"label": "No DevLogs yet", "count": no_devlogs, "percent": round((no_devlogs / max(1, total_students)) * 100, 1)},
+        {"label": "No public portfolio yet", "count": no_public_portfolio, "percent": round((no_public_portfolio / max(1, total_students)) * 100, 1)},
+        {"label": "Inactive (streak = 0)", "count": inactive, "percent": round((inactive / max(1, total_students)) * 100, 1)},
+        {"label": "Low readiness (below 40)", "count": low_ready, "percent": round((low_ready / max(1, total_students)) * 100, 1)},
+    ]
+
     insights: Dict[str, str] = {}
     if total_students > 0:
         insights["headline"] = f"{total_students} students in {tenant.name} • Verified: {total_verified_students} • Pro: {total_pro_students}."
     else:
         insights["headline"] = "No students found for the selected filters."
 
-    insights["skill_summary"] = (
-        f"Top skill signal: “{skills_top[0]['name']}” ({skills_top[0]['count']} mentions)."
-        if skills_top
-        else "No Skill Mapper skill signals yet in this period."
+    insights["readiness_summary"] = (
+        f"Readiness: avg {readiness_chart['avg']}, median {readiness_chart['median']}. "
+        f"Tiers — Top: {tier_counts['Top Tier (80+)']}, Job Ready: {tier_counts['Job Ready (60–79)']}, "
+        f"Building: {tier_counts['Building (40–59)']}, Getting Started: {tier_counts['Getting Started (0–39)']}."
+        if total_students > 0
+        else "Readiness: no data."
     )
 
+    insights["consistency_summary"] = (
+        f"Consistency: avg streak {streak_chart['avg_current']} days (top {streak_chart['top_current']})."
+        if total_students > 0
+        else "Consistency: no data."
+    )
+
+    insights["proof_summary"] = (
+        f"Proof-of-work: DevLogs {engagement_summary['learning_logs']}, Projects {engagement_summary['projects']}, "
+        f"Public portfolios {engagement_summary['public_portfolios']} (in selected date window)."
+    )
+
+    if resume_missing_skills_top:
+        insights["skill_summary"] = (
+            f"Most missed resume skill: “{resume_missing_skills_top[0]['name']}” "
+            f"({resume_missing_skills_top[0]['students']} students)."
+        )
+    elif roadmap_missing_skills_top:
+        insights["skill_summary"] = (
+            f"Most common learning gap: “{roadmap_missing_skills_top[0]['name']}” "
+            f"({roadmap_missing_skills_top[0]['students']} students)."
+        )
+    else:
+        insights["skill_summary"] = "No strong skill gaps detected yet (needs more Job Pack / Skill Mapper usage)."
+
     insights["tool_summary"] = (
-        f"Top credit usage: “{tool_debits[0]['feature']}” ({tool_debits[0]['amount']} credits)."
-        if tool_debits
-        else "No credit spend recorded in this period."
+        f"Tool adoption (runs): Job Pack {total_jobpack_runs}, Skill Mapper {total_skillmapper_runs}, Internship {total_internship_runs}."
     )
 
     analytics_insights = insights
+
+    tool_usage_runs = [
+        {"tool": "Skill Mapper", "runs": total_skillmapper_runs},
+        {"tool": "Job Pack", "runs": total_jobpack_runs},
+        {"tool": "Internship Analyzer", "runs": total_internship_runs},
+    ]
 
     return render_template(
         "admin/analytics.html",
@@ -1469,24 +1890,28 @@ def analytics():
         total_users=User.query.filter(User.university_id == tenant.id).count(),
         total_students=total_students,
         total_university_admins=User.query.filter(User.university_id == tenant.id, User.role == "university_admin").count(),
-        total_debits=total_debits,
-        total_credits=total_credits,
-        admin_adjust_txs=admin_adjust_txs,
         readiness_chart=readiness_chart,
         streak_chart=streak_chart,
         engagement_summary=engagement_summary,
         skills_top=skills_top,
         roles_top=roles_top,
         internship_roles=internship_roles,
-        daily_credits=daily_credits,
-        tool_debits=tool_debits,
         student_rows=student_rows,
         analytics_insights=analytics_insights,
+        problems_summary=problems_summary,
+        resume_missing_skills_top=resume_missing_skills_top,
+        roadmap_missing_skills_top=roadmap_missing_skills_top,
+        resume_blockers_top=resume_blockers_top,
+        resume_warnings_top=resume_warnings_top,
+        resume_samples={"students_with_jobpack": len(students_with_jobpack)},
+        tool_usage_runs=tool_usage_runs,
     )
 
 
+
 # ---------------------------------------------------------------------
-# Analytics CSV export (university admins ONLY)
+# University Analytics Export (university admins ONLY)
+# - IMPORTANT: must respect the same filters/date range as /analytics
 # ---------------------------------------------------------------------
 @admin_bp.route("/analytics/export", methods=["GET"], endpoint="analytics_export")
 @login_required
@@ -1495,147 +1920,176 @@ def analytics_export():
         flash("You are not allowed to export analytics.", "danger")
         return redirect(url_for("dashboard"))
 
-    role = (getattr(current_user, "role", "") or "").lower()
-    if role != "university_admin" or _is_global_admin():
+    role = _role_lower()
+    is_uni_admin = (role == "university_admin") or _bool_attr(current_user, "is_university_admin", False)
+
+    if not is_uni_admin or _is_global_admin():
         flash("Only tenant-scoped university admins can export analytics.", "danger")
         return redirect(url_for("admin.dashboard"))
 
-    # IMPORTANT FIX: tenant fallback
     tenant = _effective_tenant_for_admin()
     if tenant is None or getattr(current_user, "university_id", None) != tenant.id:
         flash("Analytics export is only available for your university account.", "danger")
         return redirect(url_for("admin.dashboard"))
 
-    user_q = User.query.filter(User.university_id == tenant.id)
-    # IMPORTANT FIX: tx scoped by User.university_id
-    tx_q = CreditTransaction.query.join(User, CreditTransaction.user_id == User.id).filter(
-        User.university_id == tenant.id
-    )
+    # ✅ SAME filters as analytics page
+    q, only_verified, only_pro, min_ready, max_ready, start_dt, end_dt = _analytics_params_from_request()
 
-    total_users = user_q.count()
-    total_students = user_q.filter(User.role == "student").count()
-    total_university_admins = user_q.filter(User.role == "university_admin").count()
+    base_students_q = User.query.filter(User.university_id == tenant.id, User.role == "student")
+    base_students_q = _apply_user_filters(base_students_q, q, only_verified, only_pro, min_ready, max_ready)
 
-    total_debits = (
-        tx_q.filter(CreditTransaction.tx_type == "debit")
-        .with_entities(func.coalesce(func.sum(CreditTransaction.amount), 0))
-        .scalar()
-        or 0
-    )
-    total_credits = (
-        tx_q.filter(CreditTransaction.tx_type.in_(["credit", "refund"]))
-        .with_entities(func.coalesce(func.sum(CreditTransaction.amount), 0))
-        .scalar()
-        or 0
-    )
-
-    skill_snapshots = (
-        SkillMapSnapshot.query.join(User, SkillMapSnapshot.user_id == User.id)
-        .filter(User.university_id == tenant.id)
-        .order_by(SkillMapSnapshot.created_at.desc())
-        .limit(500)
+    # Cap export to protect server (adjust if you want)
+    export_limit = 5000
+    students = (
+        base_students_q
+        .order_by(User.ready_score.desc(), User.current_streak.desc(), User.created_at.desc())
+        .limit(export_limit)
         .all()
     )
-    skill_counts: dict[str, int] = {}
-    for snap in skill_snapshots:
-        if not snap.skills_json:
-            continue
-        try:
-            payload = json.loads(snap.skills_json)
-        except Exception:
-            continue
-        for name in _extract_skills_from_skillmap_payload(payload):
-            nm = _norm_skill_name(name)
-            if not nm:
+    student_ids = [u.id for u in students]
+
+    # Per-user proof-of-work counts (ALL-TIME to match your UI table semantics)
+    proj_counts = {}
+    pub_port_counts = {}
+    log_counts = {}
+
+    if student_ids:
+        proj_counts = dict(
+            db.session.query(Project.user_id, func.count(Project.id))
+            .filter(Project.user_id.in_(student_ids))
+            .group_by(Project.user_id)
+            .all()
+        )
+
+        pub_port_counts = dict(
+            db.session.query(PortfolioPage.user_id, func.count(PortfolioPage.id))
+            .filter(PortfolioPage.user_id.in_(student_ids), PortfolioPage.is_public.is_(True))
+            .group_by(PortfolioPage.user_id)
+            .all()
+        )
+
+        log_counts = dict(
+            db.session.query(LearningLog.user_id, func.count(LearningLog.id))
+            .filter(LearningLog.user_id.in_(student_ids))
+            .group_by(LearningLog.user_id)
+            .all()
+        )
+
+    # Tool runs (DATE-RANGED if start/end are provided)
+    sm_q = SkillMapSnapshot.query.join(User, SkillMapSnapshot.user_id == User.id).filter(
+        User.university_id == tenant.id, User.role == "student"
+    )
+    jp_q = JobPackReport.query.join(User, JobPackReport.user_id == User.id).filter(
+        User.university_id == tenant.id, User.role == "student"
+    )
+    ir_q = InternshipRecord.query.join(User, InternshipRecord.user_id == User.id).filter(
+        User.university_id == tenant.id, User.role == "student"
+    )
+
+    sm_q = _apply_date_filter(sm_q, SkillMapSnapshot.created_at, start_dt, end_dt)
+    jp_q = _apply_date_filter(jp_q, JobPackReport.created_at, start_dt, end_dt)
+    ir_q = _apply_date_filter(ir_q, InternshipRecord.created_at, start_dt, end_dt)
+
+    total_skillmapper_runs = sm_q.count()
+    total_jobpack_runs = jp_q.count()
+    total_internship_runs = ir_q.count()
+
+    # Resume missing skills summary (DATE-RANGED, latest report per student sampled from most recent)
+    resume_missing_users: dict[str, set[int]] = defaultdict(set)
+    resume_missing_display: dict[str, str] = {}
+
+    if student_ids:
+        jp_scan = JobPackReport.query.filter(JobPackReport.user_id.in_(student_ids))
+        jp_scan = _apply_date_filter(jp_scan, JobPackReport.created_at, start_dt, end_dt)
+        jp_scan = jp_scan.order_by(JobPackReport.created_at.desc()).limit(3000).all()
+
+        seen_users: set[int] = set()
+        for r in jp_scan:
+            if r.user_id in seen_users:
                 continue
-            skill_counts[nm] = skill_counts.get(nm, 0) + 1
+            seen_users.add(r.user_id)
 
-    role_rows = (
-        db.session.query(JobPackReport.job_title, func.count(JobPackReport.id))
-        .join(User, JobPackReport.user_id == User.id)
-        .filter(User.university_id == tenant.id)
-        .filter(JobPackReport.job_title.isnot(None))
-        .group_by(JobPackReport.job_title)
-        .order_by(func.count(JobPackReport.id).desc())
-        .limit(50)
-        .all()
-    )
+            try:
+                payload = json.loads(r.analysis or "{}")
+            except Exception:
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
 
-    internship_rows = (
-        db.session.query(InternshipRecord.role, func.count(InternshipRecord.id))
-        .join(User, InternshipRecord.user_id == User.id)
-        .filter(User.university_id == tenant.id)
-        .filter(InternshipRecord.role.isnot(None))
-        .group_by(InternshipRecord.role)
-        .order_by(func.count(InternshipRecord.id).desc())
-        .limit(50)
-        .all()
-    )
+            issues = _extract_resume_issues(payload)
+            for kw in (issues.get("missing_keywords") or []):
+                k = _norm_skill_key(kw)
+                if not k:
+                    continue
+                if k not in resume_missing_display:
+                    resume_missing_display[k] = _norm_skill_name(kw) or kw
+                resume_missing_users[k].add(r.user_id)
 
-    tool_rows = (
-        tx_q.filter(CreditTransaction.tx_type == "debit")
-        .with_entities(CreditTransaction.feature, func.coalesce(func.sum(CreditTransaction.amount), 0))
-        .group_by(CreditTransaction.feature)
-        .order_by(func.coalesce(func.sum(CreditTransaction.amount), 0).desc())
-        .limit(50)
-        .all()
-    )
+    # ---------------- CSV output ----------------
+    out = io.StringIO()
+    w = csv.writer(out)
 
-    silver_daily_rows = (
-        tx_q.filter(CreditTransaction.tx_type == "debit", CreditTransaction.currency == "silver")
-        .with_entities(func.date(CreditTransaction.created_at).label("day"), func.coalesce(func.sum(CreditTransaction.amount), 0))
-        .group_by("day")
-        .order_by("day")
-        .all()
-    )
-    gold_daily_rows = (
-        tx_q.filter(CreditTransaction.tx_type == "debit", CreditTransaction.currency == "gold")
-        .with_entities(func.date(CreditTransaction.created_at).label("day"), func.coalesce(func.sum(CreditTransaction.amount), 0))
-        .group_by("day")
-        .order_by("day")
-        .all()
-    )
+    # Filter metadata
+    w.writerow(["section", "key", "value"])
+    w.writerow(["meta", "university", tenant.name])
+    w.writerow(["meta", "q", q])
+    w.writerow(["meta", "verified_only", int(only_verified)])
+    w.writerow(["meta", "pro_only", int(only_pro)])
+    w.writerow(["meta", "min_ready", min_ready])
+    w.writerow(["meta", "max_ready", max_ready])
+    w.writerow(["meta", "start", start_dt.strftime("%Y-%m-%d") if start_dt else ""])
+    w.writerow(["meta", "end", end_dt.strftime("%Y-%m-%d") if end_dt else ""])
+    w.writerow(["meta", "export_limit", export_limit])
+    w.writerow([])
 
-    silver_map = {str(day): int(total or 0) for day, total in silver_daily_rows}
-    gold_map = {str(day): int(total or 0) for day, total in gold_daily_rows}
-    all_days = sorted(set(silver_map.keys()) | set(gold_map.keys()))
+    # Summary
+    w.writerow(["section", "metric", "value"])
+    w.writerow(["summary", "students_in_export", len(students)])
+    w.writerow(["summary", "skillmapper_runs_in_window", total_skillmapper_runs])
+    w.writerow(["summary", "jobpack_runs_in_window", total_jobpack_runs])
+    w.writerow(["summary", "internship_runs_in_window", total_internship_runs])
+    w.writerow([])
 
-    output = io.StringIO()
-    writer = csv.writer(output)
+    # Missing resume skills
+    w.writerow(["section", "missing_resume_skill", "students_affected"])
+    for k, users_set in sorted(resume_missing_users.items(), key=lambda kv: len(kv[1]), reverse=True):
+        w.writerow(["missing_resume_skill", resume_missing_display.get(k, k), len(users_set)])
+    w.writerow([])
 
-    writer.writerow(["section", "metric", "value_1", "value_2"])
-    writer.writerow(["summary", "total_users", total_users, ""])
-    writer.writerow(["summary", "total_students", total_students, ""])
-    writer.writerow(["summary", "total_university_admins", total_university_admins, ""])
-    writer.writerow(["summary", "total_debits", total_debits, ""])
-    writer.writerow(["summary", "total_credits", total_credits, ""])
+    # Student table (main export)
+    w.writerow([
+        "name", "email", "ready_score", "tier", "verified", "pro",
+        "current_streak", "longest_streak", "weekly_milestones_completed",
+        "projects_all_time", "devlogs_all_time", "public_portfolio_pages_all_time",
+        "joined"
+    ])
 
-    for name, count in sorted(skill_counts.items(), key=lambda kv: kv[1], reverse=True):
-        writer.writerow(["skill", name, count, ""])
+    for u in students:
+        rs = int(u.ready_score or 0)
+        w.writerow([
+            u.name,
+            u.email,
+            rs,
+            _score_tier(rs),
+            int(bool(u.verified)),
+            int((u.subscription_status or "").lower() == "pro"),
+            int(u.current_streak or 0),
+            int(u.longest_streak or 0),
+            int(u.weekly_milestones_completed or 0),
+            int(proj_counts.get(u.id, 0) or 0),
+            int(log_counts.get(u.id, 0) or 0),
+            int(pub_port_counts.get(u.id, 0) or 0),
+            u.created_at.strftime("%Y-%m-%d") if u.created_at else "",
+        ])
 
-    for title, n in role_rows:
-        title_clean = (title or "").strip()
-        if title_clean:
-            writer.writerow(["jobpack_role", title_clean, int(n or 0), ""])
-
-    for role_name, n in internship_rows:
-        role_clean = (role_name or "").strip()
-        if role_clean:
-            writer.writerow(["internship_role", role_clean, int(n or 0), ""])
-
-    for feature, amt in tool_rows:
-        writer.writerow(["tool", feature or "unknown", int(amt or 0), ""])
-
-    for day in all_days:
-        writer.writerow(["daily_credits", day, silver_map.get(day, 0), gold_map.get(day, 0)])
-
-    csv_data = output.getvalue()
-    output.close()
+    csv_data = out.getvalue()
+    out.close()
 
     resp = make_response(csv_data)
     resp.headers["Content-Type"] = "text/csv; charset=utf-8"
-    resp.headers["Content-Disposition"] = f"attachment; filename=careerai_analytics_{tenant.id}.csv"
+    resp.headers["Content-Disposition"] = f"attachment; filename=careerai_student_analytics_{tenant.id}.csv"
     return resp
+
 
 
 # ---------------------------------------------------------------------
@@ -1700,9 +2154,6 @@ def audit():
     )
 
 
-# ---------------------------------------------------------------------
-# Ultra Admin Audit CSV export
-# ---------------------------------------------------------------------
 @admin_bp.route("/audit/export", methods=["GET"], endpoint="audit_export")
 @login_required
 def audit_export():
@@ -1963,7 +2414,6 @@ def university_wallet_renew(uni_id: int):
         wallet.gold_balance = int(wallet.gold_annual_cap or 0)
 
         wallet.renewal_date = date.today() + timedelta(days=365)
-        # last_renewed_at might be a datetime field in your model; keep safe:
         if hasattr(wallet, "last_renewed_at"):
             try:
                 wallet.last_renewed_at = datetime.utcnow()
@@ -2017,3 +2467,268 @@ def university_wallet_stats(uni_id: int):
         "info",
     )
     return redirect(url_for("admin.university_wallets"))
+
+
+# ---------------------------------------------------------------------
+# Dean Strategy Dashboard (university admins)
+# ---------------------------------------------------------------------
+@admin_bp.route("/university/strategy", methods=["GET"], endpoint="strategy")
+@login_required
+def strategy():
+    if not _is_admin_user():
+        flash("You are not allowed to access this dashboard.", "danger")
+        return redirect(url_for("dashboard"))
+
+    role = _role_lower()
+    is_uni_admin = (role == "university_admin") or _bool_attr(current_user, "is_university_admin", False)
+
+    if not is_uni_admin or _is_global_admin():
+        flash("This view is for university admins only.", "danger")
+        return redirect(url_for("admin.dashboard"))
+
+    tenant = _effective_tenant_for_admin()
+    if tenant is None or getattr(current_user, "university_id", None) != tenant.id:
+        flash("This dashboard is only available for your university.", "danger")
+        return redirect(url_for("admin.dashboard"))
+
+    dept = (request.args.get("department") or "").strip()
+    min_ready = _safe_int(request.args.get("min_ready"), 0)
+
+    start_dt = _parse_yyyy_mm_dd(request.args.get("start"))
+    end_dt = _parse_yyyy_mm_dd(request.args.get("end"))
+    if end_dt:
+        end_dt = end_dt.replace(hour=23, minute=59, second=59)
+
+    student_q = User.query.filter(User.university_id == tenant.id, User.role == "student")
+
+    if min_ready > 0:
+        student_q = student_q.filter(User.ready_score >= min_ready)
+
+    if dept and hasattr(User, "department"):
+        student_q = student_q.filter(func.lower(User.department) == dept.lower())
+
+    students = student_q.all()
+    student_ids = [u.id for u in students]
+    total_students = len(students)
+
+    profile_done = 0
+    try:
+        if student_ids:
+            prof_ids = set(
+                r[0]
+                for r in db.session.query(UserProfile.user_id)
+                .filter(UserProfile.user_id.in_(student_ids))
+                .all()
+            )
+            profile_done = sum(1 for u in students if u.id in prof_ids)
+        else:
+            profile_done = 0
+    except Exception:
+        profile_done = 0
+
+    streak_7 = sum(1 for u in students if int(getattr(u, "current_streak", 0) or 0) >= 7)
+    job_ready = sum(1 for u in students if int(getattr(u, "ready_score", 0) or 0) >= 80)
+
+    proj_counts: dict[int, int] = {}
+    log_counts: dict[int, int] = {}
+    pub_port_counts: dict[int, int] = {}
+
+    if student_ids:
+        proj_counts = dict(
+            db.session.query(Project.user_id, func.count(Project.id))
+            .filter(Project.user_id.in_(student_ids))
+            .group_by(Project.user_id)
+            .all()
+        )
+        log_counts = dict(
+            db.session.query(LearningLog.user_id, func.count(LearningLog.id))
+            .filter(LearningLog.user_id.in_(student_ids))
+            .group_by(LearningLog.user_id)
+            .all()
+        )
+        pub_port_counts = dict(
+            db.session.query(PortfolioPage.user_id, func.count(PortfolioPage.id))
+            .filter(PortfolioPage.user_id.in_(student_ids), PortfolioPage.is_public.is_(True))
+            .group_by(PortfolioPage.user_id)
+            .all()
+        )
+
+    has_project = sum(1 for u in students if int(proj_counts.get(u.id, 0) or 0) > 0)
+    has_devlog = sum(1 for u in students if int(log_counts.get(u.id, 0) or 0) > 0)
+    has_public_portfolio = sum(1 for u in students if int(pub_port_counts.get(u.id, 0) or 0) > 0)
+
+    funnel = [
+        {"label": "Total students", "count": total_students},
+        {"label": "Profile completed", "count": profile_done},
+        {"label": "7-day consistency", "count": streak_7},
+        {"label": "1+ project", "count": has_project},
+        {"label": "Hiring-ready (80+)", "count": job_ready},
+    ]
+
+    sm_q = SkillMapSnapshot.query.join(User, SkillMapSnapshot.user_id == User.id).filter(
+        User.university_id == tenant.id,
+        User.role == "student",
+    )
+
+    if student_ids:
+        sm_q = sm_q.filter(SkillMapSnapshot.user_id.in_(student_ids))
+    else:
+        sm_q = sm_q.filter(SkillMapSnapshot.id == -1)
+
+    if start_dt:
+        sm_q = sm_q.filter(SkillMapSnapshot.created_at >= start_dt)
+    if end_dt:
+        sm_q = sm_q.filter(SkillMapSnapshot.created_at <= end_dt)
+
+    gap_students_count: dict[str, int] = defaultdict(int)
+    gap_mentions: dict[str, int] = defaultdict(int)
+    students_with_snapshots: set[int] = set()
+
+    snaps = sm_q.order_by(SkillMapSnapshot.created_at.desc()).limit(2000).all()
+    seen_users: set[int] = set()
+
+    for snap in snaps:
+        if snap.user_id in seen_users:
+            continue
+        seen_users.add(snap.user_id)
+
+        if not snap.skills_json:
+            continue
+        try:
+            payload = json.loads(snap.skills_json)
+        except Exception:
+            continue
+
+        students_with_snapshots.add(snap.user_id)
+
+        missing = set(_extract_missing_skills(payload))
+        for skill in missing:
+            gap_mentions[skill] += 1
+            gap_students_count[skill] += 1
+
+    denom = max(1, len(students_with_snapshots) or total_students or 1)
+    top_gaps = []
+    for skill, cnt in sorted(gap_students_count.items(), key=lambda kv: kv[1], reverse=True)[:15]:
+        top_gaps.append(
+            {
+                "skill": skill,
+                "students": int(cnt),
+                "percent": round((int(cnt) / denom) * 100, 1),
+                "mentions": int(gap_mentions.get(skill, 0) or 0),
+            }
+        )
+
+    jp_q = JobPackReport.query.join(User, JobPackReport.user_id == User.id).filter(
+        User.university_id == tenant.id,
+        User.role == "student",
+    )
+
+    if student_ids:
+        jp_q = jp_q.filter(JobPackReport.user_id.in_(student_ids))
+    else:
+        jp_q = jp_q.filter(JobPackReport.id == -1)
+
+    if start_dt:
+        jp_q = jp_q.filter(JobPackReport.created_at >= start_dt)
+    if end_dt:
+        jp_q = jp_q.filter(JobPackReport.created_at <= end_dt)
+
+    blocker_counts: dict[str, int] = defaultdict(int)
+    warning_counts: dict[str, int] = defaultdict(int)
+    missing_kw_counts: dict[str, int] = defaultdict(int)
+
+    reports = jp_q.order_by(JobPackReport.created_at.desc()).limit(2000).all()
+    seen_users_jp: set[int] = set()
+
+    for r in reports:
+        if r.user_id in seen_users_jp:
+            continue
+        seen_users_jp.add(r.user_id)
+
+        try:
+            payload = json.loads(r.analysis or "{}")
+        except Exception:
+            payload = {}
+
+        issues = _extract_resume_issues(payload if isinstance(payload, dict) else {})
+
+        for b in set(issues["blockers"]):
+            blocker_counts[b] += 1
+        for w in set(issues["warnings"]):
+            warning_counts[w] += 1
+        for k in set(issues["missing_keywords"]):
+            missing_kw_counts[k] += 1
+
+    top_blockers = [{"text": t, "count": int(c)} for t, c in sorted(blocker_counts.items(), key=lambda kv: kv[1], reverse=True)[:10]]
+    top_warnings = [{"text": t, "count": int(c)} for t, c in sorted(warning_counts.items(), key=lambda kv: kv[1], reverse=True)[:10]]
+    top_missing_keywords = [{"text": t, "count": int(c)} for t, c in sorted(missing_kw_counts.items(), key=lambda kv: kv[1], reverse=True)[:12]]
+
+    watchlist = []
+    for u in sorted(students, key=lambda x: int(getattr(x, "ready_score", 0) or 0)):
+        rs = int(getattr(u, "ready_score", 0) or 0)
+        streak = int(getattr(u, "current_streak", 0) or 0)
+        p = int(proj_counts.get(u.id, 0) or 0)
+        d = int(log_counts.get(u.id, 0) or 0)
+
+        tags = []
+        if rs < 40:
+            tags.append("Low readiness")
+        if streak <= 0:
+            tags.append("Inactive")
+        if p == 0:
+            tags.append("No projects")
+        if d == 0:
+            tags.append("No DevLogs")
+
+        if rs < 40 or (rs >= 60 and p == 0 and d == 0) or (streak == 0 and rs < 60):
+            watchlist.append(
+                {
+                    "id": u.id,
+                    "name": u.name,
+                    "email": u.email,
+                    "department": getattr(u, "department", None) if hasattr(u, "department") else None,
+                    "ready_score": rs,
+                    "current_streak": streak,
+                    "projects": p,
+                    "devlogs": d,
+                    "tags": tags[:4],
+                }
+            )
+
+        if len(watchlist) >= 60:
+            break
+
+    departments = []
+    if hasattr(User, "department"):
+        dept_rows = (
+            db.session.query(User.department)
+            .filter(User.university_id == tenant.id, User.role == "student", User.department.isnot(None))
+            .distinct()
+            .order_by(User.department.asc())
+            .all()
+        )
+        departments = [r[0] for r in dept_rows if r and r[0]]
+
+    return render_template(
+        "admin/strategy.html",
+        tenant=tenant,
+        departments=departments,
+        selected_department=dept,
+        min_ready=min_ready,
+        start=(start_dt.strftime("%Y-%m-%d") if start_dt else ""),
+        end=(end_dt.strftime("%Y-%m-%d") if end_dt else ""),
+        funnel=funnel,
+        top_gaps=top_gaps,
+        top_blockers=top_blockers,
+        top_warnings=top_warnings,
+        top_missing_keywords=top_missing_keywords,
+        watchlist=watchlist,
+        summary={
+            "total_students": total_students,
+            "profile_done": profile_done,
+            "has_project": has_project,
+            "has_devlog": has_devlog,
+            "has_public_portfolio": has_public_portfolio,
+            "job_ready": job_ready,
+        },
+    )

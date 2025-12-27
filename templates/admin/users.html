@@ -7,14 +7,26 @@
 {% block admin_body %}
 <div>
 
+  {# Safe defaults (avoid undefined crashes) #}
+  {% set q = q|default('') %}
+  {% set role_filter = role_filter|default('') %}
+  {% set selected_department = selected_department|default('') %}
+  {% set departments = departments|default([]) %}
+  {% set universities = universities|default([]) %}
+  {% set users = users|default([]) %}
+
   <!-- Title + description -->
   <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <div>
       <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">
-        Admin · Users
+        {% if is_university_admin and not is_global_admin %}
+          Admin · Students
+        {% else %}
+          Admin · Users
+        {% endif %}
       </h1>
       <p class="text-[11px] text-slate-300/80 mt-1">
-        Manage roles, university assignments, and credit visibility.
+        Manage users, university assignments, and admin controls.
         {% if not is_super_admin and not is_ultra_admin %}
           <span class="block mt-0.5 text-[10px] text-amber-300/80">
             You are a tenant-scoped admin. You can manage only users in your university.
@@ -24,10 +36,85 @@
     </div>
   </div>
 
+  {# -------------------------------------------------------------- #}
+  {# University Admin: Add student + bulk import                     #}
+  {# -------------------------------------------------------------- #}
+  {% if is_university_admin and not is_global_admin %}
+    <div class="grid gap-4 md:grid-cols-2 mb-4">
+
+      <!-- Add student -->
+      <div class="glass-card rounded-2xl px-4 py-4 text-[12px]">
+        <h2 class="text-sm font-semibold mb-1">Add a student</h2>
+        <p class="text-[11px] text-slate-400/80 mb-3">
+          Creates a student in your university tenant. A temporary password will be generated.
+        </p>
+
+        <form method="post" class="grid gap-3">
+          <input type="hidden" name="action" value="add_student"/>
+
+          <div>
+            <label class="block text-[11px] text-slate-400/80 mb-1">Email *</label>
+            <input name="email" type="email" required
+              class="w-full rounded-xl bg-slate-900/60 border border-slate-700/60 px-3 py-2 text-[12px] outline-none"
+              placeholder="student@university.edu"/>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="block text-[11px] text-slate-400/80 mb-1">Name</label>
+              <input name="name" type="text"
+                class="w-full rounded-xl bg-slate-900/60 border border-slate-700/60 px-3 py-2 text-[12px] outline-none"
+                placeholder="Student name"/>
+            </div>
+
+            <div>
+              <label class="block text-[11px] text-slate-400/80 mb-1">Department</label>
+              <input name="department" type="text"
+                class="w-full rounded-xl bg-slate-900/60 border border-slate-700/60 px-3 py-2 text-[12px] outline-none"
+                placeholder="CSE / ECE / MBA"/>
+            </div>
+          </div>
+
+          <div class="flex justify-end">
+            <button type="submit" class="btn-primary text-[11px] px-4 py-2">Add student</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Bulk import -->
+      <div class="glass-card rounded-2xl px-4 py-4 text-[12px]">
+        <h2 class="text-sm font-semibold mb-1">Bulk import (CSV)</h2>
+        <p class="text-[11px] text-slate-400/80 mb-3">
+          Upload CSV with headers: <span class="font-mono">email,name,department</span>.<br/>
+          New accounts get temporary passwords (downloaded as a CSV).
+        </p>
+
+        <form method="post" enctype="multipart/form-data" class="grid gap-3">
+          <input type="hidden" name="action" value="bulk_import"/>
+
+          <div>
+            <label class="block text-[11px] text-slate-400/80 mb-1">CSV file</label>
+            <input name="csv_file" type="file" accept=".csv" required
+              class="w-full rounded-xl bg-slate-900/60 border border-slate-700/60 px-3 py-2 text-[12px] outline-none"/>
+          </div>
+
+          <div class="flex justify-end">
+            <button type="submit" class="btn-primary text-[11px] px-4 py-2">Import</button>
+          </div>
+        </form>
+
+        <div class="text-[10px] text-slate-400/80 mt-2">
+          Tip: Max 500 rows per import (safety cap).
+        </div>
+      </div>
+
+    </div>
+  {% endif %}
+
   <!-- Filters -->
   <div class="glass-card rounded-2xl px-4 py-3 mb-4 text-[13px]">
     <form method="get" class="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
-      
+
       <!-- Search -->
       <div class="flex-1 w-full">
         <label class="block text-xs font-semibold mb-1 text-slate-200/90">
@@ -42,27 +129,48 @@
         />
       </div>
 
-      <!-- Role filter -->
-      <div class="w-full sm:w-40">
-        <label class="block text-xs font-semibold mb-1 text-slate-200/90">
-          Role
-        </label>
-        <select
-          name="role"
-          class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-        >
-          <option value="">All</option>
-          <option value="student" {% if role_filter=='student' %}selected{% endif %}>Student</option>
-          <option value="university_admin" {% if role_filter=='university_admin' %}selected{% endif %}>University admin</option>
-          <option value="super_admin" {% if role_filter=='super_admin' %}selected{% endif %}>Super admin</option>
-          <option value="ultra_admin" {% if role_filter=='ultra_admin' %}selected{% endif %}>Ultra admin</option>
-        </select>
-      </div>
+      {% if is_university_admin and not is_global_admin %}
+        <!-- Department filter (uni admin) -->
+        <div class="w-full sm:w-44">
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
+            Department
+          </label>
+          <select
+            name="department"
+            class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          >
+            <option value="">All</option>
+            {% for d in departments %}
+              <option value="{{ d }}" {% if selected_department == d %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% else %}
+        <!-- Role filter (global admins) -->
+        <div class="w-full sm:w-44">
+          <label class="block text-xs font-semibold mb-1 text-slate-200/90">
+            Role
+          </label>
+          <select
+            name="role"
+            class="w-full rounded-lg border border-slate-500/70 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          >
+            <option value="">All</option>
+            <option value="student" {% if role_filter=='student' %}selected{% endif %}>Student</option>
+            <option value="university_admin" {% if role_filter=='university_admin' %}selected{% endif %}>University admin</option>
+            <option value="super_admin" {% if role_filter=='super_admin' %}selected{% endif %}>Super admin</option>
+            <option value="ultra_admin" {% if role_filter=='ultra_admin' %}selected{% endif %}>Ultra admin</option>
+          </select>
+        </div>
+      {% endif %}
 
-      <div>
+      <div class="flex gap-2">
         <button type="submit" class="btn-primary text-xs px-3 py-2">
           Apply filters
         </button>
+        <a href="{{ url_for('admin.users') }}" class="btn-ghost text-xs px-3 py-2">
+          Reset
+        </a>
       </div>
 
     </form>
@@ -73,7 +181,7 @@
   </div>
 
   <!-- User list -->
-  {% if users %}
+  {% if users and users|length > 0 %}
     <div class="glass-card rounded-2xl overflow-hidden text-[11px]">
       <table class="min-w-full">
 
@@ -93,7 +201,7 @@
         <!-- Table body -->
         <tbody>
         {% for u in users %}
-          {% set target_role = u.role or "student" %}
+          {% set target_role = ((u.role or 'student')|lower) %}
           {% set cannot_edit = false %}
 
           {# Permission rules ------------------------------------------------ #}
@@ -105,16 +213,20 @@
             {% set cannot_edit = true %}
           {% endif %}
 
-          {% set plan_raw = (u.subscription_status or "free") %}
-          {% set plan = plan_raw.lower() %}
+          {% set plan_raw = (u.subscription_status if u.subscription_status is defined else 'free') or 'free' %}
+          {% set plan = (plan_raw|string)|lower %}
+
+          {# Balance fields may not exist depending on model #}
+          {% set free_bal = (u.coins_free if u.coins_free is defined else 0) %}
+          {% set pro_bal = (u.coins_pro if u.coins_pro is defined else 0) %}
 
           <tr class="border-t border-slate-700/60">
-            
+
             <!-- User info -->
             <td class="px-3 py-2 align-top">
               <div class="font-semibold text-slate-50 text-[11px] flex items-center gap-1.5 flex-wrap">
                 {{ u.email }}
-                {% if current_user.id == u.id %}
+                {% if current_user is defined and current_user.id is defined and current_user.id == u.id %}
                   <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-400/60 text-emerald-200">
                     You
                   </span>
@@ -137,6 +249,11 @@
                   {{ u.university.name }}
                 </div>
               {% endif %}
+              {% if u.department is defined and u.department %}
+                <div class="mt-0.5 text-[10px] text-slate-400/80">
+                  Dept: {{ u.department }}
+                </div>
+              {% endif %}
             </td>
 
             <!-- Role badge -->
@@ -147,65 +264,79 @@
                 "super_admin": "border-purple-400/50 bg-purple-500/10 text-purple-200",
                 "ultra_admin": "border-red-400/50 bg-red-500/10 text-red-200"
               } %}
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] {{ role_color[target_role] }}">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] {{ role_color.get(target_role, 'border-slate-500/60 bg-slate-900/80 text-slate-200') }}">
                 {{ target_role }}
               </span>
             </td>
 
             <!-- Edit form -->
             <td class="px-3 py-2 align-top">
-              {% if universities %}
+              {% if universities and universities|length > 0 %}
                 <form method="post" class="space-y-1">
+                  <input type="hidden" name="action" value="update_user"/>
                   <input type="hidden" name="user_id" value="{{ u.id }}"/>
 
                   <!-- University -->
                   <label class="block text-[10px] text-slate-300/80 mb-0.5">University</label>
-                  <select
-                    name="university_id"
-                    class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1 text-[11px]
-                           {% if cannot_edit %}opacity-40 cursor-not-allowed{% endif %}"
-                    {% if cannot_edit %}disabled{% endif %}
-                  >
-                    {% if is_super_admin or is_ultra_admin %}
-                      <option value="" {% if not u.university_id %}selected{% endif %}>(None)</option>
+
+                  {% if is_university_admin and not is_global_admin %}
+                    {# tenant-scoped admins: university is effectively fixed #}
+                    <input type="hidden" name="university_id" value="{{ u.university_id if u.university_id is defined else '' }}"/>
+                    <div class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1 text-[11px] opacity-70">
+                      {{ (u.university.name if u.university else '—') }}
+                    </div>
+                  {% else %}
+                    <select
+                      name="university_id"
+                      class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1 text-[11px]
+                             {% if cannot_edit %}opacity-40 cursor-not-allowed{% endif %}"
+                      {% if cannot_edit %}disabled{% endif %}
+                    >
+                      {% if is_super_admin or is_ultra_admin %}
+                        <option value="" {% if not u.university_id %}selected{% endif %}>(None)</option>
+                      {% endif %}
+
                       {% for uni in universities %}
                         <option value="{{ uni.id }}" {% if u.university_id == uni.id %}selected{% endif %}>
                           {{ uni.name }}
                         </option>
                       {% endfor %}
-                    {% else %}
-                      {% for uni in universities %}
-                        <option value="{{ uni.id }}" {% if u.university_id == uni.id %}selected{% endif %}>
-                          {{ uni.name }}
-                        </option>
-                      {% endfor %}
-                    {% endif %}
-                  </select>
+                    </select>
+                  {% endif %}
 
                   <!-- Role -->
                   <label class="block text-[10px] text-slate-300/80 mt-1 mb-0.5">Role</label>
-                  <select
-                    name="role"
-                    class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1 text-[11px]
-                           {% if cannot_edit %}opacity-40 cursor-not-allowed{% endif %}"
-                    {% if cannot_edit %}disabled{% endif %}
-                  >
-                    <option value="student" {% if target_role=='student' %}selected{% endif %}>Student</option>
-                    <option value="university_admin" {% if target_role=='university_admin' %}selected{% endif %}>University admin</option>
 
-                    {% if is_super_admin or is_ultra_admin %}
-                      <option value="super_admin" {% if target_role=='super_admin' %}selected{% endif %}>Super admin</option>
-                    {% endif %}
-                    {% if is_ultra_admin %}
-                      <option value="ultra_admin" {% if target_role=='ultra_admin' %}selected{% endif %}>Ultra admin</option>
-                    {% endif %}
-                  </select>
+                  {% if is_university_admin and not is_global_admin %}
+                    {# UI lock: uni admins manage students only #}
+                    <input type="hidden" name="role" value="student"/>
+                    <div class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1 text-[11px] opacity-70">
+                      student
+                    </div>
+                  {% else %}
+                    <select
+                      name="role"
+                      class="w-full rounded-md border border-slate-600/70 bg-slate-950/80 px-2 py-1 text-[11px]
+                             {% if cannot_edit %}opacity-40 cursor-not-allowed{% endif %}"
+                      {% if cannot_edit %}disabled{% endif %}
+                    >
+                      <option value="student" {% if target_role=='student' %}selected{% endif %}>Student</option>
+                      <option value="university_admin" {% if target_role=='university_admin' %}selected{% endif %}>University admin</option>
+
+                      {% if is_super_admin or is_ultra_admin %}
+                        <option value="super_admin" {% if target_role=='super_admin' %}selected{% endif %}>Super admin</option>
+                      {% endif %}
+                      {% if is_ultra_admin %}
+                        <option value="ultra_admin" {% if target_role=='ultra_admin' %}selected{% endif %}>Ultra admin</option>
+                      {% endif %}
+                    </select>
+                  {% endif %}
 
                   <!-- Save -->
                   <div class="flex justify-end pt-1">
                     {% if cannot_edit %}
                       <button type="button"
-                        class="btn-secondary opacity-40 cursor-not-allowed text-[10px] px-3 py-1.5"
+                        class="btn-ghost opacity-40 cursor-not-allowed text-[10px] px-3 py-1.5"
                         disabled>
                         Restricted
                       </button>
@@ -230,17 +361,11 @@
                   {{ plan_raw | capitalize }}
                 </span>
                 {% if plan == 'pro' %}
-                  <span class="text-[10px] text-emerald-300/80">
-                    Active Pro
-                  </span>
+                  <span class="text-[10px] text-emerald-300/80">Active Pro</span>
                 {% elif plan == 'canceled' %}
-                  <span class="text-[10px] text-slate-400/80">
-                    Canceled / expired
-                  </span>
+                  <span class="text-[10px] text-slate-400/80">Canceled / expired</span>
                 {% else %}
-                  <span class="text-[10px] text-slate-400/80">
-                    Free
-                  </span>
+                  <span class="text-[10px] text-slate-400/80">Free</span>
                 {% endif %}
               </div>
             </td>
@@ -248,11 +373,11 @@
             <!-- Balances -->
             <td class="px-3 py-2 align-top text-right text-[11px]">
               <div>
-                🪙 <span class="font-semibold">{{ u.coins_free or 0 }}</span>
+                🪙 <span class="font-semibold">{{ free_bal }}</span>
                 <span class="text-slate-400/70">Silver</span>
               </div>
               <div class="mt-0.5">
-                ⭐ <span class="font-semibold">{{ u.coins_pro or 0 }}</span>
+                ⭐ <span class="font-semibold">{{ pro_bal }}</span>
                 <span class="text-slate-400/70">Gold</span>
               </div>
             </td>
@@ -266,11 +391,13 @@
             <td class="px-3 py-2 align-top text-right text-[11px]">
               <div class="flex flex-col items-end gap-1.5">
 
-                <!-- Credits link -->
-                <a href="{{ url_for('admin.credits') }}?email={{ u.email | urlencode }}"
-                   class="btn-ghost inline-flex justify-center text-[10px] px-2 py-1">
-                  Credits →
-                </a>
+                {# Credits panel is GLOBAL ONLY in routes.py → hide link for uni admins #}
+                {% if is_global_admin %}
+                  <a href="{{ url_for('admin.credits') }}?email={{ u.email | urlencode }}"
+                     class="btn-ghost inline-flex justify-center text-[10px] px-2 py-1">
+                    Credits →
+                  </a>
+                {% endif %}
 
                 {% if is_super_admin or is_ultra_admin %}
                   <!-- Verification controls -->

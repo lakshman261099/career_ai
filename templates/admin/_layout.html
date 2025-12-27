@@ -7,17 +7,74 @@
 <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 mt-6 mb-16">
 
   {# ------------------------------------------------------------------ #}
-  {# Resolve an "effective tenant" for UI                                #}
-  {# - Prefer host-based g.current_tenant (true tenant routing)           #}
-  {# - Else fallback to current_user.university for university admins      #}
+  {# Robust role detection (works even if role string is missing)         #}
+  {# - callable-safe (attr can be bool or method)                         #}
   {# ------------------------------------------------------------------ #}
-  {% set role = (current_user.role or 'student') %}
-  {% set tenant_host = g.current_tenant if g.current_tenant is defined else None %}
-  {% set tenant_user = current_user.university if current_user is defined and current_user.university is defined else None %}
-  {% set effective_tenant = tenant_host if tenant_host else (tenant_user if role == 'university_admin' else None) %}
+  {% set _authed = (current_user.is_authenticated if current_user is defined else false) %}
+  {% set role_raw = (((((current_user.role if current_user is defined and current_user.role is defined else '') or '')|trim)|lower) if _authed else '') %}
+
+  {% set _ultra_flag = false %}
+  {% if _authed and (current_user is defined) and (current_user.is_ultra_admin is defined) %}
+    {% if current_user.is_ultra_admin is callable %}
+      {% set _ultra_flag = current_user.is_ultra_admin() %}
+    {% else %}
+      {% set _ultra_flag = current_user.is_ultra_admin %}
+    {% endif %}
+  {% endif %}
+
+  {% set _super_flag = false %}
+  {% if _authed and (current_user is defined) and (current_user.is_super_admin is defined) %}
+    {% if current_user.is_super_admin is callable %}
+      {% set _super_flag = current_user.is_super_admin() %}
+    {% else %}
+      {% set _super_flag = current_user.is_super_admin %}
+    {% endif %}
+  {% endif %}
+
+  {% set _uni_flag = false %}
+  {% if _authed and (current_user is defined) and (current_user.is_university_admin is defined) %}
+    {% if current_user.is_university_admin is callable %}
+      {% set _uni_flag = current_user.is_university_admin() %}
+    {% else %}
+      {% set _uni_flag = current_user.is_university_admin %}
+    {% endif %}
+  {% endif %}
+
+  {% set is_ultra = _authed and (_ultra_flag or role_raw == 'ultra_admin') %}
+  {% set is_super = _authed and (_super_flag or role_raw == 'super_admin') %}
+  {% set is_uni_admin = _authed and (_uni_flag or role_raw == 'university_admin') %}
+  {% set is_global = is_ultra or is_super %}
+
+  {% set role_key = 'student' %}
+  {% if is_ultra %}
+    {% set role_key = 'ultra_admin' %}
+  {% elif is_super %}
+    {% set role_key = 'super_admin' %}
+  {% elif is_uni_admin %}
+    {% set role_key = 'university_admin' %}
+  {% endif %}
+
+  {# Default active tab (prevents undefined errors) #}
+  {% set active_tab = active_tab|default('') %}
 
   {# ------------------------------------------------------------------ #}
-  {# Admin header (role + tenant badge)                                  #}
+  {# Resolve effective tenant for UI                                     #}
+  {# - Prefer host-based g.current_tenant (true tenant routing)           #}
+  {# - Else fallback to context tenant passed by route                    #}
+  {# - Else fallback to current_user.university for university admins      #}
+  {# ------------------------------------------------------------------ #}
+  {% set tenant_host = None %}
+  {% if g is defined and g.current_tenant is defined %}
+    {% set tenant_host = g.current_tenant %}
+  {% endif %}
+
+  {% set tenant_ctx = tenant if tenant is defined else None %}
+  {% set tenant_user = (current_user.university if current_user is defined and current_user.university is defined else None) %}
+
+  {% set effective_tenant = tenant_host if tenant_host else (tenant_ctx if tenant_ctx else (tenant_user if is_uni_admin else None)) %}
+
+  {# ------------------------------------------------------------------ #}
+  {# Admin header                                                        #}
   {# ------------------------------------------------------------------ #}
   <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
     <div>
@@ -27,18 +84,18 @@
 
       <div class="flex flex-wrap items-center gap-2 text-[12px] text-slate-300/80">
         <span class="inline-flex items-center rounded-full border border-slate-600/70 bg-slate-900/80 px-2 py-0.5 text-[11px]">
-          {% if role == 'ultra_admin' %}
+          {% if role_key == 'ultra_admin' %}
             Ultra Admin
-          {% elif role == 'super_admin' %}
+          {% elif role_key == 'super_admin' %}
             Super Admin
-          {% elif role == 'university_admin' %}
+          {% elif role_key == 'university_admin' %}
             University Admin
           {% else %}
             Student
           {% endif %}
         </span>
 
-        {# Tenant badge: show BOTH "host tenant" and "effective tenant" when relevant #}
+        {# Tenant badge #}
         {% if tenant_host %}
           <span class="inline-flex items-center rounded-full border border-indigo-400/60 bg-indigo-500/10 px-2 py-0.5 text-[11px]">
             Tenant (host): {{ tenant_host.name }}
@@ -46,34 +103,35 @@
         {% endif %}
 
         {% if effective_tenant %}
-          {% if not tenant_host %}
+          {% if not tenant_host and is_uni_admin %}
             <span class="inline-flex items-center rounded-full border border-amber-400/60 bg-amber-500/10 px-2 py-0.5 text-[11px]">
               Tenant (fallback): {{ effective_tenant.name }}
             </span>
           {% endif %}
         {% else %}
           <span class="inline-flex items-center rounded-full border border-slate-500/60 bg-slate-800/70 px-2 py-0.5 text-[11px]">
-            Global view
+            {% if is_global %}
+              Global view
+            {% else %}
+              Tenant not resolved
+            {% endif %}
           </span>
         {% endif %}
       </div>
     </div>
 
     <div class="text-right text-[11px] text-slate-400/80">
-      <div>{{ current_user.email }}</div>
+      <div>{{ current_user.email if current_user is defined and current_user.email is defined else '' }}</div>
       <div class="text-[10px]">
-        Admin tools are tenant-scoped and fully audit-logged.
+        Admin tools are tenant-scoped and audit-logged.
       </div>
     </div>
   </div>
 
   {# ------------------------------------------------------------------ #}
-  {# IMPORTANT: Tenant routing warning for University Admins              #}
-  {# If they aren't on their tenant domain, analytics may look empty.     #}
+  {# Tenant routing warning for University Admins                         #}
   {# ------------------------------------------------------------------ #}
-  {% if role == 'university_admin'
-        and not current_user.is_super_admin
-        and not current_user.is_ultra_admin %}
+  {% if is_uni_admin and not is_global %}
     {% if not tenant_host %}
       <div class="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 mb-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -82,14 +140,18 @@
               You’re not on your university tenant domain.
             </div>
             <div class="text-[11px] text-slate-200/80 mt-1">
-              Analytics and student data are tenant-scoped. If you access the admin panel on the main domain / localhost,
-              <span class="font-semibold">tenant resolution (g.current_tenant) may be empty</span> and charts can show “no data”.
+              For best results, open the admin panel on your university domain so <span class="font-semibold">g.current_tenant</span> resolves cleanly.
+              Fallback mode is supported, but tenant domains are still recommended for stable routing and branding.
             </div>
             {% if effective_tenant %}
               <div class="text-[11px] text-slate-200/80 mt-2">
                 We detected your university as:
                 <span class="font-semibold text-slate-100">{{ effective_tenant.name }}</span>
                 (fallback mode).
+              </div>
+            {% else %}
+              <div class="text-[11px] text-slate-200/80 mt-2">
+                We could not detect your university. Ask a global admin to link your account to a university.
               </div>
             {% endif %}
           </div>
@@ -107,46 +169,62 @@
   {% endif %}
 
   {# ------------------------------------------------------------------ #}
-  {# Admin sub-navigation — role-aware, dean-friendly                     #}
-  {# GOAL: keep "Student Analytics" and "Credit Analytics" separate tabs  #}
+  {# Admin navigation — dean-friendly, separate analytics tabs            #}
   {# ------------------------------------------------------------------ #}
   <div class="glass-card rounded-2xl px-3 py-2 mb-4">
     <nav class="flex flex-wrap gap-2 text-[11px]">
 
-      {# Always visible ------------------------------------------------ #}
-      <a href="{{ url_for('admin.dashboard') }}"
-         class="nav-link {% if active_tab == 'overview' %}nav-active{% endif %}">
-        Overview
-      </a>
+      {# Overview should be role-correct #}
+      {% if is_uni_admin and not is_global %}
+        <a href="{{ url_for('admin.strategy') }}"
+           class="nav-link {% if active_tab in ['strategy','overview'] %}nav-active{% endif %}">
+          Overview
+        </a>
+      {% else %}
+        <a href="{{ url_for('admin.dashboard') }}"
+           class="nav-link {% if active_tab == 'overview' %}nav-active{% endif %}">
+          Overview
+        </a>
+      {% endif %}
 
-      {# Label tweak: for University Admins, call it Students (clearer) #}
       <a href="{{ url_for('admin.users') }}"
          class="nav-link {% if active_tab == 'users' %}nav-active{% endif %}">
-        {% if role == 'university_admin' and not current_user.is_super_admin and not current_user.is_ultra_admin %}
+        {% if is_uni_admin and not is_global %}
           Students
         {% else %}
           Users
         {% endif %}
       </a>
 
-      {# Credit Analytics / Adjustments (separate from Student Analytics) #}
-      <a href="{{ url_for('admin.credits') }}"
-         class="nav-link {% if active_tab in ['credits', 'credit_analytics'] %}nav-active{% endif %}">
-        Credit Analytics
-      </a>
+      {# University Admin: DEAN dashboard + student analytics #}
+      {% if is_uni_admin and not is_global %}
+        <a href="{{ url_for('admin.strategy') }}"
+           class="nav-link {% if active_tab == 'strategy' %}nav-active{% endif %}">
+          Dean Dashboard
+        </a>
 
-      {# University Admin – Student Analytics only (tenant-scoped) ------ #}
-      {% if role == 'university_admin'
-            and not current_user.is_super_admin
-            and not current_user.is_ultra_admin %}
         <a href="{{ url_for('admin.analytics') }}"
            class="nav-link {% if active_tab in ['analytics', 'student_analytics'] %}nav-active{% endif %}">
           Student Analytics
         </a>
+
+        {# Uni admins can view their own wallet (read-only actions are enforced server-side) #}
+        <a href="{{ url_for('admin.university_wallets') }}"
+           class="nav-link {% if active_tab in ['wallets','university_wallets'] %}nav-active{% endif %}">
+          University Wallet
+        </a>
       {% endif %}
 
-      {# Global Admins (Super / Ultra) – show all platform functions ----- #}
-      {% if current_user.is_super_admin or current_user.is_ultra_admin %}
+      {# Credits are GLOBAL ONLY (matches backend) #}
+      {% if is_global %}
+        <a href="{{ url_for('admin.credits') }}"
+           class="nav-link {% if active_tab in ['credits', 'credit_analytics'] %}nav-active{% endif %}">
+          Credits
+        </a>
+      {% endif %}
+
+      {# Global Admin tools #}
+      {% if is_global %}
         <span class="inline-flex items-center px-1 text-slate-500/80 text-[10px] ml-1">
           · Platform
         </span>
@@ -157,7 +235,7 @@
         </a>
 
         <a href="{{ url_for('admin.university_wallets') }}"
-           class="nav-link {% if active_tab == 'wallets' %}nav-active{% endif %}">
+           class="nav-link {% if active_tab in ['wallets','university_wallets'] %}nav-active{% endif %}">
           Wallets
         </a>
 
@@ -172,8 +250,7 @@
         </a>
       {% endif %}
 
-      {# Ultra Admin ONLY – Audit -------------------------------------- #}
-      {% if current_user.is_ultra_admin %}
+      {% if is_ultra %}
         <span class="inline-flex items-center px-1 text-slate-500/80 text-[10px] ml-1">
           · Security
         </span>
@@ -190,7 +267,7 @@
   </div>
 
   {# ------------------------------------------------------------------ #}
-  {# Actual page content                                                #}
+  {# Actual page content                                                 #}
   {# ------------------------------------------------------------------ #}
   <div>
     {% block admin_body %}{% endblock %}

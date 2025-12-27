@@ -7,7 +7,7 @@ from datetime import datetime
 from alembic import command
 from alembic.config import Config
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, send_from_directory, url_for, g
+from flask import Flask, render_template, request, send_from_directory, url_for, g, redirect
 from flask_login import current_user, login_required
 from logtail import LogtailHandler
 
@@ -64,9 +64,7 @@ def pro_coins():
 def is_pro():
     if getattr(current_user, "is_authenticated", False):
         try:
-            status = (
-                getattr(current_user, "subscription_status", "free") or "free"
-            ).lower()
+            status = (getattr(current_user, "subscription_status", "free") or "free").lower()
             return bool(getattr(current_user, "is_pro", False) or status == "pro")
         except Exception:
             try:
@@ -86,6 +84,64 @@ def register_template_globals(app: Flask):
     )
 
 
+# -------------------- Admin role helpers (robust + env overrides) --------------------
+def _normalize_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+def _email_in_env_list(env_key: str, email: str) -> bool:
+    raw = os.getenv(env_key, "") or ""
+    if not raw:
+        return False
+    allowed = {e.strip().lower() for e in raw.split(",") if e.strip()}
+    return _normalize_email(email) in allowed
+
+
+def _is_ultra_admin_user(u) -> bool:
+    if not getattr(u, "is_authenticated", False):
+        return False
+    email = _normalize_email(getattr(u, "email", "") or "")
+    if _email_in_env_list("ULTRA_ADMIN_EMAILS", email):
+        return True
+    role = (getattr(u, "role", "") or "").lower()
+    if role == "ultra_admin":
+        return True
+    return bool(getattr(u, "is_ultra_admin", False))
+
+
+def _is_super_admin_user(u) -> bool:
+    if not getattr(u, "is_authenticated", False):
+        return False
+    email = _normalize_email(getattr(u, "email", "") or "")
+    if _email_in_env_list("ADMIN_EMAILS", email):
+        return True
+    role = (getattr(u, "role", "") or "").lower()
+    if role == "super_admin":
+        return True
+    return bool(getattr(u, "is_super_admin", False))
+
+
+def _is_global_admin_user(u) -> bool:
+    return _is_ultra_admin_user(u) or _is_super_admin_user(u)
+
+
+def _is_university_admin_user(u) -> bool:
+    if not getattr(u, "is_authenticated", False):
+        return False
+    role = (getattr(u, "role", "") or "").lower()
+    if role == "university_admin":
+        return True
+    return bool(getattr(u, "is_university_admin", False))
+
+
+def _is_any_admin_user(u) -> bool:
+    if not getattr(u, "is_authenticated", False):
+        return False
+    if _is_global_admin_user(u) or _is_university_admin_user(u):
+        return True
+    return bool(getattr(u, "is_admin", False))
+
+
 # -------------------- Auto Alembic ---------------------
 def run_auto_migrations(app: Flask) -> None:
     from sqlalchemy import create_engine, inspect, text
@@ -99,11 +155,7 @@ def run_auto_migrations(app: Flask) -> None:
         return
 
     cfg = Config(os.path.join(app.root_path, "alembic.ini"))
-    url = (
-        db_url.replace("postgres://", "postgresql://", 1)
-        if db_url.startswith("postgres://")
-        else db_url
-    )
+    url = db_url.replace("postgres://", "postgresql://", 1) if db_url.startswith("postgres://") else db_url
     cfg.set_main_option("sqlalchemy.url", url)
 
     def _upgrade():
@@ -120,9 +172,7 @@ def run_auto_migrations(app: Flask) -> None:
 
     if "Can't locate revision" in msg1 or "No such revision" in msg1:
         try:
-            app.logger.warning(
-                "Dropping alembic_version to clear stale revision pointer..."
-            )
+            app.logger.warning("Dropping alembic_version to clear stale revision pointer...")
             engine = create_engine(url)
             with engine.begin() as conn:
                 conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
@@ -139,7 +189,11 @@ def run_auto_migrations(app: Flask) -> None:
         try:
             engine = create_engine(url)
             insp = inspect(engine)
-            existing = set(insp.get_table_names(schema="public"))
+            try:
+                existing = set(insp.get_table_names(schema="public"))
+            except Exception:
+                existing = set(insp.get_table_names())
+
             core_seen = {"university", "user"} & existing
             if core_seen:
                 with app.app_context():
@@ -148,9 +202,7 @@ def run_auto_migrations(app: Flask) -> None:
 
                     autogen_msg = f"autosync_{_dt.utcnow().strftime('%Y%m%d%H%M%S')}"
                     command.revision(cfg, message=autogen_msg, autogenerate=True)
-                    app.logger.warning(
-                        "Alembic created an autogenerate 'autosync' migration (diff-only)."
-                    )
+                    app.logger.warning("Alembic created an autogenerate 'autosync' migration (diff-only).")
                     command.upgrade(cfg, "head")
                     app.logger.info("Alembic migrations applied after autosync.")
                     return
@@ -184,16 +236,10 @@ def create_app():
     app.logger.setLevel(logging.INFO)
 
     # Core config
-    secret = (
-        os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY") or "dev-secret-key"
-    )
+    secret = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY") or "dev-secret-key"
     app.config["SECRET_KEY"] = secret
 
-    db_url = (
-        os.getenv("DATABASE_URL")
-        or os.getenv("DEV_DATABASE_URI")
-        or "sqlite:///career_ai.db"
-    )
+    db_url = os.getenv("DATABASE_URL") or os.getenv("DEV_DATABASE_URI") or "sqlite:///career_ai.db"
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
@@ -211,10 +257,7 @@ def create_app():
         )
         try:
             from werkzeug.middleware.proxy_fix import ProxyFix
-
-            app.wsgi_app = ProxyFix(
-                app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1
-            )
+            app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
         except Exception:
             pass
 
@@ -243,28 +286,77 @@ def create_app():
         """
         g.current_tenant = None
         host = (request.host or "").split(":")[0]
-
         if not host:
             return
 
-        uni = University.query.filter(
-            (University.domain == host) | (University.tenant_slug == host)
-        ).first()
+        try:
+            uni = University.query.filter(
+                (University.domain == host) | (University.tenant_slug == host)
+            ).first()
 
-        if not uni and host.count(".") >= 2:
-            parts = host.split(".")
-            # e.g. "careerai.veltech.ai" -> ["careerai","veltech","ai"]
-            mid = parts[-2]   # "veltech"
-            tld = parts[-1]   # "ai"
+            if not uni and host.count(".") >= 2:
+                parts = host.split(".")
+                # e.g. "careerai.veltech.ai" -> ["careerai","veltech","ai"]
+                mid = parts[-2]  # "veltech"
+                tld = parts[-1]  # "ai"
 
-            # Try tenant_slug == mid (veltech)
-            uni = University.query.filter(University.tenant_slug == mid).first()
-            if not uni:
-                # Try domain == "veltech.ai"
-                candidate_domain = f"{mid}.{tld}"
-                uni = University.query.filter(University.domain == candidate_domain).first()
+                uni = University.query.filter(University.tenant_slug == mid).first()
+                if not uni:
+                    candidate_domain = f"{mid}.{tld}"
+                    uni = University.query.filter(University.domain == candidate_domain).first()
 
-        g.current_tenant = uni
+            g.current_tenant = uni
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            g.current_tenant = None
+
+    # -------------------- HARD GUARD: Admins must not see student routes --------------------
+    @app.before_request
+    def enforce_admin_ui_isolation():
+        """
+        Server-side isolation:
+        - university_admin users should only use /admin/* + /auth/* + /settings/* + static.
+          Any other route -> redirect to admin.strategy (Dean Dashboard).
+        - super/ultra admins should only use /admin/* + /auth/* + /settings/* + static.
+          Any other route -> redirect to admin.dashboard.
+        """
+        try:
+            if not getattr(current_user, "is_authenticated", False):
+                return None
+
+            ep = request.endpoint  # can be None on 404
+            if not ep:
+                return None
+
+            # Always allow these
+            if ep == "static" or ep.startswith("static."):
+                return None
+            if ep.startswith("auth."):
+                return None
+            if ep.startswith("admin."):
+                return None
+            if ep.startswith("settings."):
+                return None
+            if ep in ("favicon", "landing"):
+                return None
+
+            # Block everything else for admins
+            if _is_any_admin_user(current_user):
+                if _is_university_admin_user(current_user) and not _is_global_admin_user(current_user):
+                    return redirect(url_for("admin.strategy"))
+                return redirect(url_for("admin.dashboard"))
+
+            return None
+        except Exception:
+            # never block the app if guard fails
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            return None
 
     # Blueprints
     app.register_blueprint(auth_bp, url_prefix="/auth")
@@ -282,14 +374,40 @@ def create_app():
     # Expose helper callables (legacy support)
     register_template_globals(app)
 
+    # -------------------- Role-aware home routing --------------------
+    def _admin_home_endpoint():
+        """
+        Preferred landing page for admins.
+        - university_admin → dean dashboard
+        - super/ultra_admin → admin dashboard
+        """
+        role = (getattr(current_user, "role", "") or "").lower()
+        if role == "university_admin":
+            return "admin.strategy"
+        return "admin.dashboard"
+
+    def _safe_url(endpoint, **kwargs):
+        try:
+            return url_for(endpoint, **kwargs)
+        except Exception:
+            return "#"
+
     # Routes
     @app.route("/", endpoint="landing")
     def landing():
+        # If logged in, send to correct UI
+        if getattr(current_user, "is_authenticated", False):
+            if _is_any_admin_user(current_user):
+                return redirect(_safe_url(_admin_home_endpoint()))
+            return redirect(_safe_url("dashboard"))
         return render_template("landing.html")
 
     @app.route("/dashboard", endpoint="dashboard")
     @login_required
     def dashboard():
+        # Admins should not see student dashboard
+        if _is_any_admin_user(current_user):
+            return redirect(_safe_url(_admin_home_endpoint()))
         return render_template("dashboard.html")
 
     @app.route("/favicon.ico")
@@ -306,73 +424,115 @@ def create_app():
         Uses g.current_tenant set in load_current_tenant().
         """
         tenant = getattr(g, "current_tenant", None)
+
+        # Fallback: if host-based tenant is missing but user is university-scoped, attach their university
+        if tenant is None and getattr(current_user, "is_authenticated", False):
+            uni_id = getattr(current_user, "university_id", None)
+            if uni_id:
+                try:
+                    tenant = University.query.get(int(uni_id))
+                except Exception:
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+                    tenant = None
+
         tenant_name = tenant.name if tenant else None
 
-        def safe_url(endpoint, **kwargs):
-            try:
-                return url_for(endpoint, **kwargs)
-            except Exception:
-                return "#"
+        # Decide nav mode
+        is_authed = bool(getattr(current_user, "is_authenticated", False))
+        is_university_admin = is_authed and _is_university_admin_user(current_user) and not _is_global_admin_user(current_user)
+        is_super_admin = is_authed and _is_global_admin_user(current_user)
+        is_admin = is_authed and _is_any_admin_user(current_user)
 
-        # Decide what "home" should be:
-        # - If logged in → dashboard
-        # - If logged out → landing
-        if getattr(current_user, "is_authenticated", False):
-            home_url = safe_url("dashboard")
+        nav_mode = "admin" if is_admin else "student"
+        nav_show_student_features = not is_admin
+
+        # Decide what "home" should be
+        if is_authed:
+            if is_admin:
+                home_url = _safe_url(_admin_home_endpoint())
+            else:
+                home_url = _safe_url("dashboard")
         else:
-            home_url = safe_url("landing")
+            home_url = _safe_url("landing")
 
         # Single portal for both resume scan & manual edit
-        portal_url = safe_url("settings.profile")
+        portal_url = _safe_url("settings.profile")
 
-        feature_paths = {
+        # Student feature paths (normal)
+        student_feature_paths = {
             "home": home_url,
-            "dashboard": safe_url("dashboard"),
+            "dashboard": _safe_url("dashboard"),
             "profile": portal_url,
-            "resume": portal_url,  # back-compat
-            "portfolio": safe_url("portfolio.index"),
-            "internships": safe_url("internships.index"),
-            "referral": safe_url("referral.index"),
-            "jobpack": safe_url("jobpack.index"),
-            "skillmapper": safe_url("skillmapper.index"),
-            "dream": safe_url("dream.index"),
-            "coach": safe_url("coach.index"),
-            "settings": safe_url("settings.index"),
-            "billing": safe_url("billing.shop"),
-            "login": safe_url("auth.login"),
-            "logout": safe_url("auth.logout"),
-            "signup": safe_url("auth.register"),
+            "resume": portal_url,
+            "portfolio": _safe_url("portfolio.index"),
+            "internships": _safe_url("internships.index"),
+            "referral": _safe_url("referral.index"),
+            "jobpack": _safe_url("jobpack.index"),
+            "skillmapper": _safe_url("skillmapper.index"),
+            "dream": _safe_url("dream.index"),
+            "coach": _safe_url("coach.index"),
+            "settings": _safe_url("settings.index"),
+            "billing": _safe_url("billing.shop"),
+            "login": _safe_url("auth.login"),
+            "logout": _safe_url("auth.logout"),
+            "signup": _safe_url("auth.register"),
         }
 
-        # Admin flag for navbar: role-based OR ADMIN_EMAILS override
-        nav_is_admin = False
-        if getattr(current_user, "is_authenticated", False):
-            # Role-based
-            if getattr(current_user, "is_admin", False) or getattr(
-                current_user, "is_super_admin", False
-            ):
-                nav_is_admin = True
-            else:
-                # Env override
-                emails = os.getenv("ADMIN_EMAILS", "")
-                if emails:
-                    allowed = {e.strip().lower() for e in emails.split(",") if e.strip()}
-                    if (current_user.email or "").lower() in allowed:
-                        nav_is_admin = True
+        # Admin feature paths (admin-only)
+        admin_feature_paths = {
+            "home": home_url,
+            "admin_home": _safe_url(_admin_home_endpoint()),
+            "admin_dashboard": _safe_url("admin.dashboard"),
+            "admin_analytics": _safe_url("admin.analytics"),
+            "admin_strategy": _safe_url("admin.strategy"),
+            "admin_users": _safe_url("admin.users"),
+            "admin_deals": _safe_url("admin.deals"),
+            "admin_vouchers": _safe_url("admin.vouchers"),
+            "settings": _safe_url("settings.index"),
+            "logout": _safe_url("auth.logout"),
+        }
+
+        # Keep legacy keys present so templates don’t crash; disable student ones for admin UI
+        feature_paths = dict(student_feature_paths)
+        if is_admin:
+            for k in [
+                "dashboard",
+                "profile",
+                "resume",
+                "portfolio",
+                "internships",
+                "referral",
+                "jobpack",
+                "skillmapper",
+                "dream",
+                "coach",
+                "billing",
+            ]:
+                feature_paths[k] = "#"
+            feature_paths.update(admin_feature_paths)
+
+        # Admin flag for navbar: robust
+        nav_is_admin = bool(is_admin)
 
         return dict(
-            now=datetime.utcnow(),  # used in footer
+            now=datetime.utcnow(),
             tenant=tenant,
             tenant_name=tenant_name,
             user_free=free_coins(),
             user_pro=pro_coins(),
             subscription_status=(
-                getattr(current_user, "subscription_status", "free")
-                if getattr(current_user, "is_authenticated", False)
-                else "free"
+                getattr(current_user, "subscription_status", "free") if is_authed else "free"
             ),
             feature_paths=feature_paths,
             nav_is_admin=nav_is_admin,
+            # NEW: role-aware UI flags for templates
+            nav_mode=nav_mode,
+            nav_show_student_features=nav_show_student_features,
+            nav_is_university_admin=is_university_admin,
+            nav_is_super_admin=is_super_admin,
         )
 
     @app.errorhandler(404)
@@ -381,7 +541,6 @@ def create_app():
 
     @app.errorhandler(500)
     def srv_error(e):
-        
         try:
             app.logger.exception("Unhandled 500 error")
             db.session.rollback()
@@ -400,9 +559,7 @@ def create_app():
     # Dev sqlite quickstart
     with app.app_context():
         is_sqlite = str(app.config["SQLALCHEMY_DATABASE_URI"]).startswith("sqlite")
-        is_prod = (
-            os.getenv("FLASK_ENV") == "production" or os.getenv("ENV") == "production"
-        )
+        is_prod = (os.getenv("FLASK_ENV") == "production" or os.getenv("ENV") == "production")
         if is_sqlite and not is_prod:
             db.create_all()
 
