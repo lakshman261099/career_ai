@@ -8,57 +8,197 @@
 <div>
 
   <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-    <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">
-      University Analytics · {{ tenant.name if tenant else "Unknown University" }}
-    </h1>
-    <a href="{{ url_for('admin.analytics_export') }}" class="btn-ghost text-[11px] px-3 py-1.5">
-      Download CSV
-    </a>
+    <div>
+      <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">
+        University Analytics · {{ tenant.name if tenant else "Unknown University" }}
+      </h1>
+      <div class="text-[11px] text-slate-400/80 mt-1">
+        Dean view: readiness, consistency, proof-of-work, and tool adoption.
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <a href="{{ url_for('admin.analytics_export') }}{% if request.query_string %}?{{ request.query_string.decode('utf-8') }}{% endif %}"
+         class="btn-ghost text-[11px] px-3 py-1.5">
+        Download CSV
+      </a>
+    </div>
   </div>
 
-  {% if analytics_insights %}
+  {# -------------------------------------------------------------- #}
+  {# Filters                                                        #}
+  {# -------------------------------------------------------------- #}
+  <div class="glass-card rounded-2xl px-4 py-4 mb-5 text-[12px]">
+    <div class="flex items-center justify-between gap-3 mb-3">
+      <h2 class="text-sm font-semibold">Filters</h2>
+      <div class="text-[11px] text-slate-400/80">
+        Narrow by cohort slice (ready score, activity window, verification, pro).
+      </div>
+    </div>
+
+    <form method="get" action="{{ url_for('admin.analytics') }}" class="grid gap-3 md:grid-cols-12">
+      <div class="md:col-span-4">
+        <label class="block text-[11px] text-slate-400/80 mb-1">Search (name/email)</label>
+        <input
+          type="text"
+          name="q"
+          value="{{ q or '' }}"
+          placeholder="e.g. arjun@uni.edu"
+          class="w-full rounded-xl bg-slate-900/60 border border-slate-700/60 px-3 py-2 text-[12px] outline-none"
+        />
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="block text-[11px] text-slate-400/80 mb-1">Start date</label>
+        <input
+          type="date"
+          name="start"
+          value="{{ start or '' }}"
+          class="w-full rounded-xl bg-slate-900/60 border border-slate-700/60 px-3 py-2 text-[12px] outline-none"
+        />
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="block text-[11px] text-slate-400/80 mb-1">End date</label>
+        <input
+          type="date"
+          name="end"
+          value="{{ end or '' }}"
+          class="w-full rounded-xl bg-slate-900/60 border border-slate-700/60 px-3 py-2 text-[12px] outline-none"
+        />
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="block text-[11px] text-slate-400/80 mb-1">Min ready</label>
+        <input
+          type="number"
+          name="min_ready"
+          min="0" max="100"
+          value="{{ min_ready if min_ready is not none else 0 }}"
+          class="w-full rounded-xl bg-slate-900/60 border border-slate-700/60 px-3 py-2 text-[12px] outline-none"
+        />
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="block text-[11px] text-slate-400/80 mb-1">Max ready</label>
+        <input
+          type="number"
+          name="max_ready"
+          min="0" max="100"
+          value="{{ max_ready if max_ready is not none else 100 }}"
+          class="w-full rounded-xl bg-slate-900/60 border border-slate-700/60 px-3 py-2 text-[12px] outline-none"
+        />
+      </div>
+
+      <div class="md:col-span-3 flex items-center gap-4 mt-1">
+        <label class="inline-flex items-center gap-2 text-[12px] text-slate-200/90">
+          <input type="checkbox" name="verified" value="1" {% if only_verified %}checked{% endif %}
+                 class="rounded border-slate-700/60 bg-slate-900/60">
+          Verified only
+        </label>
+
+        <label class="inline-flex items-center gap-2 text-[12px] text-slate-200/90">
+          <input type="checkbox" name="pro" value="1" {% if only_pro %}checked{% endif %}
+                 class="rounded border-slate-700/60 bg-slate-900/60">
+          Pro only
+        </label>
+      </div>
+
+      <div class="md:col-span-9 flex items-center justify-end gap-2 mt-1">
+        <a href="{{ url_for('admin.analytics') }}" class="btn-ghost text-[11px] px-3 py-2">
+          Reset
+        </a>
+        <button type="submit" class="btn-primary text-[11px] px-4 py-2">
+          Apply filters
+        </button>
+      </div>
+    </form>
+
+    <div class="mt-3 text-[11px] text-slate-400/80">
+      Tip: Use <span class="font-mono">Min ready = 60</span> to focus on job-ready students. Use date range to check last-week engagement.
+    </div>
+  </div>
+
+  {# -------------------------------------------------------------- #}
+  {# Computed insight fallbacks (keeps template stable + richer)     #}
+  {# -------------------------------------------------------------- #}
+  {% set _ins = analytics_insights if analytics_insights is defined and analytics_insights else {} %}
+  {% set _rc = readiness_chart if readiness_chart is defined and readiness_chart else {} %}
+  {% set _sc = streak_chart if streak_chart is defined and streak_chart else {} %}
+  {% set _es = engagement_summary if engagement_summary is defined and engagement_summary else {} %}
+
+  {% set _tiers = _rc.tiers if _rc is not none and _rc.tiers is defined and _rc.tiers else [] %}
+  {% set _tier_ns = namespace(top=0, job=0, build=0, start=0) %}
+  {% for t in _tiers %}
+    {% if t.tier == "Top Tier (80+)" %}{% set _tier_ns.top = (t.count|int) %}{% endif %}
+    {% if t.tier == "Job Ready (60–79)" %}{% set _tier_ns.job = (t.count|int) %}{% endif %}
+    {% if t.tier == "Building (40–59)" %}{% set _tier_ns.build = (t.count|int) %}{% endif %}
+    {% if t.tier == "Getting Started (0–39)" %}{% set _tier_ns.start = (t.count|int) %}{% endif %}
+  {% endfor %}
+
+  {% set _ready_avg = _rc.avg if _rc is not none and _rc.avg is defined else 0 %}
+  {% set _ready_med = _rc.median if _rc is not none and _rc.median is defined else 0 %}
+  {% set _streak_avg = _sc.avg_current if _sc is not none and _sc.avg_current is defined else 0 %}
+  {% set _streak_long = _sc.avg_longest if _sc is not none and _sc.avg_longest is defined else 0 %}
+  {% set _streak_top = _sc.top_current if _sc is not none and _sc.top_current is defined else 0 %}
+  {% set _streak_top_long = _sc.top_longest if _sc is not none and _sc.top_longest is defined else 0 %}
+
+  {% set _logs = _es.learning_logs if _es is not none and _es.learning_logs is defined else 0 %}
+  {% set _projects = _es.projects if _es is not none and _es.projects is defined else 0 %}
+  {% set _public_pf = _es.public_portfolios if _es is not none and _es.public_portfolios is defined else 0 %}
+  {% set _wk_total = _es.weekly_milestones_total if _es is not none and _es.weekly_milestones_total is defined else 0 %}
+  {% set _wk_avg = _es.weekly_milestones_avg if _es is not none and _es.weekly_milestones_avg is defined else 0 %}
+
+  {% set _readiness_fallback = "Readiness: avg " ~ _ready_avg ~ ", median " ~ _ready_med ~ ". Tiers — Top: " ~ _tier_ns.top ~ ", Job Ready: " ~ _tier_ns.job ~ ", Building: " ~ _tier_ns.build ~ ", Getting Started: " ~ _tier_ns.start ~ "." %}
+  {% set _consistency_fallback = "Consistency: avg streak " ~ _streak_avg ~ " (current) / " ~ _streak_long ~ " (longest). Top streaks — " ~ _streak_top ~ " current, " ~ _streak_top_long ~ " longest." %}
+  {% set _proof_fallback = "Proof-of-work: " ~ _logs ~ " DevLogs, " ~ _projects ~ " projects, " ~ _public_pf ~ " public portfolios. Weekly milestones: total " ~ _wk_total ~ " (avg " ~ _wk_avg ~ ")." %}
+
+  {% if _ins %}
   <!-- Insights Summary -->
   <div class="glass-card rounded-2xl px-4 py-4 mb-5 text-[12px]">
     <h2 class="text-sm font-semibold mb-1">Quick insights</h2>
     <p class="text-[11px] text-slate-300/80 mb-3">
-      A quick, human-readable summary of how your students are using CareerAI.
+      A quick, human-readable summary of how your students are progressing and using CareerAI.
     </p>
 
     <div class="space-y-1.5 text-[12px]">
-      {% if analytics_insights.headline %}
+      {% if _ins.headline %}
       <div class="text-slate-100/90">
-        {{ analytics_insights.headline }}
+        {{ _ins.headline }}
       </div>
       {% endif %}
 
-      {% if analytics_insights.skill_summary %}
+      {# Keep the original insight slots, but ensure they show useful text even if backend doesn't provide them #}
       <div class="text-slate-300/90">
-        • {{ analytics_insights.skill_summary }}
+        • {{ _ins.readiness_summary if _ins.readiness_summary is defined and _ins.readiness_summary else _readiness_fallback }}
+      </div>
+
+      <div class="text-slate-300/90">
+        • {{ _ins.consistency_summary if _ins.consistency_summary is defined and _ins.consistency_summary else _consistency_fallback }}
+      </div>
+
+      <div class="text-slate-300/90">
+        • {{ _ins.proof_summary if _ins.proof_summary is defined and _ins.proof_summary else _proof_fallback }}
+      </div>
+
+      {% if _ins.skill_summary %}
+      <div class="text-slate-300/90">
+        • {{ _ins.skill_summary }}
       </div>
       {% endif %}
 
-      {% if analytics_insights.role_summary %}
+      {% if _ins.tool_summary %}
       <div class="text-slate-300/90">
-        • {{ analytics_insights.role_summary }}
-      </div>
-      {% endif %}
-
-      {% if analytics_insights.tool_summary %}
-      <div class="text-slate-300/90">
-        • {{ analytics_insights.tool_summary }}
-      </div>
-      {% endif %}
-
-      {% if analytics_insights.credits_summary %}
-      <div class="text-slate-300/90">
-        • {{ analytics_insights.credits_summary }}
+        • {{ _ins.tool_summary }}
       </div>
       {% endif %}
     </div>
   </div>
   {% endif %}
 
-  <!-- Top Stats -->
+  {# -------------------------------------------------------------- #}
+  {# Top Stats                                                       #}
+  {# -------------------------------------------------------------- #}
   <div class="grid gap-4 md:grid-cols-3 mb-6 text-[13px]">
     <div class="glass-card rounded-2xl px-4 py-3">
       <div class="text-[11px] uppercase tracking-[0.16em] text-slate-400/80 mb-1">
@@ -80,7 +220,7 @@
         {{ total_students }}
       </div>
       <p class="mt-1 text-[11px] text-slate-400/80">
-        Users with role = <span class="font-mono">student</span>.
+        Filtered slice (role = <span class="font-mono">student</span>).
       </p>
     </div>
 
@@ -97,31 +237,179 @@
     </div>
   </div>
 
-  <!-- Credit Summary + Recent Adjustments -->
+  {# -------------------------------------------------------------- #}
+  {# Readiness + Consistency snapshot                               #}
+  {# -------------------------------------------------------------- #}
+  <div class="grid gap-4 md:grid-cols-4 mb-6 text-[13px]">
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="text-[11px] uppercase tracking-[0.16em] text-slate-400/80 mb-1">
+        Avg readiness
+      </div>
+      <div class="text-2xl font-semibold text-white">
+        {{ readiness_chart.avg if readiness_chart else 0 }}
+      </div>
+      <p class="mt-1 text-[11px] text-slate-400/80">
+        Mean ready score (0–100) for filtered students.
+      </p>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="text-[11px] uppercase tracking-[0.16em] text-slate-400/80 mb-1">
+        Median readiness
+      </div>
+      <div class="text-2xl font-semibold text-white">
+        {{ readiness_chart.median if readiness_chart else 0 }}
+      </div>
+      <p class="mt-1 text-[11px] text-slate-400/80">
+        Midpoint score; better than average for skew.
+      </p>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="text-[11px] uppercase tracking-[0.16em] text-slate-400/80 mb-1">
+        Avg current streak
+      </div>
+      <div class="text-2xl font-semibold text-white">
+        {{ streak_chart.avg_current if streak_chart else 0 }}
+      </div>
+      <p class="mt-1 text-[11px] text-slate-400/80">
+        Consistency indicator (daily completion habit).
+      </p>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-3">
+      <div class="text-[11px] uppercase tracking-[0.16em] text-slate-400/80 mb-1">
+        Proof-of-work logs
+      </div>
+      <div class="text-2xl font-semibold text-white">
+        {{ engagement_summary.learning_logs if engagement_summary else 0 }}
+      </div>
+      <p class="mt-1 text-[11px] text-slate-400/80">
+        DevLogs submitted in selected time window.
+      </p>
+    </div>
+  </div>
+
+  {# -------------------------------------------------------------- #}
+  {# Engagement KPIs                                                 #}
+  {# -------------------------------------------------------------- #}
+  <div class="glass-card rounded-2xl px-4 py-4 mb-6 text-[13px]">
+    <div class="flex items-center justify-between gap-3 mb-2">
+      <h2 class="text-sm font-semibold">Engagement KPIs</h2>
+      <div class="text-[11px] text-slate-400/80">
+        Counts reflect your selected date range (or all time if no dates).
+      </div>
+    </div>
+
+    <div class="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+      <div class="rounded-xl border border-slate-700/60 bg-slate-900/40 px-3 py-3">
+        <div class="text-[11px] text-slate-400/80 uppercase tracking-[0.14em]">Skill Mapper runs</div>
+        <div class="text-xl font-semibold mt-1">{{ engagement_summary.skillmapper_runs if engagement_summary else 0 }}</div>
+      </div>
+      <div class="rounded-xl border border-slate-700/60 bg-slate-900/40 px-3 py-3">
+        <div class="text-[11px] text-slate-400/80 uppercase tracking-[0.14em]">Job Pack runs</div>
+        <div class="text-xl font-semibold mt-1">{{ engagement_summary.jobpack_runs if engagement_summary else 0 }}</div>
+      </div>
+      <div class="rounded-xl border border-slate-700/60 bg-slate-900/40 px-3 py-3">
+        <div class="text-[11px] text-slate-400/80 uppercase tracking-[0.14em]">Internship runs</div>
+        <div class="text-xl font-semibold mt-1">{{ engagement_summary.internship_runs if engagement_summary else 0 }}</div>
+      </div>
+      <div class="rounded-xl border border-slate-700/60 bg-slate-900/40 px-3 py-3">
+        <div class="text-[11px] text-slate-400/80 uppercase tracking-[0.14em]">Projects created</div>
+        <div class="text-xl font-semibold mt-1">{{ engagement_summary.projects if engagement_summary else 0 }}</div>
+      </div>
+
+      <div class="rounded-xl border border-slate-700/60 bg-slate-900/40 px-3 py-3">
+        <div class="text-[11px] text-slate-400/80 uppercase tracking-[0.14em]">Portfolio pages</div>
+        <div class="text-xl font-semibold mt-1">{{ engagement_summary.portfolio_pages if engagement_summary else 0 }}</div>
+      </div>
+      <div class="rounded-xl border border-slate-700/60 bg-slate-900/40 px-3 py-3">
+        <div class="text-[11px] text-slate-400/80 uppercase tracking-[0.14em]">Public portfolios</div>
+        <div class="text-xl font-semibold mt-1">{{ engagement_summary.public_portfolios if engagement_summary else 0 }}</div>
+      </div>
+      <div class="rounded-xl border border-slate-700/60 bg-slate-900/40 px-3 py-3">
+        <div class="text-[11px] text-slate-400/80 uppercase tracking-[0.14em]">Weekly milestones total</div>
+        <div class="text-xl font-semibold mt-1">{{ engagement_summary.weekly_milestones_total if engagement_summary else 0 }}</div>
+      </div>
+      <div class="rounded-xl border border-slate-700/60 bg-slate-900/40 px-3 py-3">
+        <div class="text-[11px] text-slate-400/80 uppercase tracking-[0.14em]">Weekly milestones avg</div>
+        <div class="text-xl font-semibold mt-1">{{ engagement_summary.weekly_milestones_avg if engagement_summary else 0 }}</div>
+      </div>
+    </div>
+  </div>
+
+  {# -------------------------------------------------------------- #}
+  {# Readiness Charts                                                #}
+  {# -------------------------------------------------------------- #}
+  <div class="grid gap-5 md:grid-cols-2 mb-6 text-[13px]">
+    <div class="glass-card rounded-2xl px-4 py-4">
+      <h2 class="text-sm font-semibold mb-2">Readiness distribution (score buckets)</h2>
+      <p class="text-[11px] text-slate-400/80 mb-2">
+        0–100 score distribution for filtered students (bucketed by tens).
+      </p>
+      <div style="height:240px;">
+        <canvas id="chartReadinessBuckets"></canvas>
+      </div>
+    </div>
+
+    <div class="glass-card rounded-2xl px-4 py-4">
+      <h2 class="text-sm font-semibold mb-2">Readiness tiers</h2>
+      <p class="text-[11px] text-slate-400/80 mb-2">
+        Dean view: Top Tier (80+), Job Ready (60–79), Building (40–59), Getting Started (0–39).
+      </p>
+      <div style="height:240px;">
+        <canvas id="chartReadinessTiers"></canvas>
+      </div>
+    </div>
+  </div>
+
+  {# -------------------------------------------------------------- #}
+  {# Credit Summary + Recent Adjustments                             #}
+  {# -------------------------------------------------------------- #}
+  {% set _dc = daily_credits if daily_credits is defined and daily_credits else {} %}
+  {% set _dc_s = _dc.silver if _dc is not none and _dc.silver is defined and _dc.silver else [] %}
+  {% set _dc_g = _dc.gold if _dc is not none and _dc.gold is defined and _dc.gold else [] %}
+  {% set _spent = namespace(silver=0, gold=0) %}
+  {% for v in _dc_s %}{% set _spent.silver = _spent.silver + (v|int) %}{% endfor %}
+  {% for v in _dc_g %}{% set _spent.gold = _spent.gold + (v|int) %}{% endfor %}
+
   <div class="grid gap-5 md:grid-cols-2 mb-6 text-[13px]">
 
     <div class="glass-card rounded-2xl px-4 py-4">
       <h2 class="text-sm font-semibold mb-2">Credit usage summary</h2>
       <p class="text-[12px] text-slate-300/80 mb-3">
-        Aggregate credit movement for students in this university (all time).
+        Aggregate credit movement for this university (respects date filter if set).
       </p>
       <div class="space-y-2 text-[12px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-300/80">Total debits (spent)</span>
           <span class="font-semibold">{{ total_debits }}</span>
         </div>
+
+        <div class="flex items-center justify-between">
+          <span class="text-slate-300/80">Silver debits (spent)</span>
+          <span class="font-semibold">{{ _spent.silver }}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-300/80">Gold debits (spent)</span>
+          <span class="font-semibold">{{ _spent.gold }}</span>
+        </div>
+
         <div class="flex items-center justify-between">
           <span class="text-slate-300/80">Total credits / refunds</span>
           <span class="font-semibold">{{ total_credits }}</span>
         </div>
       </div>
       <p class="mt-2 text-[11px] text-slate-400/80">
-        This includes tool runs, admin adjustments, and refunds for failed runs.
+        Includes tool runs, admin adjustments, and refunds for failed runs.
+      </p>
+      <p class="mt-1 text-[11px] text-slate-400/80">
+        Note: totals above are overall; Silver/Gold debits are shown separately to avoid mixing currencies.
       </p>
     </div>
 
     <div class="glass-card rounded-2xl px-4 py-4">
-      <h2 class="text-sm font-semibold mb-2">Recent admin adjustments</h2>
+      <h2 class="text-sm font-semibold mb-2">Recent admin credit transactions</h2>
       {% if admin_adjust_txs %}
         <div class="overflow-x-auto -mx-2 text-[11px]">
           <table class="min-w-full">
@@ -169,12 +457,14 @@
 
   </div>
 
-  <!-- Skills & Roles Charts -->
+  {# -------------------------------------------------------------- #}
+  {# Skills & Roles Charts                                           #}
+  {# -------------------------------------------------------------- #}
   <div class="grid gap-5 md:grid-cols-2 mb-6 text-[13px]">
     <div class="glass-card rounded-2xl px-4 py-4">
       <h2 class="text-sm font-semibold mb-2">Top skills (from Skill Mapper)</h2>
       <p class="text-[11px] text-slate-400/80 mb-2">
-        Most common skills inferred from Skill Mapper runs in your university.
+        Most common skills inferred from Skill Mapper runs (signal extraction).
       </p>
       <div style="height:220px;">
         <canvas id="chartSkillsTop"></canvas>
@@ -192,7 +482,9 @@
     </div>
   </div>
 
-  <!-- Internships & Tool Usage -->
+  {# -------------------------------------------------------------- #}
+  {# Internships & Tool Usage                                        #}
+  {# -------------------------------------------------------------- #}
   <div class="grid gap-5 md:grid-cols-2 mb-6 text-[13px]">
     <div class="glass-card rounded-2xl px-4 py-4">
       <h2 class="text-sm font-semibold mb-2">Internship search roles</h2>
@@ -215,24 +507,114 @@
     </div>
   </div>
 
-  <!-- Credits Over Time -->
-  <div class="glass-card rounded-2xl px-4 py-4 mb-4 text-[13px]">
+  {# -------------------------------------------------------------- #}
+  {# Credits Over Time                                               #}
+  {# -------------------------------------------------------------- #}
+  <div class="glass-card rounded-2xl px-4 py-4 mb-6 text-[13px]">
     <h2 class="text-sm font-semibold mb-2">Daily credit usage (Silver 🪙 vs Gold ⭐)</h2>
     <p class="text-[11px] text-slate-400/80 mb-2">
-      See how credit consumption trends over time across your students.
+      Consumption trends over time. Useful for adoption tracking by cohort/time.
     </p>
     <div style="height:260px;">
       <canvas id="chartDailyCredits"></canvas>
     </div>
   </div>
 
+  {# -------------------------------------------------------------- #}
+  {# Top Students Table                                              #}
+  {# -------------------------------------------------------------- #}
+  <div class="glass-card rounded-2xl px-4 py-4 mb-4 text-[13px]">
+    <div class="flex items-center justify-between gap-3 mb-2">
+      <h2 class="text-sm font-semibold">Top students (actionable list)</h2>
+      <div class="text-[11px] text-slate-400/80">
+        Sorted by readiness score, then streak. Shows proof-of-work signals.
+      </div>
+    </div>
+
+    {% if student_rows %}
+      <div class="overflow-x-auto -mx-2 text-[11px]">
+        <table class="min-w-full">
+          <thead class="bg-slate-900/80 text-slate-200/80">
+            <tr>
+              <th class="px-3 py-2 text-left font-semibold">Student</th>
+              <th class="px-3 py-2 text-left font-semibold">Tier</th>
+              <th class="px-3 py-2 text-right font-semibold">Ready</th>
+              <th class="px-3 py-2 text-right font-semibold">Streak</th>
+              <th class="px-3 py-2 text-right font-semibold">Longest</th>
+              <th class="px-3 py-2 text-right font-semibold">Milestones</th>
+              <th class="px-3 py-2 text-right font-semibold">DevLogs</th>
+              <th class="px-3 py-2 text-right font-semibold">Projects</th>
+              <th class="px-3 py-2 text-right font-semibold">Public Portfolio</th>
+              <th class="px-3 py-2 text-left font-semibold">Flags</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in student_rows %}
+            <tr class="border-t border-slate-700/60">
+              <td class="px-3 py-2">
+                <div class="text-slate-100/90 font-medium">{{ s.name }}</div>
+                <div class="text-slate-400/80">{{ s.email }}</div>
+              </td>
+              <td class="px-3 py-2 text-slate-200/80">
+                {{ s.tier }}
+              </td>
+              <td class="px-3 py-2 text-right text-slate-100/90 font-semibold">
+                {{ s.ready_score }}
+              </td>
+              <td class="px-3 py-2 text-right text-slate-200/90">
+                {{ s.current_streak }}
+              </td>
+              <td class="px-3 py-2 text-right text-slate-200/90">
+                {{ s.longest_streak }}
+              </td>
+              <td class="px-3 py-2 text-right text-slate-200/90">
+                {{ s.weekly_milestones_completed }}
+              </td>
+              <td class="px-3 py-2 text-right text-slate-200/90">
+                {{ s.learning_logs }}
+              </td>
+              <td class="px-3 py-2 text-right text-slate-200/90">
+                {{ s.projects }}
+              </td>
+              <td class="px-3 py-2 text-right text-slate-200/90">
+                {{ s.public_portfolio_pages }}
+              </td>
+              <td class="px-3 py-2 text-slate-300/90">
+                <div class="flex flex-wrap gap-1">
+                  {% if s.verified %}
+                    <span class="px-2 py-0.5 rounded-full bg-emerald-900/40 border border-emerald-700/40 text-[10px]">Verified</span>
+                  {% else %}
+                    <span class="px-2 py-0.5 rounded-full bg-slate-900/40 border border-slate-700/40 text-[10px]">Unverified</span>
+                  {% endif %}
+                  {% if s.pro %}
+                    <span class="px-2 py-0.5 rounded-full bg-amber-900/40 border border-amber-700/40 text-[10px]">Pro</span>
+                  {% endif %}
+                  {% if s.public_portfolio_pages|int > 0 %}
+                    <span class="px-2 py-0.5 rounded-full bg-indigo-900/40 border border-indigo-700/40 text-[10px]">Portfolio</span>
+                  {% endif %}
+                  {% if s.learning_logs|int > 0 %}
+                    <span class="px-2 py-0.5 rounded-full bg-cyan-900/40 border border-cyan-700/40 text-[10px]">DevLog</span>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-[11px] text-slate-400/80">
+        No students match your current filters.
+      </p>
+    {% endif %}
+  </div>
+
   <p class="text-[11px] text-slate-400/80">
-    Deeper analytics (skills clusters, job outcomes, and project categories) can be added later
-    as more data flows through Skill Mapper, Job Packs, and Portfolio tools.
+    Next upgrade (UI): add sorting toggles, cohort segmentation (year/department), and drilldown student profile pages for dean review.
   </p>
 
   {# -------------------------------------------------------------- #}
-  {# Analytics payload + scripts                                   #}
+  {# Analytics payload + scripts                                    #}
   {# -------------------------------------------------------------- #}
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
@@ -241,10 +623,23 @@
       rolesTop: {{ roles_top|tojson }},
       internshipRoles: {{ internship_roles|tojson }},
       dailyCredits: {{ daily_credits|tojson }},
-      toolDebits: {{ tool_debits|tojson }}
+      toolDebits: {{ tool_debits|tojson }},
+
+      readinessChart: {{ readiness_chart|tojson }},
+      streakChart: {{ streak_chart|tojson }},
+      engagementSummary: {{ engagement_summary|tojson }},
+
+      meta: {
+        q: {{ (q or '')|tojson }},
+        start: {{ (start or '')|tojson }},
+        end: {{ (end or '')|tojson }},
+        onlyVerified: {{ (only_verified or false)|tojson }},
+        onlyPro: {{ (only_pro or false)|tojson }},
+        minReady: {{ (min_ready if min_ready is not none else 0)|tojson }},
+        maxReady: {{ (max_ready if max_ready is not none else 100)|tojson }}
+      }
     };
   </script>
   <script src="{{ url_for('static', filename='js/admin_analytics.js') }}"></script>
-
 </div>
 {% endblock %}

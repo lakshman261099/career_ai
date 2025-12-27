@@ -22,6 +22,7 @@ from models import Project, ResumeAsset, UserProfile, db
 from modules.resume.utils import extract_text_from_pdf
 from modules.resume.parser import parse_resume_to_profile
 from modules.resume.skills_categorizer import categorize_skills  # NEW
+from modules.common.readiness import update_user_ready_score
 
 settings_bp = Blueprint(
     "settings", __name__, template_folder="../../templates/settings"

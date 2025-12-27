@@ -1,5 +1,5 @@
-{% set FREE = user_free %}
-{% set PRO = user_pro %}
+{% set FREE = user_free|default(0, true) %}
+{% set PRO = user_pro|default(0, true) %}
 <!doctype html>
 <html lang="en" class="h-full">
 <head>
@@ -385,8 +385,7 @@
           // Never intercept clicks in the fixed header/nav
           if (anchor.closest("header")) return;
 
-          /
-          / Only care when that anchor is inside a form
+          // Only care when that anchor is inside a form
           const form = anchor.closest("form");
           if (!form) return;
 

@@ -51,7 +51,7 @@
   </div>
 
   <!-- Second row: credit flow + how-to -->
-  <div class="grid gap-4 md:grid-cols-2">
+  <div class="grid gap-4 md:grid-cols-2 mb-6">
 
     <div class="glass-card rounded-2xl px-4 py-4">
       <h2 class="text-sm font-semibold mb-2">Credit flow summary</h2>
@@ -100,6 +100,76 @@
       </p>
     </div>
 
+  </div>
+
+  <!-- Recent credit transactions -->
+  <div class="glass-card rounded-2xl px-4 py-4">
+    <div class="flex items-center justify-between gap-3 mb-2">
+      <h2 class="text-sm font-semibold">Recent credit transactions</h2>
+      <a
+        href="{{ url_for('admin.credits') }}"
+        class="text-[11px] text-slate-300/80 hover:text-slate-200 underline underline-offset-4"
+      >
+        Go to Credits →
+      </a>
+    </div>
+    <p class="text-[12px] text-slate-300/80 mb-3">
+      Last 10 transactions in your current admin scope.
+    </p>
+
+    {% if recent_txs is defined and recent_txs and recent_txs|length > 0 %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-[12px]">
+          <thead class="text-[11px] uppercase tracking-[0.16em] text-slate-300/60">
+            <tr class="border-b border-white/10">
+              <th class="py-2 pr-3 font-semibold">Time</th>
+              <th class="py-2 pr-3 font-semibold">User ID</th>
+              <th class="py-2 pr-3 font-semibold">Type</th>
+              <th class="py-2 pr-3 font-semibold">Currency</th>
+              <th class="py-2 pr-3 font-semibold">Amount</th>
+              <th class="py-2 pr-3 font-semibold">Feature</th>
+            </tr>
+          </thead>
+          <tbody class="text-slate-100/90">
+            {% for tx in recent_txs %}
+              <tr class="border-b border-white/5 hover:bg-white/5">
+                <td class="py-2 pr-3 whitespace-nowrap text-slate-300/80">
+                  {% if tx.created_at %}
+                    {{ tx.created_at.strftime("%Y-%m-%d %H:%M") }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="py-2 pr-3 whitespace-nowrap">
+                  {{ tx.user_id }}
+                </td>
+                <td class="py-2 pr-3 whitespace-nowrap">
+                  {{ tx.tx_type or "—" }}
+                </td>
+                <td class="py-2 pr-3 whitespace-nowrap">
+                  {{ tx.currency or "—" }}
+                </td>
+                <td class="py-2 pr-3 whitespace-nowrap font-semibold">
+                  {{ tx.amount }}
+                </td>
+                <td class="py-2 pr-3">
+                  <span class="text-slate-300/80">
+                    {{ tx.feature or "—" }}
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-2 text-[11px] text-slate-400/80">
+        Tip: use <strong>Credits</strong> to search by user email and view full history.
+      </p>
+    {% else %}
+      <div class="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[12px] text-slate-300/80">
+        No recent transactions found in this scope.
+      </div>
+    {% endif %}
   </div>
 
 </div>
